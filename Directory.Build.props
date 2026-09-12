@@ -1,0 +1,60 @@
+<Project>
+
+  <PropertyGroup>
+    <!-- One predictable output root for every project (already git-ignored). -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!--
+      EasyWindowsTerminalControl (and the native Microsoft.Terminal.Control.dll it
+      P/Invokes) is published x64-only, so the whole solution is pinned to x64.
+      Naming the RID explicitly also stops the SDK dragging in the win-x86 and
+      win-arm64 copies of the native control.
+    -->
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AccelerateBuildsInVisualStudio>true</AccelerateBuildsInVisualStudio>
+
+    <!--
+      NU1507 asks for package source mapping when several feeds are configured.
+      We deliberately ship no NuGet.config: pinning a private feed would leak it into a
+      public repo, and forcing nuget.org breaks machines that reach it through a proxy.
+      Restore resolves fine from whatever feeds the machine already trusts.
+    -->
+    <NoWarn>$(NoWarn);NU1507</NoWarn>
+  </PropertyGroup>
+
+  <!--
+    CI.Microsoft.Terminal.Wpf ships an ~82 MB PDB next to each native
+    Microsoft.Terminal.Control.dll. Useful if you are debugging Windows Terminal
+    itself; pure bloat otherwise. Set OverShellKeepNativePdbs=true to keep them.
+  -->
+  <Target Name="OverShellTrimNativePdbs"
+          AfterTargets="ResolvePackageAssets"
+          Condition="'$(OverShellKeepNativePdbs)' != 'true'">
+    <ItemGroup>
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)" Condition="'%(Extension)' == '.pdb'" />
+      <RuntimeCopyLocalItems Remove="@(RuntimeCopyLocalItems)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
+
+  <PropertyGroup>
+    <Product>OverShell</Product>
+    <Company>Moaid Hathot</Company>
+    <Authors>Moaid Hathot</Authors>
+    <Copyright>Copyright (c) $([System.DateTime]::Now.Year) Moaid Hathot</Copyright>
+    <RepositoryUrl>https://github.com/MoaidHathot/OverShell</RepositoryUrl>
+  </PropertyGroup>
+
+</Project>

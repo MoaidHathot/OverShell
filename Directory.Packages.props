@@ -1,0 +1,19 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Wraps the official Windows Terminal WPF control + ConPTY.
+      Transitively brings in:
+        CI.Microsoft.Terminal.Wpf          -> Microsoft.Terminal.Wpf.dll (managed)
+                                              Microsoft.Terminal.Control.dll (native, the real WT control)
+        Microsoft.Windows.Console.ConPTY   -> official Microsoft ConPTY
+    -->
+    <PackageVersion Include="EasyWindowsTerminalControl" Version="1.0.38" />
+  </ItemGroup>
+
+</Project>

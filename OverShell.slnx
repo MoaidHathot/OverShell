@@ -1,0 +1,11 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+  </Configurations>
+  <Folder Name="/src/">
+    <Project Path="src/OverShell.App/OverShell.App.csproj" />
+    <Project Path="src/OverShell.Config/OverShell.Config.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
+</Solution>

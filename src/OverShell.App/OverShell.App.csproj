@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>OverShell.App</RootNamespace>
+    <AssemblyName>OverShell</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="EasyWindowsTerminalControl" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OverShell.Config\OverShell.Config.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OverShell.Config</RootNamespace>
+    <!-- Deliberately free of any WPF/UI dependency so it stays unit-testable. -->
+    <UseWPF>false</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\DefaultSchemes.json" />
+  </ItemGroup>
+
+</Project>
