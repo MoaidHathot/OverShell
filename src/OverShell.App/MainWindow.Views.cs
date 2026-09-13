@@ -92,8 +92,6 @@ public partial class MainWindow
         }
 
         RegisterViewCommands();
-        ApplyView(AppSettings.ViewOrder.Contains(_settings.View, StringComparer.OrdinalIgnoreCase) ? _settings.View.ToLowerInvariant() : "terminal");
-        WatchConfiguration();
     }
 
     private GitStatusService CreateGitStatus()
@@ -123,7 +121,7 @@ public partial class MainWindow
         }
 
         _commands.Register("view.toggle", "View: toggle last two", "View", () => ApplyView(_previousViewId), description: "Switch between the current view and the one before it");
-        _commands.Register("settings.reload", "Reload configuration", "Settings", () => ReloadConfiguration(all: true), description: "settings.jsonc, keybindings.jsonc, agents\\, layouts\\");
+        _commands.Register("settings.reload", "Reload configuration", "Settings", () => ReloadConfiguration(all: true), description: "settings.jsonc, keybindings.jsonc, snippets.jsonc, agents\\, layouts\\, skins\\");
 
         // Layouts at runtime: pick any preset (or user layout) for the current view. The choice
         // lives for this session; settings.jsonc is where it becomes permanent.
@@ -359,7 +357,7 @@ public partial class MainWindow
         try
         {
             Directory.CreateDirectory(AppPaths.ConfigRoot);
-            _configWatcher = new FileSystemWatcher(AppPaths.ConfigRoot, "*.jsonc")
+            _configWatcher = new FileSystemWatcher(AppPaths.ConfigRoot)
             {
                 IncludeSubdirectories = true,
                 NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
@@ -380,6 +378,12 @@ public partial class MainWindow
 
     private void QueueReload(string path)
     {
+        var extension = Path.GetExtension(path);
+        if (!extension.Equals(".jsonc", StringComparison.OrdinalIgnoreCase) && !extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
         _pendingReloads.Add(path);
         _reloadTimer ??= new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(400) };
         _reloadTimer.Tick -= OnReloadTimer;
@@ -398,12 +402,14 @@ public partial class MainWindow
         var keys = paths.Any(p => string.Equals(p, AppPaths.KeybindingsFile, StringComparison.OrdinalIgnoreCase));
         var agents = paths.Any(p => p.StartsWith(AppPaths.AgentsDir, StringComparison.OrdinalIgnoreCase));
         var layouts = paths.Any(p => p.StartsWith(AppPaths.LayoutsDir, StringComparison.OrdinalIgnoreCase));
+        var skins = paths.Any(p => p.StartsWith(AppPaths.SkinsDir, StringComparison.OrdinalIgnoreCase));
+        var snippets = paths.Any(p => string.Equals(p, AppPaths.SnippetsFile, StringComparison.OrdinalIgnoreCase));
 
-        ReloadConfiguration(all: false, settings, keys, agents, layouts);
+        ReloadConfiguration(all: false, settings, keys, agents, layouts, skins, snippets);
     }
 
     /// <summary>Reloads configuration files and re-applies them to the running window.</summary>
-    internal void ReloadConfiguration(bool all, bool settings = false, bool keybindings = false, bool agents = false, bool layouts = false)
+    internal void ReloadConfiguration(bool all, bool settings = false, bool keybindings = false, bool agents = false, bool layouts = false, bool skins = false, bool snippets = false)
     {
         var parts = new List<string>();
 
@@ -431,6 +437,12 @@ public partial class MainWindow
             parts.Add($"layouts ({_layouts.All.Count})");
         }
 
+        if (all || snippets)
+        {
+            LoadSnippets();
+            parts.Add($"snippets ({_snippets.Count})");
+        }
+
         if (all || settings)
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
@@ -452,6 +464,15 @@ public partial class MainWindow
 
 
             parts.Add($"settings{(_settings.Problems.Count > 0 ? $" ({_settings.Problems.Count} problem(s))" : string.Empty)}");
+        }
+
+        if (all || settings || skins)
+        {
+            ApplySkinFromSettings();
+            if (skins && !settings)
+            {
+                parts.Add($"skin{(_settings.Skin is null ? string.Empty : $" '{_settings.Skin}'")}");
+            }
         }
 
         if (all || settings || layouts)

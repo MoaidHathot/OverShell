@@ -12,6 +12,7 @@ public partial class App : Application
         Path.Combine(Path.GetTempPath(), "overshell-crash.log");
 
     private bool _errorShown;
+    private SingleInstance? _instance;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -26,6 +27,64 @@ public partial class App : Application
     private const uint AttachParentProcess = unchecked((uint)-1);
     private const int StdOutputHandle = -11;
     private const uint FileTypeChar = 0x0002;
+
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            Record("AppDomain", args.ExceptionObject as Exception);
+
+        base.OnStartup(e);
+
+        // `OverShell integrations …` / `OverShell protocol …` are command-line tool runs, not a window.
+        if (e.Args.Length > 0 && e.Args[0].Equals("integrations", StringComparison.OrdinalIgnoreCase))
+        {
+            Shutdown(RunIntegrationsCli(e.Args.Skip(1).ToArray()));
+            return;
+        }
+
+        if (e.Args.Length > 0 && e.Args[0].Equals("protocol", StringComparison.OrdinalIgnoreCase))
+        {
+            Shutdown(RunProtocolCli(e.Args.Skip(1).ToArray()));
+            return;
+        }
+
+        // One window per user: a second start hands its arguments (an overshell:// URL from a
+        // toast click, typically) to the running one and leaves.
+        _instance = new SingleInstance();
+        if (_instance.TryHandOver(e.Args))
+        {
+            Shutdown(0);
+            return;
+        }
+
+        // The skin goes on before the first window exists, so fonts and metrics resolve to
+        // it too; later saves only recolour (Chrome/SkinLoader), which needs unfrozen brushes.
+        Core.AppPaths.EnsureCreated();
+        var unfrozen = Chrome.SkinLoader.PrepareThemeForLiveRecolour();
+        Diagnostics.TraceLog.Agents.Write($"theme: {unfrozen} brush(es) made recolourable");
+        var settings = Core.Settings.AppSettings.Load(File.Exists(Core.AppPaths.SettingsFile) ? Core.AppPaths.SettingsFile : null);
+        if (Chrome.SkinLoader.Apply(settings.Skin) is { } skinProblem)
+        {
+            Diagnostics.TraceLog.Agents.Write($"skin: {skinProblem}");
+        }
+
+        var window = new MainWindow();
+        MainWindow = window;
+
+        _instance.Trace += line => Diagnostics.TraceLog.Agents.Write(line);
+        _instance.ArgumentsReceived += args => Dispatcher.BeginInvoke(() => window.HandleArguments(args));
+        _instance.Start();
+
+        window.Loaded += (_, _) => window.HandleArguments(e.Args);
+        window.Show();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _instance?.Dispose();
+        base.OnExit(e);
+    }
 
     /// <summary>
     /// Where CLI output goes. A GUI process launched from a console has no console of its
@@ -46,30 +105,10 @@ public partial class App : Application
         return Console.Out;
     }
 
-    protected override void OnStartup(StartupEventArgs e)
-    {
-        DispatcherUnhandledException += OnDispatcherUnhandledException;
-        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-            Record("AppDomain", args.ExceptionObject as Exception);
-
-        base.OnStartup(e);
-
-        // `OverShell integrations …` is a command-line tool run, not a window.
-        if (e.Args.Length > 0 && e.Args[0].Equals("integrations", StringComparison.OrdinalIgnoreCase))
-        {
-            var code = RunIntegrationsCli(e.Args.Skip(1).ToArray());
-            Shutdown(code);
-            return;
-        }
-
-        MainWindow = new MainWindow();
-        MainWindow.Show();
-    }
-
     /// <summary>
-    /// <c>integrations status</c> · <c>integrations install &lt;opencode|copilot|all&gt;</c> ·
-    /// <c>integrations uninstall &lt;id&gt;</c>. Output goes to the console that launched us: a
-    /// GUI process has none of its own, so the parent's is attached.
+    /// <c>integrations status</c> · <c>integrations install &lt;opencode|copilot|claude|all&gt;</c> ·
+    /// <c>integrations uninstall &lt;id|all&gt;</c> · <c>integrations show claude</c> (the hook
+    /// entries, for adding by hand when settings.json cannot be rewritten).
     /// </summary>
     private static int RunIntegrationsCli(string[] args)
     {
@@ -95,13 +134,16 @@ public partial class App : Application
 
                 case "install":
                     out_.WriteLine();
+                    var refused = false;
                     foreach (var id in ids)
                     {
-                        Print(out_, IntegrationInstaller.Install(id));
+                        var status = IntegrationInstaller.Install(id);
+                        Print(out_, status);
+                        refused |= !status.Installed;
                     }
 
                     out_.WriteLine("  Restart the harness inside an OverShell tab for the integration to load.");
-                    return 0;
+                    return refused ? 1 : 0;
 
                 case "uninstall":
                     out_.WriteLine();
@@ -112,11 +154,25 @@ public partial class App : Application
 
                     return 0;
 
+                case "show":
+                    out_.WriteLine();
+                    out_.WriteLine("  Claude Code: add under \"hooks\" in ~/.claude/settings.json:");
+                    out_.WriteLine();
+                    var hooks = new System.Text.Json.Nodes.JsonObject();
+                    foreach (var eventName in ClaudeHookTranslator.Events)
+                    {
+                        hooks[eventName] = new System.Text.Json.Nodes.JsonArray(IntegrationInstaller.ClaudeHookGroup(eventName));
+                    }
+
+                    out_.WriteLine(hooks.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                    return 0;
+
                 default:
                     out_.WriteLine();
                     out_.WriteLine("usage: OverShell integrations status");
-                    out_.WriteLine("       OverShell integrations install   <opencode|copilot|all>");
-                    out_.WriteLine("       OverShell integrations uninstall <opencode|copilot|all>");
+                    out_.WriteLine("       OverShell integrations install   <opencode|copilot|claude|all>");
+                    out_.WriteLine("       OverShell integrations uninstall <opencode|copilot|claude|all>");
+                    out_.WriteLine("       OverShell integrations show claude");
                     return 2;
             }
         }
@@ -132,8 +188,52 @@ public partial class App : Application
         }
     }
 
+    /// <summary><c>protocol status</c> · <c>protocol register</c> · <c>protocol unregister</c> — the <c>overshell://</c> URL scheme, per user.</summary>
+    private static int RunProtocolCli(string[] args)
+    {
+        var out_ = OpenCliOutput();
+        var exe = Environment.ProcessPath ?? string.Empty;
+
+        try
+        {
+            switch (args.Length > 0 ? args[0].ToLowerInvariant() : "status")
+            {
+                case "status":
+                    out_.WriteLine();
+                    out_.WriteLine($"  overshell://  {(ProtocolRegistration.RegisteredCommand() is { } cmd ? cmd : "not registered")}");
+                    out_.WriteLine($"  this build    {ProtocolRegistration.ExpectedCommand(exe)}  {(ProtocolRegistration.IsRegistered(exe) ? "(current)" : string.Empty)}");
+                    return 0;
+
+                case "register":
+                    out_.WriteLine();
+                    out_.WriteLine(ProtocolRegistration.Register(exe) ? $"  registered overshell:// -> {exe}" : "  already registered for this executable");
+                    return 0;
+
+                case "unregister":
+                    out_.WriteLine();
+                    out_.WriteLine(ProtocolRegistration.Unregister() ? "  removed overshell://" : "  overshell:// was not registered");
+                    return 0;
+
+                default:
+                    out_.WriteLine();
+                    out_.WriteLine("usage: OverShell protocol status|register|unregister");
+                    return 2;
+            }
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            out_.WriteLine();
+            out_.WriteLine($"error: {ex.Message}");
+            return 1;
+        }
+        finally
+        {
+            out_.Flush();
+        }
+    }
+
     private static void Print(TextWriter out_, IntegrationStatus s) =>
-        out_.WriteLine($"  {s.Id,-9} {(s.Installed ? s.Current ? "installed  " : "outdated   " : "absent     ")} {s.Path}{(s.HarnessFound ? string.Empty : "   (harness not on PATH)")}");
+        out_.WriteLine($"  {s.Id,-9} {(s.Installed ? s.Current ? "installed  " : "outdated   " : "absent     ")} {s.Path}{(s.HarnessFound ? string.Empty : "   (harness not on PATH)")}{(s.Note is null ? string.Empty : $"{Environment.NewLine}            {s.Note}")}");
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {

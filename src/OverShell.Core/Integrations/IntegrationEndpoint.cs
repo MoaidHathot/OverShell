@@ -213,11 +213,14 @@ public sealed class IntegrationEndpoint : IDisposable
             return await WriteAsync(response, 200, new JsonObject { ["ok"] = true }).ConfigureAwait(false);
         }
 
-        // /v1/copilot/{tabId}/{event}
+        // /v1/copilot/{tabId}/{event} and /v1/claude/{tabId}/{event}: raw hook payloads, translated.
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 4 && segments[0] == "v1" && segments[1] == "copilot")
+        if (segments.Length == 4 && segments[0] == "v1" && segments[1] is "copilot" or "claude")
         {
-            var report = CopilotHookTranslator.Translate(Uri.UnescapeDataString(segments[2]), segments[3], node);
+            var tabId = Uri.UnescapeDataString(segments[2]);
+            var report = segments[1] == "copilot"
+                ? CopilotHookTranslator.Translate(tabId, segments[3], node)
+                : ClaudeHookTranslator.Translate(tabId, segments[3], node);
             if (report is not null)
             {
                 ReportReceived?.Invoke(report);

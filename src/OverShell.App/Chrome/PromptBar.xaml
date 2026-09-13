@@ -1,0 +1,78 @@
+<UserControl x:Class="OverShell.App.Chrome.PromptBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False">
+
+    <Border Background="{StaticResource Surface.Chrome}"
+            BorderBrush="{StaticResource Surface.Border}"
+            BorderThickness="0,1,0,0"
+            Padding="10,6">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- who gets the text -->
+            <ComboBox x:Name="Target"
+                      Grid.Column="0"
+                      Width="150"
+                      Margin="0,0,8,0"
+                      VerticalAlignment="Center"
+                      FontFamily="{StaticResource Font.Ui}"
+                      FontSize="{StaticResource Font.Size.Small}"
+                      ToolTip="Where the prompt goes">
+                <ComboBoxItem Content="Active tab" Tag="active" IsSelected="True" />
+                <ComboBoxItem Content="All agents" Tag="agents" />
+                <ComboBoxItem Content="Agents needing you" Tag="blocked" />
+                <ComboBoxItem Content="Every tab" Tag="all" />
+            </ComboBox>
+
+            <Border Grid.Column="1"
+                    Background="{StaticResource Surface.Base}"
+                    BorderBrush="{StaticResource Surface.Border}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="8,4">
+                <TextBox x:Name="Input"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="{StaticResource Text.Primary}"
+                         CaretBrush="{StaticResource Text.Primary}"
+                         FontFamily="{StaticResource Font.Ui}"
+                         FontSize="{StaticResource Font.Size.Body}"
+                         AcceptsReturn="True"
+                         AcceptsTab="False"
+                         MaxLines="6"
+                         VerticalScrollBarVisibility="Auto"
+                         TextWrapping="Wrap"
+                         PreviewKeyDown="Input_PreviewKeyDown" />
+            </Border>
+
+            <Button x:Name="BtnSnippets"
+                    Grid.Column="2"
+                    Margin="6,0,0,0"
+                    Content="&#xE8FD;"
+                    ToolTip="Snippets (snippets.jsonc)"
+                    Style="{StaticResource ChromeIconButton}"
+                    Click="Snippets_Click" />
+            <Button x:Name="BtnSend"
+                    Grid.Column="3"
+                    Margin="2,0,0,0"
+                    Content="&#xE724;"
+                    ToolTip="Send  (Enter; Shift+Enter for a new line)"
+                    Style="{StaticResource ChromeIconButton}"
+                    Click="Send_Click" />
+            <Button Grid.Column="4"
+                    Margin="2,0,0,0"
+                    Content="&#xE8BB;"
+                    FontSize="9"
+                    ToolTip="Hide  (Esc)"
+                    Style="{StaticResource ChromeIconButton}"
+                    Click="Hide_Click" />
+        </Grid>
+    </Border>
+</UserControl>

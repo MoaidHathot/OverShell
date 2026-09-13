@@ -34,6 +34,25 @@
     "statusIntervalMs": 10000
   },
 
+  // What comes back after a restart: the tabs (profile, directory, label, group) and the
+  // view; for a tab whose agent left a session id, its resume command is typed once the
+  // shell is ready (e.g. `opencode --session <id>`).
+  "session": {
+    "restore": true,
+    "resumeAgents": true
+  },
+
+  // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked
+  // toast (--launch overshell://focus/<tab>) lands on its tab in the running window.
+  "protocol": {
+    "register": true
+  },
+
+  // A ResourceDictionary under %APPDATA%\OverShell\skins\<name>.xaml overriding theme keys
+  // (Surface.Chrome, Accent.Base, State.Blocked, Font.Ui, Metrics.TabHeight, ...). Brush
+  // colours update live when the file is saved; fonts and metrics apply at the next start.
+  "skin": null,
+
   "notifications": {
     // Every enabled sink runs for every event its "when" allows. Kinds: blocked, done,
     // error, exited. Harnesses: opencode, copilot, claude, codex, generic, shell.
@@ -55,10 +74,8 @@
       // Windows toast through Palantir (https://github.com/MoaidHathot/Palantir).
       // {…} placeholders are filled from the event: kind, title, message, detail, time,
       // tab.id, tab.label, tab.harness, tab.harnessName, tab.project, tab.cwd.
-      // Flags verified against palantir 2.0.1 --help. Add
-      //   "--launch", "overshell://focus/{tab.id}"
-      // once the overshell:// handler ships (P2); until then a click would open the
-      // "choose an app" dialog.
+      // Flags verified against palantir 2.0.1 --help. Clicking the toast opens
+      // overshell://focus/<tab>, which the running window answers (protocol.register).
       "palantir": {
         "type": "command",
         "enabled": false,
@@ -69,6 +86,7 @@
           "-b", "{tab.cwd}",
           "--tag", "overshell-{tab.id}",
           "--replace",
+          "--launch", "overshell://focus/{tab.id}",
           "-q"
         ],
         "stdinJson": false,

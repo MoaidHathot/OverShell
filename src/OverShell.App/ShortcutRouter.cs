@@ -151,6 +151,25 @@ internal sealed class ShortcutRouter : IDisposable
     /// <summary>The window with keyboard focus on this thread. Diagnostics only.</summary>
     internal static IntPtr FocusedWindow() => GetFocus();
 
+    /// <summary>True when the foreground window belongs to this process. Diagnostics only.</summary>
+    internal static bool ForegroundIsOurs()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        _ = GetWindowThreadProcessId(foreground, out var pid);
+        return pid == (uint)Environment.ProcessId;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
     /// <summary>The system's double-click interval: two presses closer than this are one gesture.</summary>
     internal static TimeSpan DoubleClickTime => TimeSpan.FromMilliseconds(GetDoubleClickTime());
 

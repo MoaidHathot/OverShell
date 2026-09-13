@@ -28,10 +28,11 @@ backdrop). x64 only.
 |---|---|---|
 | `OVERSHELL_BACKDROP` | `acrylic` (default), `mica`, `micaalt`, `none` | Backdrop behind the chrome |
 | `OVERSHELL_CONFIG_DIR` | a directory | Configuration root instead of `%APPDATA%\OverShell` |
+| `OVERSHELL_STATE_DIR` | a directory | State root (labels, last session) instead of `%LOCALAPPDATA%\OverShell` |
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `session1`/`session2` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
 
@@ -54,8 +55,11 @@ OverShell integrations status
 ```
 
 Both files are separate from your own configuration, do nothing outside OverShell, and
-are safe to delete. Inside a tab, `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN` and
-`OVERSHELL_TAB_ID` let any script report state with one `curl`:
+are safe to delete. Claude Code keeps its hooks in `~/.claude/settings.json`, so
+`OverShell integrations install claude` merges OverShell's entries into that file under a
+marker (and refuses, rather than rewrites, a file with comments — `integrations show
+claude` prints the entries to add by hand). Inside a tab, `OVERSHELL_ENDPOINT`,
+`OVERSHELL_TOKEN` and `OVERSHELL_TAB_ID` let any script report state with one `curl`:
 
 ```powershell
 curl.exe -X POST "$env:OVERSHELL_ENDPOINT/v1/report?token=$env:OVERSHELL_TOKEN" `
@@ -65,6 +69,27 @@ curl.exe -X POST "$env:OVERSHELL_ENDPOINT/v1/report?token=$env:OVERSHELL_TOKEN" 
 
 Rules per harness live in `%APPDATA%\OverShell\agents\*.jsonc` (bundled defaults inside
 the app; a file with the same name replaces one wholesale).
+
+## Prompt bar, sessions, groups
+
+`Ctrl+Shift+Enter` opens a prompt bar under the terminal: type once and send to the
+active tab, to every agent, to the agents that need you, or to every tab (`Ctrl+Shift+B`
+opens it aimed at all agents). Snippets in `%APPDATA%\OverShell\snippets.jsonc` —
+`[ { "name": "Explain", "text": "Explain what you just did." } ]` — appear on the bar and
+as `Snippet: …` commands.
+
+Closing OverShell saves the open tabs (profile, directory, label, group), the view and
+the layout; the next start reopens them, and a tab whose agent was mid-session gets its
+resume command typed (`opencode --session <id>`, `copilot --resume=<id>`) once the shell
+is ready. `Ctrl+Shift+G` puts a tab in a named group (headers in the strip and the list);
+drag a tab along the strip to reorder it, or use `Alt+Shift+←/→`. `Ctrl+Shift+E` opens
+the explain panel — why a tab is in its state, with the transition history.
+
+`overshell://focus/<tab>` is registered for your user at start; a clicked toast (the
+Palantir recipe sets `--launch`) opens the running window on that tab. A second
+`OverShell.exe` hands its arguments to the first and exits — one window per user.
+`settings.skin` names a `skins\<name>.xaml` ResourceDictionary that overrides theme
+brushes, fonts and metrics; colours update live on save.
 
 ## Views & layouts
 
@@ -98,7 +123,8 @@ Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.js
 
 `Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
 screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
-`Ctrl+Shift+1..4` views · `Ctrl+T` / `Ctrl+Shift+W` / `Ctrl+Tab` / `Alt+1..9` tabs ·
+`Ctrl+Shift+1..4` views · `Ctrl+Shift+Enter` prompt bar · `Ctrl+Shift+G` group · `Ctrl+Shift+E` explain ·
+`Ctrl+T` / `Ctrl+Shift+W` / `Ctrl+Tab` / `Alt+1..9` tabs · `Alt+Shift+←/→` reorder ·
 `Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection).
 Right-click a tab, a sidebar row or a card for rename / treat as agent or shell / explain /
 close.
@@ -122,12 +148,13 @@ sends Windows toasts through [Palantir](https://github.com/MoaidHathot/Palantir)
 Working: single terminal on launch, tabs with live titles, profile menu, theming from
 your colour schemes, custom chrome with a Windows 11 backdrop, links (hover underlines
 one in its own colour where the renderer would, Ctrl+click opens it), bracketed paste,
-the agent layer (detection, two-line tabs with state, palette, endpoint, OpenCode plugin
-and Copilot hooks, notifications), and the views above (layouts, Herd sidebar, Dashboard
-cards, Zen, live configuration reload, git branch per tab).
+the agent layer (detection, two-line tabs with state, palette, endpoint, OpenCode plugin,
+Copilot and Claude Code hooks, notifications), the views (layouts, Herd sidebar, Dashboard
+cards, Zen, live configuration reload, git branch per tab), and the depth features (prompt
+bar and broadcast, session restore with agent resume, `overshell://` toast clicks, tab
+groups and drag reorder, explain panel, skins).
 
-In progress: prompt bar and broadcast to agents, tab groups, drag-and-drop, session
-persistence and harness resume, `overshell://`, XAML skins.
+In progress: Codex `notify`, a native toast sink, tear-off windows.
 
 Not possible on the default terminal surface: transparency of the terminal body - see
 [DESIGN.md 7.6](DESIGN.md#76-transparency-is-structurally-impossible-here) for why, and

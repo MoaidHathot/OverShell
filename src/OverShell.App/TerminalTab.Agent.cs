@@ -41,6 +41,10 @@ public sealed partial class TerminalTab
     private string? _harnessFromIntegration;
     private bool? _userOverride;
     private string? _userLabel;
+    private string? _group;
+    private string? _pendingResume;
+    private DateTimeOffset _resumeScheduledAt;
+    private readonly List<AgentTransition> _history = [];
     private int _integrationMissingProbes;
     private IReadOnlyList<string> _lastImages = [];
 
@@ -80,6 +84,55 @@ public sealed partial class TerminalTab
 
     /// <summary>First line of the tab item: the user's label, else the harness name, else the shell title.</summary>
     public string Label => _userLabel ?? (IsAgent ? Agent.Rules.DisplayName : Title);
+
+    /// <summary>An explicit group the user put this tab in; null means "by project" wherever grouping applies.</summary>
+    public string? Group
+    {
+        get => _group;
+        set
+        {
+            var next = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            if (next == _group)
+            {
+                return;
+            }
+
+            _group = next;
+            Raise();
+        }
+    }
+
+    /// <summary>The command that resumes this tab's agent session, filled in from the last report; null when unknown.</summary>
+    public string? ResumeCommand { get; private set; }
+
+    /// <summary>The last state changes, oldest first, for the explain panel.</summary>
+    public IReadOnlyList<AgentTransition> History => _history;
+
+    /// <summary>Image names below the shell as of the last process probe, nearest first.</summary>
+    public IReadOnlyList<string> LastProcessImages => _lastImages;
+
+    /// <summary>
+    /// Types <paramref name="command"/> into the shell once it has shown its first prompt
+    /// and gone quiet — a restored agent tab picking up where it left off. One shot.
+    /// </summary>
+    internal void ScheduleResume(string command)
+    {
+        _pendingResume = command;
+        _resumeScheduledAt = DateTimeOffset.Now;
+    }
+
+    /// <summary>Runs the known resume command now, in this tab. False when there is none.</summary>
+    internal bool Resume()
+    {
+        if (string.IsNullOrWhiteSpace(ResumeCommand) || _disposed)
+        {
+            return false;
+        }
+
+        SendText(ResumeCommand + "\r");
+        _agents.Trace.Write($"[{Id}] resume: {ResumeCommand}");
+        return true;
+    }
 
     /// <summary>Second line: state and what the agent says it is doing, or the project.</summary>
     public string Detail
@@ -286,6 +339,27 @@ public sealed partial class TerminalTab
 
         var version = OutputVersion;
 
+        if (_pendingResume is { } resume)
+        {
+            // The shell has printed its prompt (first output happened) and has been quiet for a
+            // second: typing now lands on the prompt, not into a banner mid-print. If the shell
+            // never says anything, give up rather than type into the void.
+            var lastOutputTicks = Volatile.Read(ref _lastOutputTicks);
+            var quiet = lastOutputTicks != 0 && now - new DateTimeOffset(lastOutputTicks, TimeSpan.Zero) >= TimeSpan.FromSeconds(1);
+            var waited = now - _resumeScheduledAt;
+            if (HasStarted && IsRunning && quiet && waited >= TimeSpan.FromSeconds(1.5))
+            {
+                _pendingResume = null;
+                SendText(resume + "\r");
+                _agents.Trace.Write($"[{Id}] resumed after {waited.TotalSeconds:F1}s: {resume}");
+            }
+            else if (waited > TimeSpan.FromSeconds(20) || (HasStarted && !IsRunning))
+            {
+                _pendingResume = null;
+                _agents.Trace.Write($"[{Id}] resume abandoned: shell not ready in time");
+            }
+        }
+
         if (!_snapshotBusy && version != _snapshotVersion)
         {
             var sinceOutput = now - new DateTimeOffset(Volatile.Read(ref _lastOutputTicks), TimeSpan.Zero);
@@ -341,6 +415,17 @@ public sealed partial class TerminalTab
             }
 
             Agent.OnReport(report.Source, report.Seq, report.State, report.Message, report.Summary, report.SessionId, now);
+
+            // Whatever resumes this session: the integration's own command, else the rule file's
+            // pattern with the id filled in. Kept for restore and for `tab.resume`.
+            var sessionId = report.SessionId ?? Agent.SessionId;
+            var resume = report.ResumeCommand
+                ?? (sessionId is not null && Agent.Rules.ResumeCommand is { } pattern ? pattern.Replace("{sessionId}", sessionId, StringComparison.Ordinal) : null);
+            if (resume is not null && resume != ResumeCommand)
+            {
+                ResumeCommand = resume;
+                Raise(nameof(ResumeCommand));
+            }
         }
 
         _agents.Trace.Write($"[{Id}] report source={report.Source} seq={report.Seq} state={report.State} -> {Agent.State} ({Agent.Explain})");
@@ -491,7 +576,7 @@ public sealed partial class TerminalTab
                 }
             }
 
-            if (_agents.Trace.Enabled && !images.SequenceEqual(_lastImages, StringComparer.OrdinalIgnoreCase))
+            if (!images.SequenceEqual(_lastImages, StringComparer.OrdinalIgnoreCase))
             {
                 _lastImages = images;
                 _agents.Trace.Write($"[{Id}] processes below shell: [{string.Join(", ", images)}] -> {found ?? "-"}");
@@ -591,6 +676,12 @@ public sealed partial class TerminalTab
     private void OnTransition(AgentTransition transition)
     {
         _agents.Trace.Write($"[{Id}] {transition.From} -> {transition.To}: {transition.Reason}");
+        if (_history.Count >= 40)
+        {
+            _history.RemoveAt(0);
+        }
+
+        _history.Add(transition);
         StateChanged?.Invoke(this, transition);
     }
 

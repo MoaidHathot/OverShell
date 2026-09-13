@@ -26,7 +26,16 @@
   { "keys": "alt+9",               "command": "tab.switchTo.9" },
   { "keys": "ctrl+shift+j",        "command": "tab.jumpToAttention" },
   { "keys": "ctrl+shift+r",        "command": "tab.rename" },
+  { "keys": "ctrl+shift+g",        "command": "tab.moveToGroup" },
+  { "keys": "alt+shift+left",      "command": "tab.moveLeft" },
+  { "keys": "alt+shift+right",     "command": "tab.moveRight" },
+  { "keys": "ctrl+shift+e",        "command": "tab.explain" },
   { "keys": "ctrl+shift+space",    "command": "palette.tabs" },
+
+  // ---- prompt bar ----
+  // Type once, send to the active tab or to every agent (we own the terminal's input).
+  { "keys": "ctrl+shift+enter",    "command": "prompt.toggle" },
+  { "keys": "ctrl+shift+b",        "command": "prompt.broadcast" },
 
   // ---- palette & views ----
   { "keys": "ctrl+shift+p",        "command": "palette.commands" },

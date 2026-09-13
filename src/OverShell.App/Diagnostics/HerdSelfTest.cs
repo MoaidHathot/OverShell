@@ -19,7 +19,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "session1" or "session2";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -37,13 +37,20 @@ internal static class HerdSelfTest
             timer.Stop();
             try
             {
-                if (Mode == "opencode")
+                switch (Mode)
                 {
-                    await RunOpenCodeAsync(window, firstTab);
-                }
-                else
-                {
-                    await RunAsync(window, firstTab);
+                    case "opencode":
+                        await RunOpenCodeAsync(window, firstTab);
+                        break;
+                    case "session1":
+                        await RunSessionSaveAsync(window, firstTab);
+                        break;
+                    case "session2":
+                        await RunSessionRestoreAsync(window, firstTab);
+                        break;
+                    default:
+                        await RunAsync(window, firstTab);
+                        break;
                 }
             }
             catch (Exception e)
@@ -56,6 +63,69 @@ internal static class HerdSelfTest
             }
         };
         timer.Start();
+    }
+
+    /// <summary>
+    /// First half of the restart check: two tabs, a label, a group, a fake agent session
+    /// with a harmless resume command; the window then closes itself, which writes the
+    /// session file the second half reads.
+    /// </summary>
+    private static async Task RunSessionSaveAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (session1) start ===");
+        var second = window.AddTab(tab.Profile, activate: false);
+        await Task.Delay(1500);
+
+        tab.UserLabel = "session label";
+        window.SetGroup(second, "restored group");
+
+        // A report from a make-believe integration: the tab becomes an agent with a session
+        // whose resume command merely prints a marker — that is what the restore must type.
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 1, AgentState.Working, "selftest", "working", null, "ses-restore", "Write-Host selftest-resumed", Release: false));
+        window.ActiveTab = second;
+        await Task.Delay(300);
+
+        Log($"  before close: tabs={window.Tabs.Count} active={window.Tabs.IndexOf(window.ActiveTab!)} label='{tab.UserLabel}' group='{second.Group}' resume='{tab.ResumeCommand}' agent={tab.IsAgent} state={tab.State}");
+        Log($"  {(tab.ResumeCommand == "Write-Host selftest-resumed" ? "PASS" : "FAIL")}  the integration's resume command is kept on the tab");
+        Log("=== selftest (session1) result: closing ===");
+
+        // Closing the window is what saves the session; the run script sees a clean exit.
+        window.Close();
+    }
+
+    /// <summary>Second half: what came back, and whether the resume command was typed into the restored agent tab.</summary>
+    private static async Task RunSessionRestoreAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (session2) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        Log($"  restored={window.RestoredSession} tabs={window.Tabs.Count} labels=[{string.Join(", ", window.Tabs.Select(t => t.UserLabel ?? "-"))}] groups=[{string.Join(", ", window.Tabs.Select(t => t.Group ?? "-"))}] active={window.Tabs.IndexOf(window.ActiveTab!)}");
+        Check(window.RestoredSession, "the session file was restored instead of the default profile");
+        Check(window.Tabs.Count == 2, "both tabs came back");
+        Check(window.Tabs.Count > 0 && window.Tabs[0].UserLabel == "session label", "the user's label came back");
+        Check(window.Tabs.Count > 1 && window.Tabs[1].Group == "restored group", "the group came back");
+        Check(window.ActiveTab is not null && window.Tabs.IndexOf(window.ActiveTab) == 1, "the active tab came back");
+
+        // The resume command is typed once the shell is quiet; the marker must show on screen.
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        var typed = false;
+        while (DateTime.UtcNow < deadline && !typed)
+        {
+            await Task.Delay(500);
+            window.Tabs[0].RequestScreen();
+            await Task.Delay(300);
+            typed = window.Tabs[0].ScreenRows.Any(r => r.Contains("selftest-resumed", StringComparison.Ordinal) && !r.Contains("Write-Host", StringComparison.Ordinal));
+        }
+
+        Log($"  screen tail: {string.Join(" ⏎ ", window.Tabs[0].ScreenRows.TakeLast(4))}");
+        Check(typed, "the resume command was typed into the restored agent tab and ran");
+
+        Log($"=== selftest (session2) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
 
     /// <summary>
@@ -318,14 +388,22 @@ internal static class HerdSelfTest
             var focusInPalette = ShortcutRouter.FocusedWindow();
             var paletteHwnd = palette is null ? 0 : new System.Windows.Interop.WindowInteropHelper(palette).Handle;
             var paletteItems = palette?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Count : -1;
-            Log($"  palette: open={palette?.IsVisible} hwnd=0x{paletteHwnd:X} items={paletteItems} focus before=0x{focusBefore:X} in=0x{focusInPalette:X} terminal=0x{terminalHwnd:X}");
-            Check(palette is { IsVisible: true } && paletteItems > 5, "palette.commands opened with the command list");
-            Check(focusInPalette != terminalHwnd && focusInPalette != 0, "Win32 focus left the terminal for the palette (owned window, not a Popup)");
-            palette?.Close();
-            await Task.Delay(700);
-            var focusAfter = ShortcutRouter.FocusedWindow();
-            Log($"  palette closed: focus after=0x{focusAfter:X}");
-            Check(focusAfter == terminalHwnd, "focus returned to the terminal after the palette closed");
+            Log($"  palette: open={palette?.IsVisible} hwnd=0x{paletteHwnd:X} items={paletteItems} focus before=0x{focusBefore:X} in=0x{focusInPalette:X} terminal=0x{terminalHwnd:X} foreground-ours={ShortcutRouter.ForegroundIsOurs()}");
+            if (palette is null && !ShortcutRouter.ForegroundIsOurs())
+            {
+                // It opened and closed itself: another process took the foreground meanwhile.
+                Log("  SKIP  palette focus checks: the foreground moved to another process while the palette was open");
+            }
+            else
+            {
+                Check(palette is { IsVisible: true } && paletteItems > 5, "palette.commands opened with the command list");
+                Check(focusInPalette != terminalHwnd && focusInPalette != 0, "Win32 focus left the terminal for the palette (owned window, not a Popup)");
+                palette?.Close();
+                await Task.Delay(700);
+                var focusAfter = ShortcutRouter.FocusedWindow();
+                Log($"  palette closed: focus after=0x{focusAfter:X} foreground-ours={ShortcutRouter.ForegroundIsOurs()}");
+                Check(focusAfter == terminalHwnd || !ShortcutRouter.ForegroundIsOurs(), "focus returned to the terminal after the palette closed (or the foreground left us)");
+            }
         }
 
         // ---- 9. labels persist against profile + directory ----
@@ -459,6 +537,107 @@ internal static class HerdSelfTest
             Log($"  SKIP  git checks: no repository found from {AppContext.BaseDirectory}");
         }
 
+        // ---- 13. P2: prompt bar, groups, explain, protocol handoff, skin, Claude shim ----
+        window.ActiveTab = second;
+        await Task.Delay(300);
+        window.Commands.TryExecute("prompt.toggle");
+        await Task.Delay(400);
+        Check(window.PromptBarView.IsVisible, "prompt.toggle shows the prompt bar");
+        window.PromptBarView.Text = "Write-Host selftest-prompt-ok";
+        window.PromptBarView.SelectedTarget = Chrome.PromptTarget.Active;
+        window.PromptBarView.Send();
+        await Task.Delay(1500);
+        second.RequestScreen();
+        await Task.Delay(400);
+        Log($"  prompt: history={window.PromptBarView.History.Count} rows={string.Join(" | ", second.ScreenRows.TakeLast(5).Select(Escape))}");
+        Check(second.ScreenRows.Any(r => r.Trim() == "selftest-prompt-ok"), "the prompt bar sent the text to the active tab and it ran");
+        Check(window.PromptBarView.History.Count == 1, "the prompt is in the history");
+
+        var sent = window.SendPrompt("Write-Host selftest-broadcast", Chrome.PromptTarget.All);
+        await Task.Delay(1800);
+        tab.RequestScreen();
+        second.RequestScreen();
+        await Task.Delay(500);
+        Check(sent == window.Tabs.Count(t => t.IsRunning) && tab.ScreenRows.Any(r => r.Trim() == "selftest-broadcast") && second.ScreenRows.Any(r => r.Trim() == "selftest-broadcast"), "broadcast reached every tab");
+
+        window.Commands.TryExecute("prompt.toggle");
+        await Task.Delay(300);
+        Check(!window.PromptBarView.IsVisible, "prompt.toggle hides the prompt bar again");
+
+        window.SetGroup(second, "selftest group");
+        await Task.Delay(300);
+        var groups = window.Strip.Items.Items.Groups;
+        Log($"  groups: second.Group='{second.Group}' view groups={groups?.Count} names=[{string.Join(", ", (groups is null ? [] : groups.OfType<System.Windows.Data.CollectionViewGroup>().Select(g => g.Name?.ToString() ?? "(none)")))}]");
+        Check(second.Group == "selftest group" && groups is { Count: 2 }, "a grouped tab gets its own header group in the strip");
+        var before2 = window.Tabs.IndexOf(second);
+        window.Commands.TryExecute("tab.moveLeft");
+        await Task.Delay(200);
+        Log($"  move: {before2} -> {window.Tabs.IndexOf(second)} group now '{second.Group}'");
+        Check(window.Tabs.IndexOf(second) == before2 - 1 && second.Group == tab.Group, "moving a tab onto another's place adopts that tab's group");
+        window.Commands.TryExecute("tab.moveRight");
+        await Task.Delay(200);
+        window.SetGroup(second, null);
+
+        window.ActiveTab = tab;
+        await Task.Delay(300);
+        window.Commands.TryExecute("tab.explain");
+        await Task.Delay(700);
+        var explain = window.Explain;
+        Log($"  explain: open={explain?.IsVisible} text={(explain?.Text.Length ?? 0)} chars foreground-ours={ShortcutRouter.ForegroundIsOurs()}");
+        if (explain is null && !ShortcutRouter.ForegroundIsOurs())
+        {
+            Log("  SKIP  explain checks: the foreground moved to another process while the panel was open");
+        }
+        else
+        {
+            Check(explain is { IsVisible: true } && explain.Text.Contains("authority", StringComparison.Ordinal) && explain.Text.Contains(tab.Agent.Explain, StringComparison.Ordinal), "tab.explain opens the evidence panel with the current explanation");
+            Check(explain is not null && explain.Text.Contains("transitions", StringComparison.Ordinal), "…including the transition history");
+        }
+
+        explain?.Close();
+        await Task.Delay(300);
+
+        // A second OverShell process with an overshell:// URL must hand it to us and exit.
+        window.ActiveTab = tab;
+        await Task.Delay(200);
+        var handoff = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!, OverShell.Core.Integrations.ProtocolRequest.FocusUrl(second.Id)) { UseShellExecute = false });
+        var handoffExited = handoff is not null && handoff.WaitForExit(8000);
+        await Task.Delay(800);
+        Log($"  handoff: second process exited={handoffExited} code={(handoffExited ? handoff!.ExitCode : -1)} active={window.ActiveTab?.Id} wanted={second.Id}");
+        Check(handoffExited && handoff!.ExitCode == 0, "the second instance handed over and exited 0");
+        Check(ReferenceEquals(window.ActiveTab, second), "overshell://focus/<tab> switched to that tab in the running window");
+
+        if (tempConfig)
+        {
+            var accent = (System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource("Accent.Base");
+            var original = accent.Color;
+            System.IO.Directory.CreateDirectory(OverShell.Core.AppPaths.SkinsDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(OverShell.Core.AppPaths.SkinsDir, "selftest.xaml"),
+                """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="Accent.Base" Color="#FF00FF00" /></ResourceDictionary>""");
+            System.IO.File.WriteAllText(OverShell.Core.AppPaths.SettingsFile, """{ "skin": "selftest" }""");
+            await Task.Delay(1500);
+            Log($"  skin: Accent.Base {original} -> {accent.Color} (skin '{Chrome.SkinLoader.CurrentName}')");
+            Check(accent.Color == System.Windows.Media.Color.FromArgb(0xFF, 0x00, 0xFF, 0x00), "a skin named in settings.jsonc recoloured a theme brush live");
+            System.IO.File.WriteAllText(OverShell.Core.AppPaths.SettingsFile, """{ "skin": null }""");
+            await Task.Delay(1500);
+            Check(accent.Color == original, "removing the skin restores the original colour");
+            System.IO.File.Delete(OverShell.Core.AppPaths.SettingsFile);
+            await Task.Delay(800);
+        }
+
+        // The Claude shim, verbatim: the same cmd.exe + curl line the installer writes.
+        var claudeCommand = IntegrationInstaller.ShimCommand("claude", "Notification");
+        tab.SendText($"'{{\"session_id\":\"claude-selftest\",\"hook_event_name\":\"Notification\",\"notification_type\":\"permission_prompt\",\"message\":\"Claude needs your permission\"}}' | cmd.exe /d /c \"{claudeCommand}\"\r");
+        var claudeDeadline = DateTime.UtcNow.AddSeconds(8);
+        while (DateTime.UtcNow < claudeDeadline && tab.Agent.AuthoritySource != ClaudeHookTranslator.Source)
+        {
+            await Task.Delay(200);
+        }
+
+        Log($"  claude hook: authority={tab.Agent.AuthoritySource} state={tab.State} harness={tab.Harness} session={tab.Agent.SessionId} explain='{tab.Agent.Explain}'");
+        Check(tab.Agent.AuthoritySource == ClaudeHookTranslator.Source && tab.State == AgentState.Blocked && tab.Harness == "claude", "the Claude shim reached /v1/claude/{tab}/Notification and blocked the tab");
+        Check(tab.Agent.SessionId == "claude-selftest", "Claude's session_id was recorded");
+
         window.CloseTab(second);
         await Task.Delay(300);
         Check(window.Tabs.Count == 1, "closed the second tab");
@@ -496,6 +675,9 @@ internal static class HerdSelfTest
 
         Log($"=== selftest result: {(failures == 0 ? "ALL PASS" : $"{failures} FAILED")} ===");
     }
+
+    /// <summary>Non-ASCII made visible, for log lines a console may mangle.</summary>
+    private static string Escape(string s) => string.Concat(s.Select(c => c < 0x7F ? c.ToString() : $"\\u{(int)c:X4}"));
 
     /// <summary>Renders a WPF element exactly as laid out (no DWM shadow, no other windows on top) to <c>%TEMP%</c>.</summary>
     private static void SaveVisual(System.Windows.FrameworkElement element, string fileName)

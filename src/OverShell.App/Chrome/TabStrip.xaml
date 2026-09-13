@@ -14,6 +14,64 @@
             <Setter Property="CornerRadius" Value="{StaticResource Metrics.TabCorner}" />
         </Style>
 
+        <!-- Group headers (tab.moveToGroup): a name before the group's tabs. Tabs without a
+             group form an unnamed group whose header collapses. -->
+        <GroupStyle x:Key="StripGroupStyle">
+            <GroupStyle.ContainerStyle>
+                <Style TargetType="GroupItem">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="GroupItem">
+                                <StackPanel Orientation="Horizontal">
+                                    <Border x:Name="Header" Margin="6,0,4,6" VerticalAlignment="Bottom" BorderBrush="{StaticResource Surface.Border}" BorderThickness="0,0,0,2" Padding="4,0,4,2">
+                                        <TextBlock Text="{Binding Name}" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Detail}" Foreground="{StaticResource Text.Disabled}" />
+                                    </Border>
+                                    <ItemsPresenter />
+                                </StackPanel>
+                                <ControlTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Name}" Value="{x:Null}">
+                                        <Setter TargetName="Header" Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </GroupStyle.ContainerStyle>
+            <GroupStyle.Panel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+            </GroupStyle.Panel>
+        </GroupStyle>
+
+        <GroupStyle x:Key="ListGroupStyle">
+            <GroupStyle.ContainerStyle>
+                <Style TargetType="GroupItem">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="GroupItem">
+                                <StackPanel Orientation="Vertical">
+                                    <TextBlock x:Name="Header" Text="{Binding Name}" Margin="14,8,8,2" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Detail}" FontWeight="SemiBold" Foreground="{StaticResource Text.Disabled}" />
+                                    <ItemsPresenter />
+                                </StackPanel>
+                                <ControlTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Name}" Value="{x:Null}">
+                                        <Setter TargetName="Header" Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </GroupStyle.ContainerStyle>
+            <GroupStyle.Panel>
+                <ItemsPanelTemplate>
+                    <StackPanel Orientation="Vertical" />
+                </ItemsPanelTemplate>
+            </GroupStyle.Panel>
+        </GroupStyle>
+
         <!-- ================= strip: horizontal, two lines (caption / bottom) ================= -->
         <DataTemplate x:Key="StripTemplate" DataType="{x:Type local:TerminalTab}">
             <Border x:Name="TabRoot"

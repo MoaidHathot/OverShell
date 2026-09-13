@@ -99,6 +99,23 @@ public partial class MainWindow
             Detection = _settings.Detection,
             EnvironmentFor = _endpoint is { } ep ? ep.EnvironmentFor : null,
         };
+
+        // overshell:// for this user, so a toast click finds its tab. HKCU only, rewritten only
+        // when it points elsewhere (a moved build).
+        if (_settings.Protocol.Register && Environment.ProcessPath is { } exe)
+        {
+            try
+            {
+                if (ProtocolRegistration.Register(exe))
+                {
+                    _trace.Write($"protocol: registered overshell:// -> {exe}");
+                }
+            }
+            catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or System.IO.IOException)
+            {
+                _trace.Write($"protocol: registration failed: {e.Message}");
+            }
+        }
     }
 
     /// <summary>Needs the visual tree: the toast layer anchors to the middle of the window.</summary>
@@ -122,7 +139,7 @@ public partial class MainWindow
         c.Register("tab.rename", "Rename tab", "Tabs", RenameActiveTab, () => ActiveTab is not null);
         c.Register("tab.markAgent", "Treat this tab as an agent", "Agents", () => ActiveTab?.MarkAsAgent(), () => ActiveTab is { IsAgent: false });
         c.Register("tab.markShell", "Treat this tab as a shell", "Agents", () => ActiveTab?.MarkAsShell(), () => ActiveTab is { IsAgent: true });
-        c.Register("tab.explain", "Explain this tab's state", "Agents", ExplainActiveTab, () => ActiveTab is not null);
+        c.Register("tab.explain", "Explain this tab's state", "Agents", OpenExplain, () => ActiveTab is not null, "Evidence trail: harness, authority, session, processes, transitions");
 
         for (var i = 1; i <= 9; i++)
         {
@@ -147,6 +164,21 @@ public partial class MainWindow
 
         c.Register("integrations.status", "Integrations: status", "Integrations", ShowIntegrationStatus, description: "Which harness integrations are installed, and the endpoint address");
         c.Register("settings.open", "Open settings folder", "Settings", () => OpenFolder(AppPaths.ConfigRoot), description: AppPaths.ConfigRoot);
+
+        c.Register("tab.resume", "Resume this tab's agent session", "Agents", () =>
+        {
+            if (ActiveTab is { } t && !t.Resume())
+            {
+                ShowStatusMessage("No session to resume in this tab");
+            }
+        }, () => ActiveTab is { ResumeCommand: not null }, "Types the harness's resume command (e.g. opencode --session <id>)");
+        c.Register("session.save", "Save session now", "Settings", () => { SaveSession(force: true); ShowStatusMessage($"Session saved to {AppPaths.SessionFile}"); }, description: "Tabs, labels, groups and view; restored at the next start");
+        c.Register("protocol.register", "Register overshell:// for this user", "Settings", () =>
+        {
+            var exe = Environment.ProcessPath ?? string.Empty;
+            var changed = ProtocolRegistration.Register(exe);
+            ShowStatusMessage(changed ? $"overshell:// now opens {exe}" : "overshell:// was already registered for this executable");
+        }, description: "HKCU only; toast clicks then focus their tab");
     }
 
     private void LoadKeybindings()
@@ -184,8 +216,21 @@ public partial class MainWindow
     }
 
     /// <summary>The router saw a chord: run the bound command; swallow the key only when the command took it.</summary>
-    private bool OnChord(Key key, ModifierKeys modifiers) =>
-        _chords.TryGetValue((key, modifiers), out var command) && _commands.TryExecute(command);
+    private bool OnChord(Key key, ModifierKeys modifiers)
+    {
+        if (!_chords.TryGetValue((key, modifiers), out var command))
+        {
+            return false;
+        }
+
+        // Ctrl+C / Ctrl+V while typing in the prompt bar edit the prompt, not the terminal.
+        if (TextInputHasFocus() && command.StartsWith("clipboard.", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return _commands.TryExecute(command);
+    }
 
     /// <summary>What the router would do with a chord — for in-process diagnostics, which inject no keys.</summary>
     internal bool DispatchChord(Key key, ModifierKeys modifiers) => OnChord(key, modifiers);
@@ -321,14 +366,6 @@ public partial class MainWindow
         };
     }
 
-    private void ExplainActiveTab()
-    {
-        if (ActiveTab is { } tab)
-        {
-            ShowStatusMessage($"{tab.Label}: {tab.State} — {tab.Agent.Explain} ({tab.Agent.Authority}{(tab.Harness is null ? string.Empty : ", " + tab.Harness)})");
-        }
-    }
-
     // --------------------------------------------------------- integrations
 
     private void RunIntegration(string id, bool install)
@@ -336,9 +373,15 @@ public partial class MainWindow
         try
         {
             var status = install ? IntegrationInstaller.Install(id) : IntegrationInstaller.Uninstall(id);
+            if (status.Note is { } note && install && !status.Installed)
+            {
+                ShowStatusMessage($"{id}: not installed — {note}");
+                return;
+            }
+
             ShowStatusMessage(install
                 ? $"{id}: installed {status.Path}{(status.HarnessFound ? string.Empty : " (harness not found on PATH)")}"
-                : $"{id}: removed {status.Path}");
+                : $"{id}: removed from {status.Path}");
         }
         catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException or ArgumentException)
         {
@@ -351,7 +394,8 @@ public partial class MainWindow
         var parts = IntegrationInstaller.Ids.Select(id =>
         {
             var s = IntegrationInstaller.Status(id);
-            return $"{id}: {(s.Installed ? s.Current ? "installed" : "installed (outdated)" : "not installed")}{(s.HarnessFound ? string.Empty : ", harness not on PATH")}";
+            var state = s.Installed ? s.Current ? "installed" : "installed (outdated)" : "not installed";
+            return $"{id}: {state}{(s.HarnessFound ? string.Empty : ", harness not on PATH")}{(s.Note is null ? string.Empty : $" ({s.Note})")}";
         });
         ShowStatusMessage($"{string.Join("  ·  ", parts)}  ·  endpoint {(_endpoint is { } ep ? ep.BaseUrl : "off")}");
     }

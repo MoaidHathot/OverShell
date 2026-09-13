@@ -78,12 +78,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         LoadKeybindings();
         WireRouter();
         InitializeViews();
+        InitializeDepth();
 
-        // Single terminal on launch — panes and extra tabs are opt-in.
-        if (_catalog.DefaultProfile is { } profile)
-        {
-            AddTab(profile, activate: true);
-        }
+        // The saved session, else a single terminal — panes and extra tabs are opt-in.
+        var initialView = RestoreOrOpenDefault();
+        ApplyView(initialView);
+        WatchConfiguration();
 
         _statusTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -1002,6 +1002,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _statusTimer.Stop();
         _reloadTimer?.Stop();
         _configWatcher?.Dispose();
+
+        // The session is written while the tabs are still alive, so their directories and
+        // session ids are the real ones.
+        SaveSession(force: true);
+
         _shortcuts.Dispose();
         _palette?.Close();
         _notifications?.Dispose();
@@ -1120,6 +1125,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         RefreshAttention();
         RefreshViews(now);
+        TickSession(now);
 
         if (ActiveTab is not { } active)
         {

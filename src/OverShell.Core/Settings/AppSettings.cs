@@ -67,6 +67,23 @@ public sealed class GitSettings
     public int StatusIntervalMs { get; init; } = 10_000;
 }
 
+/// <summary>What comes back after a restart.</summary>
+public sealed class SessionSettings
+{
+    /// <summary>Reopen the tabs (profile, directory, label, group) and the view that were open when the window closed.</summary>
+    public bool Restore { get; init; } = true;
+
+    /// <summary>For a restored tab whose agent left a session id, type its resume command once the shell is ready.</summary>
+    public bool ResumeAgents { get; init; } = true;
+}
+
+/// <summary>The <c>overshell://</c> URL protocol.</summary>
+public sealed class ProtocolSettings
+{
+    /// <summary>Register <c>overshell://</c> for this user at start (HKCU, no elevation), so toast clicks find their tab.</summary>
+    public bool Register { get; init; } = true;
+}
+
 /// <summary>
 /// <c>settings.jsonc</c>. The embedded defaults are merged with the user's file, so the
 /// user names only what changes; a broken user file falls back to defaults with the
@@ -82,6 +99,9 @@ public sealed class AppSettings
     /// <summary>The four views and their layouts; a user file may retune any of them.</summary>
     public Dictionary<string, ViewDefinition> Views { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>A skin under <c>skins\&lt;name&gt;.xaml</c>: a ResourceDictionary overriding theme keys. Null for none.</summary>
+    public string? Skin { get; init; }
+
     public DetectionSettings Detection { get; init; } = new();
 
     public NotificationSettings Notifications { get; init; } = new();
@@ -89,6 +109,10 @@ public sealed class AppSettings
     public TabSettings Tabs { get; init; } = new();
 
     public GitSettings Git { get; init; } = new();
+
+    public SessionSettings Session { get; init; } = new();
+
+    public ProtocolSettings Protocol { get; init; } = new();
 
     public List<string> Problems { get; } = [];
 

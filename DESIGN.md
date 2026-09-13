@@ -260,7 +260,8 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_TRACE_LINKS` | `1` | Log link hover/click resolution to `%TEMP%\overshell-links.log`, and run one UIA self-probe after the first tab is ready |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Log harness detection, state transitions with their evidence, endpoint traffic and notification dispatch to `%TEMP%\overshell-agents.log` |
 | `OVERSHELL_SPIKES` | `1` | Run the §12.7 spikes in-process, log to `%TEMP%\overshell-spikes.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode` | Run the P0 end-to-end self-test in-process (§12.9): stream signals, endpoint, Copilot shim, process probe, palette focus, labels; `opencode` runs the real `opencode run` with the installed plugin. Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_STATE_DIR` | a directory | State root instead of `%LOCALAPPDATA%\OverShell` (`state.json`, `session.json`) |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `session1`/`session2` | Run the end-to-end self-test in-process (§12.9–12.11): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin; `session1` then `session2` check restore across a restart. Log: `%TEMP%\overshell-selftest.log` |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
 `OVERSHELL_TAB_ID` and `COPILOT_HOOK_ALLOW_LOCALHOST=1` (§12.4).
@@ -269,8 +270,11 @@ Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN
 
 ```
 OverShell integrations status
-OverShell integrations install   <opencode|copilot|all>
-OverShell integrations uninstall <opencode|copilot|all>
+OverShell integrations install   <opencode|copilot|claude|all>
+OverShell integrations uninstall <opencode|copilot|claude|all>
+OverShell integrations show claude          # the hook entries, for adding by hand
+OverShell protocol status|register|unregister
+OverShell overshell://focus/<tabId>         # handed to the running window (§12.11)
 ```
 
 A GUI process has no console; the parent's is attached — unless stdout is redirected,
@@ -747,6 +751,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Paste parity** | Line endings → CR, other C0 dropped, bracketed when DECSET 2004 is on |
 | **Herd overseer P0** (§12.8) | `OverShell.Core` (WPF-free, 99 xunit tests): commands, `keybindings.jsonc`, agent rule files + `AgentStateMachine`, fuzzy search, notification policy, `settings.jsonc`, integration protocol + installer. App: every chord through `keybindings.jsonc` → `CommandRegistry`; palette / tab switcher / rename as an owned window (§12.7 spike 3); `TerminalStreamState` decodes BEL, OSC 9;4, 9/99/777, 133, DECSET 1004; detector fed by title, screen snapshot (UIA, 300 ms debounce), process tree probe (toolhelp), output activity; loopback endpoint with per-run token, environment injected into every child; Copilot hook shim + OpenCode plugin written by `integrations install`; two-line tab item with state dot / ring / pulse, unread badge, progress bar; `tab.jumpToAttention`; status-bar counts; sinks `overlay` (non-activating owned toast window), `taskbar` (badge + progress + flash), `sound`, `command` (Palantir recipe, flags verified); labels persisted per profile + directory. **Verified in-process** (§12.9) including the real OpenCode plugin end-to-end; ConPTY stdio bug found and fixed (§7.14) |
 | **Herd overseer P1 — views** (§12.10) | Layouts as JSONC regions (`layouts/*.jsonc`, 8 presets, user files replace by name); four views (`terminal`, `herd`, `dashboard`, `zen`) = layout + content, retunable in `settings.jsonc`; the tab strip in three shapes (strip / list / rail) moved between caption, bottom and side hosts — the terminal never re-parents; the **Herd sidebar** (grouped by project, attention → recency, rollups, activity age, context menu); the **Dashboard** (one card per tab, body = UIA screen text in the tab's colours, refreshed once a second while showing); view switch with attention badge; `view.*`, `view.toggle`, `layout.*` (per-session override), `settings.reload` commands; **hot reload** of `settings.jsonc`, `keybindings.jsonc`, `agents\`, `layouts\` (watcher, 400 ms debounce); switcher screen preview; git branch from `.git/HEAD` (+ optional dirty marker via `git status`); right-click tab menu. 110 unit tests; 60+ in-process checks incl. every preset rendered (§12.10) |
+| **Herd overseer P2 — depth** (§12.11) | **Session restore**: `session.json` written on close and every 30 s, tabs (profile, directory, label, group), view and layout overrides reopened at start, an agent that was running gets its **resume command typed** once the shell is quiet (`opencode --session <id>` etc., from the integration's report or the rule file). **`overshell://`** registered per user (HKCU) at start; a second instance hands its URL to the running one over a named pipe and exits, granting it the foreground — so a Palantir toast click (`--launch overshell://focus/{tab.id}`, now in the shipped recipe) lands on its tab. **Prompt bar** (`Ctrl+Shift+Enter`): send to the active tab, every agent, the agents needing you, or every tab; history; **snippets** from `snippets.jsonc` as commands and a menu. **Tab groups** (`tab.moveToGroup`, headers in strip and list) and **drag reorder** (live move as the pointer crosses neighbours; crossing a group joins it). **Explain panel** (`Ctrl+Shift+E`): harness, authority, session, processes, transitions. **XAML skins** (`skins\<name>.xaml`, `settings.skin`) with live recolour. **Claude Code hooks** merged into `~/.claude/settings.json` under a marker (refused, not rewritten, when the file has comments), `/v1/claude/{tab}/{event}`. 138 unit tests; 75 in-process checks + a restart pair; ConPTY-safe throughout |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -784,6 +789,7 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | Toasts are readable and clickable over the terminal | Non-activating owned window at the terminal's top-right; rendered and counted in-process, click-to-focus not yet by a human |
 | Two-line tabs, badge, counts, taskbar badge/flash | Rendered in-process; look-and-feel is a human call |
 | Views, layouts, sidebar, dashboard, view switch | Every preset applied and rendered in-process (§12.10); clicking through them, the sidebar rows, the cards and the right-click menu is a human call |
+| Prompt bar, drag reorder, groups, explain panel, session restore, toast click → tab | Prompt bar sends and broadcast verified in-process; drag is verified through the same move path (	ab.moveLeft/Right), the mouse gesture itself is not; restore verified across a real restart (§12.11); overshell:// handoff verified from a second process — clicking a Palantir toast is a human call |
 
 ### Open — near term
 
@@ -805,13 +811,11 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 ### Open — the actual feature work
 
-- [ ] **P2** (§12.8): prompt bar / broadcast; tab groups + drag reorder; session
-      persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
-      explain panel.
-- [ ] **Drag-and-drop tab reorder and move between groups.** The drag preview draws in
-      `OverlayHost` (§7.12), which already exists for the link underline. Note the
-      scrollback caveat in §7.1.
-- [ ] Layout persistence to `%APPDATA%\OverShell\layout.json` (which tabs were open, where).
+- [ ] **P3** (§12.8): Codex `notify`; native WinRT toast sink; tear-off windows.
+- [ ] Drag between *windows* (tear-off) — the drag preview would draw in `OverlayHost`;
+      re-parenting a live surface to a second window is verified (§12.7, spike 2).
+- [ ] Claude Code hooks against a live Claude Code (not installed on the reference
+      machine; the shim, translator and settings.json merge are verified without it).
 - [ ] Split panes (our own splitter tree, independent of WT's panes).
 
 ### Open — later
@@ -1342,7 +1346,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   notification pipeline with all four sinks + Palantir recipe; labels persisted.
 - **P1 Views** ✅ 2026-09-13 — layouts + view switching; Herd sidebar **and** Dashboard
   cards; `settings.jsonc` + hot reload; tab switcher preview; git branch/dirty per tab.
-- **P2 Depth** — prompt bar/broadcast; tab groups + drag reorder; session
+- **P2 Depth** ✅ 2026-09-13 — prompt bar/broadcast; tab groups + drag reorder; session
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** — Codex `notify`; native toast sink; tear-off windows.
@@ -1473,3 +1477,96 @@ configuration root); git branch on a repository tab. Palette focus checks **skip
 OverShell is not the foreground window: an owned window cannot take focus then and closes
 itself on `Deactivated`, by design — the machine was in use during several runs, which
 also produced view switches and a `^C` in the transcript that were the user's, not ours.
+### 12.11 P2 — depth: restore, protocol, prompt bar, groups, explain, skins, Claude
+
+**Session restore.** `SessionSnapshot` (`Core/Settings`) is written to
+`%LOCALAPPDATA%\OverShell\session.json` on close and every 30 s while running (only when
+something changed; atomic temp-file rename). It holds the view, the active index, the
+per-view layout overrides, and per tab: profile, working directory, label, group,
+harness, whether the agent was still running, session id and resume command. At start the
+tabs are reopened in order (a missing profile falls back to the default; a vanished
+directory to the profile's own), and a tab whose agent **was running** gets its resume
+command typed once the shell has printed something and been quiet for a second — never
+before, or the text lands inside the banner; never after 20 s, or it lands in the void.
+Verified across a real restart (`OVERSHELL_SELFTEST=session1` then `session2`): two tabs,
+the label, the group, the active index and the layout came back, and `Write-Host
+selftest-resumed` was typed and ran 2.0 s after the shell appeared. `OVERSHELL_STATE_DIR`
+lets the tests use a throwaway state root, the same way `OVERSHELL_CONFIG_DIR` does.
+
+**Where the resume command comes from.** An integration may send `session.resumeCommand`
+with its report (the OpenCode plugin does: `opencode --session <id>`); otherwise the rule
+file's `resumeCommand` pattern is filled with the reported id (`copilot --resume=<id>`,
+`claude --resume <id>`). It is kept on the tab (`tab.resume` retypes it any time) and in
+the session file.
+
+**`overshell://` and one instance.** `ProtocolRegistration` writes
+`HKCU\Software\Classes\overshell` at start (no elevation; only when absent or pointing at
+another build) — `settings.protocol.register` turns it off; `OverShell protocol
+status|register|unregister` does it by hand. `SingleInstance` listens on a per-user,
+per-session named pipe; a second `OverShell.exe` connects, reads the server's pid, calls
+`AllowSetForegroundWindow(pid)` — Windows lets the *clicked* process pass its foreground
+right along, and nothing else can take it — sends its arguments as a JSON array and
+exits 0. The running window parses `overshell://focus/<tab>` (`view/<id>`,
+`new?profile=&cwd=`) with `ProtocolRequest` (Core, tested) and brings itself up on the
+tab. The Palantir recipe now carries `--launch overshell://focus/{tab.id}`. Verified: a
+second process launched from the self-test exited 0 and the running window switched tabs
+in under a second.
+
+**Prompt bar.** A WPF `TextBox` in the window (`Ctrl+Shift+Enter`), so it takes the
+keyboard the ordinary way; Enter sends, Shift+Enter breaks the line, Up/Down walk the
+history when the caret cannot move within the text. Targets: the active tab, every
+running agent, the agents needing you, every tab. The text goes through
+`TerminalTab.Paste` (bracketed where DECSET 2004 is on, one block otherwise) followed by
+CR. `Ctrl+C`/`Ctrl+V` while the box has focus stay with the box: `OnChord` declines
+clipboard commands when a `TextBoxBase` holds keyboard focus. **Snippets** —
+`snippets.jsonc`, an array of `{ name, text, description? }` — become `snippet.<name>`
+commands and a menu on the bar; the file hot-reloads and its commands are re-registered.
+Verified: a prompt to the active tab ran; a broadcast to every tab ran in both.
+
+**Groups and reorder.** `TerminalTab.Group` groups the strip and the list through a
+live-grouping `ListCollectionView` (`IsLiveGrouping`), with a header per named group and
+none for the ungrouped. The window keeps the *source* order equal to the grouped order —
+`SetGroup` moves the tab next to its group's last member — so `Alt+N` still means what the
+eye sees. Dragging a tab moves it live when the pointer crosses a neighbour (no ghost, no
+drop indicator; the item simply changes place), and crossing into another group joins it;
+`tab.moveLeft/Right` do the same by key. Groups persist in the session file.
+
+**Explain panel.** `Ctrl+Shift+E`: an owned window (same reasons as the palette) showing
+label, state, the explain trail, authority and source, harness and rule set, session id
+and resume command, summary, project · branch · directory, the process images below the
+shell from the last probe, the group, and the last 20 transitions with their reasons —
+refreshed twice a second while open. Tabs keep the last 40 transitions.
+
+**Skins.** `settings.skin` names `skins\<name>.xaml`, a `ResourceDictionary` loaded with
+`XamlReader` and applied **before the first window** so every `StaticResource` — fonts,
+metrics, brushes — resolves to it. Live recolour needed one fact the first attempt
+missed: an application resource dictionary freezes every freezable it holds, and a frozen
+brush cannot change colour. So at start each theme brush is replaced by one whose `Color`
+is **data-bound** to a small model (a bound freezable cannot be frozen); a skin writes the
+colour into the model and everything painted with that brush repaints. Fonts and metrics
+already copied into controls wait for a restart. Verified live: `Accent.Base` went
+`#4C8DFF → #00FF00` 1.5 s after the settings save, and back when the skin was removed.
+
+**Claude Code hooks.** Claude has no hooks directory: entries live in
+`~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR`), which `integrations install claude`
+edits in place — our matcher groups (recognised by the `OVERSHELL_ENDPOINT` marker in their
+command) appended per event, everything else round-tripped; `uninstall` removes only
+ours. A settings file with comments or trailing commas is **refused, not rewritten**
+(`integrations show claude` prints the entries for adding by hand). The shim is the same
+`cmd.exe /d /c … curl.exe … --data-binary @-` line the Copilot hook uses;
+`ClaudeHookTranslator` maps `SessionStart/End`, `UserPromptSubmit`, `Stop`, `StopFailure`
+and `Notification(permission_prompt|elicitation_dialog|idle_prompt)` to states. Verified
+without Claude itself (not installed here): the shim posted from inside a tab reached
+`/v1/claude/{tab}/Notification`, blocked the tab, recorded the session id, and released
+after two probes found no `claude` process — the merge/refuse/uninstall paths are unit
+tested against a temporary `CLAUDE_CONFIG_DIR`.
+
+**Found by the tests this phase.** The first skin implementation reported success while
+nothing changed colour — the frozen-brush fact above; the check on the actual brush colour
+caught it. A restore would have typed the resume command into every restored agent tab,
+finished ones included; the snapshot records `agentRunning` and only those resume. The
+palette and explain focus checks now **skip** rather than fail when another process has
+taken the foreground mid-test: an owned window closing on `Deactivated` is the designed
+behaviour, not a defect — the machine was in use during several runs, which also shrank
+the window to 844 px once and made one prompt-bar screen read inconclusive (it passed on
+the two quiet runs that followed).

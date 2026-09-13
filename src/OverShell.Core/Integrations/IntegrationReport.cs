@@ -157,3 +157,77 @@ public static class CopilotHookTranslator
         return line.Length <= 120 ? line : line[..117] + "…";
     }
 }
+
+/// <summary>
+/// Turns a Claude Code hook payload into a report. The event name rides in the URL the
+/// hook file posts to; the payload is what Claude puts on the hook's stdin
+/// (<c>session_id</c>, <c>cwd</c>, <c>hook_event_name</c>, and per event <c>message</c>,
+/// <c>notification_type</c>, <c>reason</c>, <c>prompt</c>). Unverified against a live
+/// Claude Code on the reference machine (not installed); shapes follow the hooks reference.
+/// </summary>
+public static class ClaudeHookTranslator
+{
+    public const string Source = "claude-hooks";
+
+    /// <summary>The hook events OverShell subscribes to; tool events are left alone.</summary>
+    public static readonly string[] Events =
+    [
+        "SessionStart", "SessionEnd", "UserPromptSubmit", "Stop", "StopFailure", "Notification",
+    ];
+
+    public static IntegrationReport? Translate(string tabId, string eventName, JsonNode? payload)
+    {
+        var o = payload as JsonObject;
+        var sessionId = Str(o, "session_id") ?? Str(o, "sessionId");
+
+        switch (eventName.ToLowerInvariant())
+        {
+            case "sessionstart":
+                return Make(tabId, AgentState.Idle, "session started", null, sessionId);
+
+            case "userpromptsubmit":
+                return Make(tabId, AgentState.Working, "prompt submitted", Trim(Str(o, "prompt")), sessionId);
+
+            case "stop":
+                return Make(tabId, AgentState.Idle, "turn finished", null, sessionId);
+
+            case "stopfailure":
+                return Make(tabId, AgentState.Error, Str(o, "error") ?? Str(o, "message") ?? "turn failed", null, sessionId);
+
+            case "notification":
+                var type = Str(o, "notification_type") ?? string.Empty;
+                var message = Str(o, "message");
+                return type switch
+                {
+                    "permission_prompt" => Make(tabId, AgentState.Blocked, message ?? "Claude needs your permission", null, sessionId),
+                    "elicitation_dialog" => Make(tabId, AgentState.Blocked, message ?? "Claude is asking a question", null, sessionId),
+                    "idle_prompt" => Make(tabId, AgentState.Idle, message ?? "waiting for your input", null, sessionId),
+                    _ => null,
+                };
+
+            case "sessionend":
+                return Make(tabId, AgentState.Exited, Str(o, "reason") ?? "session ended", null, sessionId);
+
+            default:
+                return null;
+        }
+    }
+
+    // Claude gives no sequence number; time of arrival orders reports, so seq stays null.
+    private static IntegrationReport Make(string tabId, AgentState state, string message, string? summary, string? sessionId) =>
+        new(tabId, Source, null, state, "claude", message, summary, sessionId, null, state == AgentState.Exited);
+
+    private static string? Str(JsonObject? o, string name) =>
+        o?[name] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+
+    private static string? Trim(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+        {
+            return null;
+        }
+
+        var line = s.ReplaceLineEndings(" ").Trim();
+        return line.Length <= 120 ? line : line[..117] + "…";
+    }
+}

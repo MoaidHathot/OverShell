@@ -47,6 +47,9 @@ public sealed class CommandRegistry
 
     public CommandDescriptor? Find(string id) => _commands.GetValueOrDefault(id);
 
+    /// <summary>Removes a command; false when there was none. For commands that come from files that reload (snippets).</summary>
+    public bool Remove(string id) => _commands.Remove(id);
+
     /// <summary>Runs a command by id. False when unknown, disabled, or the command declined.</summary>
     public bool TryExecute(string id)
     {
