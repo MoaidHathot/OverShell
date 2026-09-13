@@ -693,7 +693,7 @@ baseline of 22, and the overlay window placed at `y = 110 + 23`.
 
 ### Confirmed by a human — 2026-09-13
 
-First session with a mouse, using `tools/Show-LinkTestCard.ps1` and
+Two sessions with a mouse, using `tools/Show-LinkTestCard.ps1` and
 `OVERSHELL_TRACE_LINKS=1`:
 
 | What | Result |
@@ -704,13 +704,17 @@ First session with a mouse, using `tools/Show-LinkTestCard.ps1` and
 | Probe cost | 0.9–2.4 ms per hover, on the worker thread |
 | Ctrl+click on plain text, incl. "Ctrl and click in the same instant" | Selection starts, nothing opens — the hold-and-redeliver path works |
 | Ctrl+double-click on a link | Opened once |
+| Plain hover; Ctrl press/release while hovering (case 20) | Underline and URL on hover alone; the hand comes and goes with Ctrl |
+| Pointer leaves onto the tab strip (case 23) | Underline and URL clear |
+| Text scrolls under a resting pointer (case 24) | Underline follows the text / clears — the `OutputVersion` re-probe works |
+| Fast sweep across the card (case 25) | No lag in the shell; underlines keep up — the cell-lattice throttle works |
 
-Not reported on in that session: the keyboard shortcuts and Tab/arrow forwarding
-(§8 "Fixed but not yet confirmed"). They are on the card.
+Not reported on: the keyboard shortcuts and Tab/arrow forwarding (§8 "Fixed but not
+yet confirmed"). They are on the card.
 
 ### Fixed but not yet confirmed by a human
 
-Everything below is exercised by `tools/Show-LinkTestCard.ps1` (§7.8); run it in a tab.
+Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last section; run it in a tab.
 
 | Item | Fix |
 |---|---|
@@ -719,7 +723,6 @@ Everything below is exercised by `tools/Show-LinkTestCard.ps1` (§7.8); run it i
 | Transparent flash on new tab | Reveal after `Ready` + render turn (§7.5) |
 | Doubled caption icons | `GlassFrameThickness` back to `0` (§7.5) |
 | `InvalidOperationException` on tab/app close | Gone by construction: `WriteInput` never throws (§7.3) |
-| Plain-hover underline, hover throttle, underline following scrolled text | Built after the 2026-09-13 session (§11.8); cases 20, 23–25 on the card |
 
 ### Open — near term
 
