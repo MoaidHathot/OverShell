@@ -8,7 +8,7 @@ built the way it is.
 
 Contents
 
-1. [Build and run](#1-build-and-run)
+1. [Install, or build and run](#1-install-or-build-and-run)
 2. [Where configuration lives](#2-where-configuration-lives)
 3. [`settings.jsonc`](#3-settingsjsonc)
 4. [Keys and the command palette](#4-keys-and-the-command-palette)
@@ -26,18 +26,34 @@ Contents
 
 ---
 
-## 1. Build and run
+## 1. Install, or build and run
+
+Windows 10 19041 or later (Windows 11 22621+ for the system backdrop), **x64 only**.
+Pick one:
+
+| | |
+|---|---|
+| **winget** | `winget install MoaidHathot.OverShell` — installs the .NET 10 Desktop Runtime when it is missing and puts `overshell` on your PATH. `winget upgrade` keeps it current. |
+| **.NET tool** | `dotnet tool install -g OverShell`, then `overshell`. Or without installing: `dnx OverShell`. Update with `dotnet tool update -g OverShell`. |
+| **Zip** | From the [releases page](https://github.com/MoaidHathot/OverShell/releases): `OverShell-<version>-win-x64.zip` needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0); `OverShell-<version>-win-x64-selfcontained.zip` needs nothing. Unzip anywhere, run `OverShell.exe`. `SHA256SUMS.txt` lists every asset. |
+
+Started from a tool wrapper (`overshell`, `dnx`) the window detaches so your prompt
+comes back at once; `overshell --no-detach` keeps it attached. `overshell version`
+prints the version and the path it runs from — useful when more than one copy is around.
+
+Your existing Windows Terminal `settings.json` is read for profiles, colour schemes and
+fonts; OverShell never writes to it.
+
+To build from source instead (.NET 10 SDK):
 
 ```powershell
 dotnet build OverShell.slnx -c Debug -p:Platform=x64
 .\artifacts\bin\OverShell.App\debug_win-x64\OverShell.exe
+dotnet test OverShell.slnx -c Debug -p:Platform=x64     # the unit tests
 ```
 
-.NET 10 SDK, Windows 10 19041 or later (Windows 11 22621+ for the system backdrop),
-**x64 only**. Your existing Windows Terminal `settings.json` is read for profiles,
-colour schemes and fonts; OverShell never writes to it.
-
-`dotnet test OverShell.slnx -c Debug -p:Platform=x64` runs the unit tests.
+`build\Release.ps1 -Version 0.1.0` builds every release artefact locally
+(`artifacts\release\dist`): both zips, the tool package and the winget manifests.
 
 ## 2. Where configuration lives
 
@@ -425,9 +441,13 @@ OverShell integrations install   <opencode|copilot|claude|codex|all>
 OverShell integrations uninstall <opencode|copilot|claude|codex|all>
 OverShell integrations show      <claude|codex>
 OverShell protocol status|register|unregister
+OverShell version                           # also --version, -v: version, commit, path
+OverShell help                              # also --help, -h, -?
 ```
 
-Output goes to the console you ran it from, or to a file when redirected.
+Output goes to the console you ran it from, or to a file when redirected. Installed as
+a .NET tool the command is `overshell`; the wrapper returns at once for the window
+([1](#1-install-or-build-and-run)) and `--no-detach` keeps it attached instead.
 
 ## 15. Diagnostics and troubleshooting
 

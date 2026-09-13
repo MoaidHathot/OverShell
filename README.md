@@ -13,6 +13,21 @@ It reads your existing **Windows Terminal `settings.json`**: profiles, colour sc
 fonts are shared, and there is no second configuration to maintain. OverShell never
 writes to it.
 
+## Install
+
+Windows 10 19041+ (Windows 11 22621+ for the system backdrop), x64 only.
+
+| Channel | Command |
+|---|---|
+| winget | `winget install MoaidHathot.OverShell` - installs the .NET 10 Desktop Runtime if needed, puts `overshell` on your PATH |
+| .NET tool | `dotnet tool install -g OverShell` then `overshell` - or run it without installing: `dnx OverShell` |
+| Zip | From the [releases](https://github.com/MoaidHathot/OverShell/releases): `OverShell-<version>-win-x64.zip` (needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)) or `OverShell-<version>-win-x64-selfcontained.zip` (needs nothing). Unzip anywhere, run `OverShell.exe` |
+
+Every release ships `SHA256SUMS.txt`. Release assets are built by the
+[release workflow](.github/workflows/release.yml), which Authenticode-signs the OverShell
+binaries with Azure Artifact Signing; the Windows Terminal and ConPTY binaries carry
+Microsoft's signature. `overshell version` prints the version and where it runs from.
+
 ## Build & run
 
 ```powershell
@@ -194,8 +209,8 @@ troubleshooting.
 
 **[DESIGN.md](DESIGN.md)** - what it is, why it is built this way, the architecture
 decision behind embedding Windows Terminal, the configuration pipeline, field notes on
-every non-obvious trap encountered, the herd-overseer plan (12) and the open/closed
-item list.
+every non-obvious trap encountered, the herd-overseer plan (12), distribution and the
+release pipeline (13), and the open/closed item list.
 
 ## Licence
 

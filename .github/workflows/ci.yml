@@ -1,0 +1,52 @@
+# Build, test and dry-run the release packaging on every push and pull request.
+# Warnings fail the build: the repository's standing rule is zero warnings.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  build:
+    name: Build, test, package (unsigned)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build (warnings are errors)
+        run: dotnet build OverShell.slnx -c Debug -p:Platform=x64 -warnaserror
+
+      - name: Test
+        run: >
+          dotnet test tests/OverShell.Tests/OverShell.Tests.csproj -c Debug -p:Platform=x64
+          --logger "trx;LogFileName=OverShell.Tests.trx" --results-directory artifacts/test-results
+
+      # Same script the release runs, minus signing - so packaging cannot rot between tags.
+      - name: Release artifacts (dry run)
+        run: ./build/Release.ps1 -Version 0.0.0-ci.${{ github.run_number }}
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: overshell-ci-${{ github.run_number }}
+          path: |
+            artifacts/release/dist/
+            artifacts/test-results/
+          retention-days: 7

@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.9.0.schema.json
+PackageIdentifier: MoaidHathot.OverShell
+PackageVersion: "{{VERSION}}"
+MinimumOSVersion: 10.0.19041.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+- RelativeFilePath: OverShell.exe
+  # One alias is enough: winget links it as <alias>.exe under %LOCALAPPDATA%\Microsoft\WinGet\Links,
+  # and Windows resolves "OverShell" and "overshell" to that same file (case-insensitive lookup).
+  # The alias is a symlink; the .NET 10 apphost resolves symlinks (GetFinalPathNameByHandle) before
+  # looking for OverShell.dll next to the real file, so the framework-dependent layout works.
+  PortableCommandAlias: overshell
+Commands:
+- overshell
+# Framework-dependent: winget installs the .NET Desktop Runtime when it is missing. The
+# self-contained zip on the release page needs nothing, at forty times the size.
+Dependencies:
+  PackageDependencies:
+  - PackageIdentifier: Microsoft.DotNet.DesktopRuntime.10
+ReleaseDate: "{{RELEASE_DATE}}"
+Installers:
+- Architecture: x64
+  InstallerUrl: "{{ZIP_URL}}"
+  InstallerSha256: "{{SHA256}}"
+ManifestType: installer
+ManifestVersion: 1.9.0

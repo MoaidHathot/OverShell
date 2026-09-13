@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.9.0.schema.json
+# Rendered by build/Release.ps1 from winget/templates; do not edit the rendered copy.
+PackageIdentifier: MoaidHathot.OverShell
+PackageVersion: "{{VERSION}}"
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.9.0

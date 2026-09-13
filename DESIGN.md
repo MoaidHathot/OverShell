@@ -293,17 +293,23 @@ dotfiles repository is not littered with empty directories.
 ### Command line
 
 ```
+OverShell                                   # the window; a second start hands over and exits
+OverShell overshell://focus/<tabId>         # handed to the running window (§12.11)
 OverShell integrations status
 OverShell integrations install   <opencode|copilot|claude|codex|all>
 OverShell integrations uninstall <opencode|copilot|claude|codex|all>
 OverShell integrations show      <claude|codex>   # the entries, for adding by hand
 OverShell protocol status|register|unregister
 OverShell settings path|init|open           # roots and files; starter files from the defaults
-OverShell overshell://focus/<tabId>         # handed to the running window (§12.11)
+OverShell version                           # also --version, -v: version+sha and the image path
+OverShell help                              # also --help, -h, -?, /?
 ```
 
 A GUI process has no console; the parent's is attached — unless stdout is redirected,
 in which case the redirected handle is used as-is (`AttachConsole` would replace it).
+Started through a tool wrapper (`overshell` from `dotnet tool install`, `dnx OverShell`)
+the window detaches itself so the wrapper returns at once; `--no-detach` keeps it in the
+foreground (§13.2).
 
 ### Diagnostics
 
@@ -778,6 +784,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Herd overseer P1 — views** (§12.10) | Layouts as JSONC regions (`layouts/*.jsonc`, 8 presets, user files replace by name); four views (`terminal`, `herd`, `dashboard`, `zen`) = layout + content, retunable in `settings.jsonc`; the tab strip in three shapes (strip / list / rail) moved between caption, bottom and side hosts — the terminal never re-parents; the **Herd sidebar** (grouped by project, attention → recency, rollups, activity age, context menu); the **Dashboard** (one card per tab, body = UIA screen text in the tab's colours, refreshed once a second while showing); view switch with attention badge; `view.*`, `view.toggle`, `layout.*` (per-session override), `settings.reload` commands; **hot reload** of `settings.jsonc`, `keybindings.jsonc`, `agents\`, `layouts\` (watcher, 400 ms debounce); switcher screen preview; git branch from `.git/HEAD` (+ optional dirty marker via `git status`); right-click tab menu. 110 unit tests; 60+ in-process checks incl. every preset rendered (§12.10) |
 | **Herd overseer P2 — depth** (§12.11) | **Session restore**: `session.json` written on close and every 30 s, tabs (profile, directory, label, group), view and layout overrides reopened at start, an agent that was running gets its **resume command typed** once the shell is quiet (`opencode --session <id>` etc., from the integration's report or the rule file). **`overshell://`** registered per user (HKCU) at start; a second instance hands its URL to the running one over a named pipe and exits, granting it the foreground — so a Palantir toast click (`--launch overshell://focus/{tab.id}`, now in the shipped recipe) lands on its tab. **Prompt bar** (`Ctrl+Shift+Enter`): send to the active tab, every agent, the agents needing you, or every tab; history; **snippets** from `snippets.jsonc` as commands and a menu. **Tab groups** (`tab.moveToGroup`, headers in strip and list) and **drag reorder** (live move as the pointer crosses neighbours; crossing a group joins it). **Explain panel** (`Ctrl+Shift+E`): harness, authority, session, processes, transitions. **XAML skins** (`skins\<name>.xaml`, `settings.skin`) with live recolour. **Claude Code hooks** merged into `~/.claude/settings.json` under a marker (refused, not rewritten, when the file has comments), `/v1/claude/{tab}/{event}`. 138 unit tests; 75 in-process checks + a restart pair; ConPTY-safe throughout |
 | **Herd overseer P3 — reach** (§12.12) | **Codex CLI `notify`**: `integrations install codex` writes a PowerShell shim next to `config.toml` and a marked `notify` line among its top-level keys (a `notify` of the user's is never replaced); the payload becomes an **advisory** report — the turn's end, the thread id for `codex resume`, the last message as summary — without taking authority, since Codex never says `working`. **Native toast sink** (`type: toast`): WinRT over hand-written COM, no CsWinRT (the output stays at 2 MB); AUMID under HKCU; click → `overshell://focus/<tab>`; verified by reading the shell's notification history back with Windows PowerShell. **Tear-off windows** (`Ctrl+Shift+D` / `Ctrl+Shift+A`): the live surface moves into a window of its own and back — same HWND, session alive — while the tab stays in the collection for detection, sidebar, dashboard, notifications and the session file; chords, right-click and link hover follow the window they happen in. 145 unit tests; 84 in-process checks + restart pair + OpenCode e2e |
+| **Distribution** (13) | Three channels from one tag: **winget** `MoaidHathot.OverShell` (framework-dependent zip as a portable, alias `overshell`, `Microsoft.DotNet.DesktopRuntime.10` as a dependency), the **.NET tool** `OverShell` (`dotnet tool install -g OverShell`, `dnx OverShell`; the window detaches from the wrapper), and the **GitHub Release** with both zips (self-contained too), the tool package and `SHA256SUMS.txt`. `build/Release.ps1` builds everything in two phases with a signing catalogue in between; `release.yml` signs the four OverShell assemblies in every layout with Azure Artifact Signing over OIDC, publishes, pushes to nuget.org and opens the winget-pkgs pull request. Verified locally: pack, install from the repacked package, shim and `dnx` return at once, `overshell://` handoff through the shim, self-contained zip with no shared runtime, `winget validate`. Not yet exercised: a signed run and the first winget review |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -1663,3 +1670,142 @@ Verified: same terminal HWND before, during and after; `Write-Host` in the detac
 appeared on its UIA screen; attach restored the host parent and the active tab, tear-off
 count 0. Known gap: the link underline (owned by the main window) may sit behind a
 tear-off in front of it.
+---
+
+## 13. Distribution
+
+### 13.1 Channels - and why each artefact is what it is
+
+One tag `vX.Y.Z` produces three ways in, all from the same `build/Release.ps1` run:
+
+| Channel | Artefact | Runtime | Size |
+|---|---|---|---|
+| **winget** `MoaidHathot.OverShell` (moniker `overshell`) | `OverShell-<v>-win-x64.zip`, framework-dependent, installed as a *portable* with the command alias `overshell` | `Microsoft.DotNet.DesktopRuntime.10`, declared as a package dependency so winget installs it when missing | 1.9 MB zipped, 3.7 MB on disk |
+| **.NET tool** `OverShell` | `OverShell.<v>.nupkg`; `dotnet tool install -g OverShell` then `overshell`, or `dnx OverShell` | whatever `dotnet` the user already has (10.x) | 1.9 MB |
+| **GitHub Release** | the two above plus `OverShell-<v>-win-x64-selfcontained.zip` and `SHA256SUMS.txt` | the self-contained zip needs nothing | 65 MB zipped, 143 MB on disk |
+
+The framework-dependent build is the default for the two package managers because
+they can resolve the runtime themselves and the difference is thirty-five-fold; the
+self-contained zip is for machines where a runtime cannot be installed, and it is on
+the release page only. Every layout ships the same natives next to `OverShell.exe`:
+`Microsoft.Terminal.Control.dll`, `Microsoft.Terminal.Wpf.dll`, `conpty.dll`,
+`x64\OpenConsole.exe` - all four already carry Microsoft's Authenticode signature
+(`Get-AuthenticodeSignature`: `Valid`, CN=Microsoft Corporation), so the pipeline signs
+only ours. Release builds embed their PDBs (`DebugType=embedded`) so the crash log keeps
+line numbers without loose `.pdb` files in any artefact.
+
+### 13.2 The tool package - three things the SDK does not do for a WPF app
+
+**Packing.** `Microsoft.NET.PackTool.targets` (SDK 10.0.401) fails with NETSDK1146
+(`PackAsToolCannotSupportTargetPlatformIdentifier`) for any `-windows` TFM, and WPF
+needs `net10.0-windows`. The tool is Windows-only by nature, so a target running before
+`_PackToolValidation` blanks `TargetPlatformIdentifier`/`TargetPlatformMoniker`; the
+package then comes out as `tools/net10.0/win-x64/` - exactly where `dotnet tool install`
+looks - with `DotnetToolSettings.xml` saying `Runner="executable"
+EntryPoint="OverShell.exe"`, because a RID-specific tool with an apphost is launched
+through the apphost, not `dotnet OverShell.dll`. Same idea as Palantir's
+`SuppressPackAsToolPlatformCheck`, minus its post-pack rename (not needed here).
+
+**Returning.** For an executable runner `dotnet tool install` writes a **batch shim**
+(`overshell.cmd` → `%~dp0.store\overshell\<v>\...\OverShell.exe %*`), and a batch file
+waits for its child; `dnx` waits too. Right for `overshell version`, wrong for the
+window: the user's terminal would be held until OverShell closed. So `ToolLaunch`
+recognises a tool-store image path (`\.store\overshell\` or, under `dnx`,
+`\.nuget\packages\overshell\`), starts a twin of itself with `--detached` appended and
+exits; the twin strips the marker. `--no-detach` opts out. The twin is started through
+**ShellExecute**, deliberately: a plain `CreateProcess` twin inherits the wrapper's
+stdout pipe, and anything capturing that output (`overshell | Out-Null`, a script) waits
+until the window closes - measured at 190 s for `dnx OverShell` before the cause was
+understood; 1 s after.
+
+**Testing locally.** The reference machine's global NuGet configuration uses package
+source mapping, which makes `dotnet tool install --add-source` fail; a throwaway
+`NuGet.config` with `<clear />` and the local folder as the only source, passed with
+`--configfile`, is the way to install a freshly packed tool. nuget.org itself is
+TLS-blocked from that machine, so publishing happens only from GitHub Actions.
+
+### 13.3 winget portable - the alias is a symlink, and that is fine
+
+winget extracts the zip under `%LOCALAPPDATA%\Microsoft\WinGet\Packages\<id>_<source>\`
+and creates `%LOCALAPPDATA%\Microsoft\WinGet\Links\overshell.exe` as a **symbolic link**
+to the real `OverShell.exe` (that `Links` directory is on the user's PATH). Two questions
+had to be answered before choosing a framework-dependent portable:
+
+- *Does the .NET apphost find `OverShell.dll` when it is started through a symlink?*
+  Yes on .NET 10: `pal::realpath` in `src/native/corehost/hostmisc/pal.windows.cpp`
+  opens the path with `CreateFileW` and asks `GetFinalPathNameByHandleW` - the source
+  comment reads "Use CreateFileW + GetFinalPathNameByHandleW to resolve symlinks" - so
+  the host looks for the assembly next to the *target*, not next to the link. (It could
+  not be exercised on the reference machine: creating a symlink needs Developer Mode or
+  elevation there, and neither was on.)
+- *Can the alias be both `overshell` and `OverShell`?* One alias covers both: the link is
+  a file on a case-insensitive file system, so `OverShell` and `overshell` typed at a
+  prompt resolve to the same `overshell.exe`. The manifest declares the lower-case one,
+  matching the tool command and the moniker.
+
+`Environment.ProcessPath` is the *link* path in that case, which is what the
+`overshell://` registration and the toast AUMID record - harmless, it resolves through
+the link again. Both registrations are rewritten at every start (§12.11, §12.12), which
+matters more for the tool store, where the path changes with every version
+(`.store\overshell\<v>\...`); the winget path is stable across upgrades.
+
+### 13.4 The pipeline
+
+`build/Release.ps1 -Version <v> -Phase build|package|all` is the whole build, usable
+locally without any account:
+
+1. **build** - `dotnet publish` framework-dependent and self-contained (`-r win-x64`,
+   `-p:Version=<v>`), `dotnet pack` the tool, unpack the `.nupkg`, and write
+   `artifacts/release/stage/signing-catalog.txt`: the relative paths of every
+   `OverShell*.exe`/`OverShell*.dll` in the three layouts - twelve files, nothing else.
+2. *(CI only)* `azure/login@v3` with OIDC, then `azure/artifact-signing-action@v2` with
+   `files-catalog` pointing at that file - so exactly our binaries are signed and the
+   Microsoft ones keep their signature - `SHA256`, RFC 3161 timestamp from
+   `timestamp.acs.microsoft.com`.
+3. **package** - re-zip the tool package from the staged (signed) tree, zip both publish
+   folders, `SHA256SUMS.txt`, and render the winget manifests from `winget/templates`
+   (version, release date, the zip's URL on the release and its SHA-256). With
+   `-RequireSigned` it refuses to package if any catalogued file is not validly signed,
+   so a silent signing failure cannot ship unsigned bits under a signed-looking release.
+
+`.github/workflows/release.yml` runs on a `v*` tag in the `release` environment - which
+makes the OIDC subject `repo:MoaidHathot/OverShell:environment:release`, one federated
+credential in Entra instead of one per tag - and then: GitHub Release (both zips, the
+`.nupkg`, the sums; prerelease when the version has a `-`), `dotnet nuget push` with
+`NUGET_API_KEY`, and `wingetcreate submit` of the rendered manifest folder with
+`WINGET_CREATE_GITHUB_TOKEN` (the documented CI form; `submit` also works for the first
+version, where `update` has nothing to update). Every channel is optional: a missing
+secret skips its step, so the workflow is usable before the accounts exist, and a manual
+run builds the same artefacts without publishing. Prereleases never go to winget. The
+tag is the version; a `Directory.Build.props` `<Version>` that disagrees produces a
+warning, not a failure, since `-p:Version` wins anyway. `ci.yml` builds with
+`-warnaserror`, runs the tests and dry-runs the same script on every push, so the
+packaging cannot rot between tags.
+
+Secrets the workflow reads: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
+`AZURE_SUBSCRIPTION_ID` (Entra app registration with a federated credential for the
+`release` environment, plus the *Artifact Signing Certificate Profile Signer* role on the
+account), `AZURE_SIGNING_ENDPOINT`, `AZURE_SIGNING_ACCOUNT`, `AZURE_SIGNING_PROFILE`,
+`NUGET_API_KEY`, `WINGET_TOKEN`.
+
+### 13.5 Verified
+
+- `dotnet pack` → `OverShell.0.1.0.nupkg`, 1.86 MB, package type `DotnetTool`, content
+  under `tools/net10.0/win-x64/`; the **repacked** package (the unzip/re-zip cycle
+  signing needs) has no backslash entry names and no PDBs, installs with
+  `dotnet tool install --configfile`, and `overshell.cmd version` prints
+  `OverShell 0.1.0+<sha>`.
+- Through the shim, the window returns control in 0.3-0.7 s even with stdout captured;
+  `dnx OverShell@0.1.0` returns in 1 s; the window stays; `overshell.cmd
+  overshell://view/herd` from a second prompt is handed to the running window in 273 ms
+  and the view changes; still one process; no crash log; no leftovers.
+- Self-contained zip: 405 files, runs with `DOTNET_ROOT` pointed at an empty directory
+  (no shared runtime reachable): `version` exits 0, the window comes up, the endpoint
+  listens, `overshell://` re-registers to the new path, closes cleanly.
+- `winget validate` on the rendered manifests: "Manifest validation succeeded" (the
+  runtime dependency is reported as not validated locally, by design).
+- `Release.ps1 -Phase all` end to end on the reference machine.
+
+Not yet exercised: a signed run (needs the secrets), the first winget-pkgs review (a new
+package is checked by a person), and `winget install` from the published manifest -
+its URL exists only after the first tag.

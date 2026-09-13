@@ -148,5 +148,10 @@ Case 56 "The sidebar and the dashboard still show the detached tab; clicking it 
 Case 57 "Set `"toast`": { `"enabled`": true } in settings.jsonc, let an agent finish in a background tab: a Windows toast appears (Action Center too); clicking it brings OverShell up on that tab."
 Case 58 "OverShell integrations install codex, then run codex here and finish a turn: the tab shows Codex, 'done' when unseen, the explain panel lists the thread and 'codex resume <thread>'; the tab still shows 'working' on the next turn (detector)."
 Case 59 "OverShell settings path: with XDG_CONFIG_HOME set, configuration resolves under it (…\overshell); settings init writes the two starter files there; editing settings.jsonc there changes the running window within two seconds."
+
+Head "Distribution (13 - packaging verified locally, the published channels never)"
+Case 60 "dotnet tool install -g OverShell; overshell: the prompt comes back within a second while the window stays; overshell version prints 'OverShell <version>+<sha>' and a .store path; overshell overshell://view/herd switches the running window's view instead of opening a second one."
+Case 61 "winget install MoaidHathot.OverShell on a machine without .NET 10: the Desktop Runtime is installed first; overshell (and OverShell) start it from any prompt; Get-AuthenticodeSignature on the linked OverShell.exe is Valid; winget upgrade later keeps labels, session and the overshell:// registration working."
+Case 62 "Unzip OverShell-<version>-win-x64-selfcontained.zip on a machine without any .NET runtime and run OverShell.exe: it starts; SHA256SUMS.txt matches Get-FileHash of the zip you downloaded."
 Say ""
 Say "Report: one line per number (ok / what you saw), plus %TEMP%\overshell-links.log, overshell-agents.log (OVERSHELL_TRACE_AGENTS=1) and overshell-crash.log if present."

@@ -35,6 +35,14 @@
   </PropertyGroup>
 
   <!--
+    Release builds carry their symbols inside the assemblies: the crash log keeps line numbers
+    without shipping loose .pdb files in the zips and the tool package.
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <!--
     CI.Microsoft.Terminal.Wpf ships an ~82 MB PDB next to each native
     Microsoft.Terminal.Control.dll. Useful if you are debugging Windows Terminal
     itself; pure bloat otherwise. Set OverShellKeepNativePdbs=true to keep them.
@@ -49,6 +57,8 @@
   </Target>
 
   <PropertyGroup>
+    <!-- The release workflow passes -p:Version=<tag without v>; this is the in-between default. -->
+    <Version>0.1.0</Version>
     <Product>OverShell</Product>
     <Company>Moaid Hathot</Company>
     <Authors>Moaid Hathot</Authors>

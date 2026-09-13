@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.9.0.schema.json
+PackageIdentifier: MoaidHathot.OverShell
+PackageVersion: "{{VERSION}}"
+PackageLocale: en-US
+Publisher: Moaid Hathot
+PublisherUrl: https://github.com/MoaidHathot
+PublisherSupportUrl: https://github.com/MoaidHathot/OverShell/issues
+Author: Moaid Hathot
+PackageName: OverShell
+PackageUrl: https://github.com/MoaidHathot/OverShell
+License: MIT
+LicenseUrl: https://github.com/MoaidHathot/OverShell/blob/main/LICENSE
+Copyright: Copyright (c) Moaid Hathot
+ShortDescription: A Windows terminal for running AI coding agents, built on the Windows Terminal engine
+Description: |-
+  OverShell (Overseer Shell) wraps the real Windows Terminal rendering engine in its own tabs, views and layouts,
+  and watches the AI coding agents running in them - OpenCode, GitHub Copilot CLI, Claude Code, Codex - so you know
+  which tab is working, which one is waiting for you, and which one finished while you were looking elsewhere.
+  Herd sidebar and dashboard views, a prompt bar that broadcasts to agents, notifications (in-window, taskbar,
+  Windows toasts, or any command), session restore with agent resume, tear-off windows, and live-reloading JSONC
+  configuration. Reads your existing Windows Terminal settings.json for profiles and colour schemes.
+Moniker: overshell
+Tags:
+- agents
+- ai
+- claude-code
+- codex
+- console
+- copilot
+- opencode
+- shell
+- terminal
+- windows-terminal
+ReleaseNotesUrl: "{{NOTES_URL}}"
+Documentations:
+- DocumentLabel: User guide
+  DocumentUrl: https://github.com/MoaidHathot/OverShell/blob/main/docs/GUIDE.md
+ManifestType: defaultLocale
+ManifestVersion: 1.9.0

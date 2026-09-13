@@ -18,6 +18,39 @@
     <ConptyRequiresARM64Host>false</ConptyRequiresARM64Host>
   </PropertyGroup>
 
+  <!--
+    ================================ .NET tool package =================================
+    `dotnet tool install -g OverShell` / `dnx OverShell` (DESIGN.md §13). The SDK refuses
+    to pack a tool whose TFM carries a platform (NETSDK1146) - and WPF needs
+    net10.0-windows. The tool is inherently Windows-only, so the platform is blanked for
+    the pack validation and the package folder comes out as tools/net10.0/win-x64/, which
+    is what `dotnet tool install` looks for. RID-specific with an apphost, so the tool
+    settings name OverShell.exe (the GUI apphost) as the entry point.
+  -->
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>overshell</ToolCommandName>
+    <PackageId>OverShell</PackageId>
+    <Description>Overseer Shell - a Windows terminal built on the Windows Terminal engine that watches the AI coding agents in its tabs: who is working, who needs you, who finished.</Description>
+    <PackageTags>terminal;windows-terminal;ai-agents;opencode;copilot-cli;claude-code;codex;wpf</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/MoaidHathot/OverShell</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryType>git</RepositoryType>
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <Target Name="OverShellAllowWindowsToolPack" BeforeTargets="_PackToolValidation">
+    <PropertyGroup>
+      <TargetPlatformIdentifier />
+      <TargetPlatformMoniker />
+    </PropertyGroup>
+  </Target>
+
   <ItemGroup>
     <!-- Microsoft.Terminal.Wpf.dll (managed HwndHost) + Microsoft.Terminal.Control.dll (native). -->
     <PackageReference Include="CI.Microsoft.Terminal.Wpf" />

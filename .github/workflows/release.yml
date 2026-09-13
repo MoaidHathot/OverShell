@@ -1,0 +1,153 @@
+# Ships a version: build, test, sign, package, GitHub Release, nuget.org, winget-pkgs.
+#
+# Trigger: push a tag `vX.Y.Z` (or `vX.Y.Z-pre`). A manual run builds the same artifacts for a
+# given version but publishes nothing - a rehearsal.
+#
+# Secrets (Settings > Secrets and variables > Actions). Every channel is optional: a missing
+# secret skips its step instead of failing, so the workflow is usable before the accounts exist.
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID  - Entra app registration with a federated
+#                                                             credential for this repo's "release"
+#                                                             environment (OIDC; no client secret)
+#   AZURE_SIGNING_ENDPOINT   - e.g. https://eus.codesigning.azure.net/ (the account's region)
+#   AZURE_SIGNING_ACCOUNT    - Artifact Signing account name
+#   AZURE_SIGNING_PROFILE    - certificate profile name (Public Trust)
+#   NUGET_API_KEY            - nuget.org key scoped to push OverShell
+#   WINGET_TOKEN             - GitHub PAT (public_repo) of the account that forks winget-pkgs
+#
+# The job runs in the "release" environment so the OIDC subject is stable
+# (repo:MoaidHathot/OverShell:environment:release) instead of one subject per tag.
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (x.y.z or x.y.z-pre). A manual run publishes nothing.'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # create the GitHub Release and upload its assets
+  id-token: write   # OIDC token for azure/login
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  release:
+    name: Build, sign, package, publish
+    runs-on: windows-latest
+    environment: release
+    env:
+      # Mapped once so steps can test whether a channel is configured (secrets cannot be tested in `if`).
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Resolve version
+        id: version
+        run: |
+          $version = if ('${{ github.event_name }}' -eq 'push') { '${{ github.ref_name }}'.TrimStart('v') } else { '${{ inputs.version }}'.Trim() }
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') { throw "Not a version: '$version'" }
+          $props = ([xml](Get-Content Directory.Build.props)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ($props -ne $version) {
+            Write-Host "::warning::Directory.Build.props has <Version>$props</Version>; building $version from the tag. Bump the props so dev builds report the right version."
+          }
+          $publish = ('${{ github.event_name }}' -eq 'push').ToString().ToLowerInvariant()
+          $prerelease = $version.Contains('-').ToString().ToLowerInvariant()
+          "version=$version"       >> $env:GITHUB_OUTPUT
+          "publish=$publish"       >> $env:GITHUB_OUTPUT
+          "prerelease=$prerelease" >> $env:GITHUB_OUTPUT
+          Write-Host "version=$version publish=$publish prerelease=$prerelease"
+
+      - name: Build and test (warnings are errors)
+        run: |
+          dotnet build OverShell.slnx -c Debug -p:Platform=x64 -warnaserror
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test tests/OverShell.Tests/OverShell.Tests.csproj -c Debug -p:Platform=x64
+
+      - name: Publish, pack, stage for signing
+        run: ./build/Release.ps1 -Version ${{ steps.version.outputs.version }} -Phase build
+
+      - name: Azure login (OIDC)
+        if: env.AZURE_CLIENT_ID != ''
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Signs exactly the files listed by the build phase (our four assemblies in each of the
+      # three layouts); the Terminal and ConPTY binaries keep their Microsoft signatures.
+      - name: Sign OverShell binaries (Azure Artifact Signing)
+        if: env.AZURE_CLIENT_ID != ''
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-catalog: ${{ github.workspace }}\artifacts\release\stage\signing-catalog.txt
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: OverShell
+          description-url: https://github.com/MoaidHathot/OverShell
+
+      - name: Package (zips, tool package, checksums, winget manifests)
+        run: |
+          $signed = '${{ env.AZURE_CLIENT_ID }}' -ne ''
+          ./build/Release.ps1 -Version ${{ steps.version.outputs.version }} -Phase package -RequireSigned:$signed
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: overshell-${{ steps.version.outputs.version }}
+          path: artifacts/release/dist/
+
+      - name: GitHub Release
+        if: steps.version.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: OverShell ${{ steps.version.outputs.version }}
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          body: |
+            ## Install
+
+            | Channel | Command |
+            |---|---|
+            | winget | `winget install MoaidHathot.OverShell` (after the winget-pkgs pull request merges) |
+            | .NET tool | `dotnet tool install -g OverShell` then `overshell`, or `dnx OverShell` |
+            | Zip | `OverShell-${{ steps.version.outputs.version }}-win-x64.zip` needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0); the `-selfcontained` zip needs nothing |
+
+            `SHA256SUMS.txt` lists every asset. Windows 10 19041+, x64.
+          files: |
+            artifacts/release/dist/*.zip
+            artifacts/release/dist/*.nupkg
+            artifacts/release/dist/SHA256SUMS.txt
+
+      - name: Publish the .NET tool to nuget.org
+        if: steps.version.outputs.publish == 'true' && env.NUGET_API_KEY != ''
+        run: >
+          dotnet nuget push artifacts/release/dist/OverShell.${{ steps.version.outputs.version }}.nupkg
+          --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      # Opens the pull request against microsoft/winget-pkgs with the manifests rendered above
+      # (real hash and URL). `submit` works for the first version too, unlike `update`.
+      # The release must already be public: winget's validation downloads the zip from it.
+      - name: Submit to winget-pkgs
+        if: steps.version.outputs.publish == 'true' && env.WINGET_TOKEN != '' && steps.version.outputs.prerelease == 'false'
+        env:
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          ./wingetcreate.exe submit --prtitle "New version: MoaidHathot.OverShell version ${{ steps.version.outputs.version }}" artifacts/release/dist/winget/manifests/m/MoaidHathot/OverShell/${{ steps.version.outputs.version }}

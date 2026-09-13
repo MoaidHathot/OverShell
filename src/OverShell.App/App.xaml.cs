@@ -36,29 +36,43 @@ public partial class App : Application
 
         base.OnStartup(e);
 
-        // `OverShell integrations …` / `OverShell protocol …` are command-line tool runs, not a window.
-        if (e.Args.Length > 0 && e.Args[0].Equals("integrations", StringComparison.OrdinalIgnoreCase))
+        var verb = e.Args.Length > 0 ? e.Args[0].ToLowerInvariant() : string.Empty;
+
+        // `OverShell integrations …` / `protocol …` / `settings …` / `version` are command-line runs, not a window.
+        switch (verb)
         {
-            Shutdown(RunIntegrationsCli(e.Args.Skip(1).ToArray()));
+            case "integrations":
+                Shutdown(RunIntegrationsCli(e.Args.Skip(1).ToArray()));
+                return;
+            case "protocol":
+                Shutdown(RunProtocolCli(e.Args.Skip(1).ToArray()));
+                return;
+            case "settings":
+                Shutdown(RunSettingsCli(e.Args.Skip(1).ToArray()));
+                return;
+            case "version" or "--version" or "-v":
+                Shutdown(RunVersionCli());
+                return;
+            case "help" or "--help" or "-h" or "-?" or "/?":
+                Shutdown(RunHelpCli());
+                return;
+        }
+
+        // Started through a .NET tool wrapper (`overshell` shim, `dnx OverShell`): the wrapper
+        // is a console process that waits for us, which would hold the user's terminal until
+        // the window closes. Start a second copy that belongs to nobody and let the wrapper go.
+        if (ToolLaunch.ShouldDetach(e.Args))
+        {
+            Shutdown(ToolLaunch.Detach(e.Args) ? 0 : 1);
             return;
         }
 
-        if (e.Args.Length > 0 && e.Args[0].Equals("protocol", StringComparison.OrdinalIgnoreCase))
-        {
-            Shutdown(RunProtocolCli(e.Args.Skip(1).ToArray()));
-            return;
-        }
-
-        if (e.Args.Length > 0 && e.Args[0].Equals("settings", StringComparison.OrdinalIgnoreCase))
-        {
-            Shutdown(RunSettingsCli(e.Args.Skip(1).ToArray()));
-            return;
-        }
+        var args = ToolLaunch.Strip(e.Args);
 
         // One window per user: a second start hands its arguments (an overshell:// URL from a
         // toast click, typically) to the running one and leaves.
         _instance = new SingleInstance();
-        if (_instance.TryHandOver(e.Args))
+        if (_instance.TryHandOver(args))
         {
             Shutdown(0);
             return;
@@ -82,7 +96,7 @@ public partial class App : Application
         _instance.ArgumentsReceived += args => Dispatcher.BeginInvoke(() => window.HandleArguments(args));
         _instance.Start();
 
-        window.Loaded += (_, _) => window.HandleArguments(e.Args);
+        window.Loaded += (_, _) => window.HandleArguments(args);
         window.Show();
     }
 
@@ -336,6 +350,40 @@ public partial class App : Application
                 ? "%APPDATA%\\OverShell (default; set XDG_CONFIG_HOME or OVERSHELL_CONFIG_DIR to move it)"
                 : "%LOCALAPPDATA%\\OverShell (default; set XDG_STATE_HOME or OVERSHELL_STATE_DIR to move it)",
         };
+    }
+
+    private static int RunVersionCli()
+    {
+        var out_ = OpenCliOutput();
+        var assembly = typeof(App).Assembly;
+        var informational = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString() ?? "?";
+        out_.WriteLine($"OverShell {informational}");
+        out_.WriteLine(Environment.ProcessPath);
+        out_.Flush();
+        return 0;
+    }
+
+    private static int RunHelpCli()
+    {
+        var out_ = OpenCliOutput();
+        out_.WriteLine();
+        out_.WriteLine("OverShell - Overseer Shell. A Windows terminal that watches the AI coding agents in its tabs.");
+        out_.WriteLine();
+        out_.WriteLine("  OverShell                                   open the window (a second start hands over to the first)");
+        out_.WriteLine("  OverShell overshell://focus/<tabId>         focus a tab in the running window (also view/<id>, new?profile=&cwd=)");
+        out_.WriteLine("  OverShell settings path|init|open           configuration and state roots; starter files from the defaults");
+        out_.WriteLine("  OverShell integrations status");
+        out_.WriteLine("  OverShell integrations install   <opencode|copilot|claude|codex|all>");
+        out_.WriteLine("  OverShell integrations uninstall <opencode|copilot|claude|codex|all>");
+        out_.WriteLine("  OverShell integrations show      <claude|codex>");
+        out_.WriteLine("  OverShell protocol status|register|unregister");
+        out_.WriteLine("  OverShell version");
+        out_.WriteLine();
+        out_.WriteLine("  Guide: https://github.com/MoaidHathot/OverShell/blob/main/docs/GUIDE.md");
+        out_.Flush();
+        return 0;
     }
 
     private static void Print(TextWriter out_, IntegrationStatus s) =>

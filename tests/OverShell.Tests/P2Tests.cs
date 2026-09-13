@@ -368,7 +368,7 @@ public class CodexIntegrationTests
 
             // Installing again does not double up.
             IntegrationInstaller.Install("codex");
-            Assert.Single(File.ReadAllText(config).Split('\n').Where(l => l.StartsWith("notify = [", StringComparison.Ordinal)));
+            Assert.Single(File.ReadAllText(config).Split('\n'), l => l.StartsWith("notify = [", StringComparison.Ordinal));
 
             var removed = IntegrationInstaller.Uninstall("codex");
             Assert.False(removed.Installed);
