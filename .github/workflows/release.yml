@@ -107,7 +107,7 @@ jobs:
           $signed = '${{ env.AZURE_CLIENT_ID }}' -ne ''
           ./build/Release.ps1 -Version ${{ steps.version.outputs.version }} -Phase package -RequireSigned:$signed
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: overshell-${{ steps.version.outputs.version }}
           path: artifacts/release/dist/

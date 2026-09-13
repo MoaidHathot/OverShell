@@ -42,7 +42,7 @@ jobs:
       - name: Release artifacts (dry run)
         run: ./build/Release.ps1 -Version 0.0.0-ci.${{ github.run_number }}
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: overshell-ci-${{ github.run_number }}
