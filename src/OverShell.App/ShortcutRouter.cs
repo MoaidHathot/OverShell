@@ -71,6 +71,7 @@ internal sealed class ShortcutRouter : IDisposable
     private const int VkProcessKey = 0xE5;
     private const int VkPacket = 0xE7;
 
+    private readonly HashSet<IntPtr> _windows = [];
     private IntPtr _windowHandle;
     private bool _pointerOverTerminal;
     private bool _disposed;
@@ -87,6 +88,29 @@ internal sealed class ShortcutRouter : IDisposable
 
         ComponentDispatcher.ThreadPreprocessMessage += OnPreprocessMessage;
     }
+
+    /// <summary>
+    /// A further top-level window whose input this router handles — a tear-off holding a
+    /// live terminal (§12.12). Without this, Tab in that window would move WPF focus
+    /// instead of reaching the shell, and no chord would fire.
+    /// </summary>
+    public void AddWindow(Window window)
+    {
+        var handle = new WindowInteropHelper(window).Handle;
+        if (handle != IntPtr.Zero)
+        {
+            _windows.Add(handle);
+        }
+        else
+        {
+            window.SourceInitialized += (_, _) => _windows.Add(new WindowInteropHelper(window).Handle);
+        }
+
+        window.Closed += (_, _) => _windows.Remove(new WindowInteropHelper(window).Handle);
+    }
+
+    /// <summary>The root window a message came from; chords are dispatched with it so a tear-off can aim at its own tab.</summary>
+    public IntPtr CurrentRoot { get; private set; }
 
     /// <summary>
     /// Invoked on right-click, with the click point in screen coordinates.
@@ -258,9 +282,18 @@ internal sealed class ShortcutRouter : IDisposable
         }
     }
 
-    /// <summary>Only ever act on input genuinely destined for this window.</summary>
-    private bool IsOurs(IntPtr hwnd) =>
-        _windowHandle != IntPtr.Zero && GetAncestor(hwnd, GaRoot) == _windowHandle;
+    /// <summary>Only ever act on input genuinely destined for one of our windows; remembers which.</summary>
+    private bool IsOurs(IntPtr hwnd)
+    {
+        var root = GetAncestor(hwnd, GaRoot);
+        if (root == IntPtr.Zero || (root != _windowHandle && !_windows.Contains(root)))
+        {
+            return false;
+        }
+
+        CurrentRoot = root;
+        return true;
+    }
 
     private void OnKeyDown(ref MSG msg, ref bool handled)
     {
@@ -387,7 +420,7 @@ internal sealed class ShortcutRouter : IDisposable
 
         // msg.hwnd is the focused window. If it is the top-level window rather than a
         // hosted child, no terminal has focus and WPF should handle the key normally.
-        if (msg.hwnd == _windowHandle || msg.hwnd == IntPtr.Zero)
+        if (msg.hwnd == IntPtr.Zero || msg.hwnd == _windowHandle || _windows.Contains(msg.hwnd))
         {
             return;
         }

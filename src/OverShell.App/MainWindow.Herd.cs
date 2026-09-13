@@ -132,14 +132,14 @@ public partial class MainWindow
         var c = _commands;
 
         c.Register("tab.new", "New tab", "Tabs", () => NewTab(_catalog.DefaultProfile), description: "Open the default profile");
-        c.Register("tab.close", "Close tab", "Tabs", () => { if (ActiveTab is { } t) CloseTab(t); }, () => ActiveTab is not null);
+        c.Register("tab.close", "Close tab", "Tabs", () => { if (TargetTab is { } t) CloseTab(t); }, () => TargetTab is not null);
         c.Register("tab.next", "Next tab", "Tabs", () => ActivateRelative(1), () => Tabs.Count > 1);
         c.Register("tab.previous", "Previous tab", "Tabs", () => ActivateRelative(-1), () => Tabs.Count > 1);
         c.Register("tab.jumpToAttention", "Jump to the tab that needs you", "Tabs", JumpToAttention, description: "Blocked first, then finished-unseen");
-        c.Register("tab.rename", "Rename tab", "Tabs", RenameActiveTab, () => ActiveTab is not null);
-        c.Register("tab.markAgent", "Treat this tab as an agent", "Agents", () => ActiveTab?.MarkAsAgent(), () => ActiveTab is { IsAgent: false });
-        c.Register("tab.markShell", "Treat this tab as a shell", "Agents", () => ActiveTab?.MarkAsShell(), () => ActiveTab is { IsAgent: true });
-        c.Register("tab.explain", "Explain this tab's state", "Agents", OpenExplain, () => ActiveTab is not null, "Evidence trail: harness, authority, session, processes, transitions");
+        c.Register("tab.rename", "Rename tab", "Tabs", RenameActiveTab, () => TargetTab is not null);
+        c.Register("tab.markAgent", "Treat this tab as an agent", "Agents", () => TargetTab?.MarkAsAgent(), () => TargetTab is { IsAgent: false });
+        c.Register("tab.markShell", "Treat this tab as a shell", "Agents", () => TargetTab?.MarkAsShell(), () => TargetTab is { IsAgent: true });
+        c.Register("tab.explain", "Explain this tab's state", "Agents", OpenExplain, () => TargetTab is not null, "Evidence trail: harness, authority, session, processes, transitions");
 
         for (var i = 1; i <= 9; i++)
         {
@@ -167,11 +167,11 @@ public partial class MainWindow
 
         c.Register("tab.resume", "Resume this tab's agent session", "Agents", () =>
         {
-            if (ActiveTab is { } t && !t.Resume())
+            if (TargetTab is { } t && !t.Resume())
             {
                 ShowStatusMessage("No session to resume in this tab");
             }
-        }, () => ActiveTab is { ResumeCommand: not null }, "Types the harness's resume command (e.g. opencode --session <id>)");
+        }, () => TargetTab is { ResumeCommand: not null }, "Types the harness's resume command (e.g. opencode --session <id>)");
         c.Register("session.save", "Save session now", "Settings", () => { SaveSession(force: true); ShowStatusMessage($"Session saved to {AppPaths.SessionFile}"); }, description: "Tabs, labels, groups and view; restored at the next start");
         c.Register("protocol.register", "Register overshell:// for this user", "Settings", () =>
         {
@@ -229,7 +229,16 @@ public partial class MainWindow
             return false;
         }
 
-        return _commands.TryExecute(command);
+        // A chord from a tear-off aims at that window's tab.
+        _commandTarget = TearOffForRoot(_shortcuts.CurrentRoot)?.Tab;
+        try
+        {
+            return _commands.TryExecute(command);
+        }
+        finally
+        {
+            _commandTarget = null;
+        }
     }
 
     /// <summary>What the router would do with a chord — for in-process diagnostics, which inject no keys.</summary>
@@ -345,7 +354,7 @@ public partial class MainWindow
 
     private void RenameActiveTab()
     {
-        if (ActiveTab is not { } tab)
+        if (TargetTab is not { } tab)
         {
             return;
         }
@@ -547,7 +556,7 @@ public partial class MainWindow
     {
         foreach (var tab in Tabs)
         {
-            var viewed = ReferenceEquals(tab, ActiveTab) && IsActive;
+            var viewed = (ReferenceEquals(tab, ActiveTab) && IsActive) || IsViewedInTearOff(tab);
             tab.SetViewed(viewed);
             if (viewed)
             {

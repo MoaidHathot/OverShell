@@ -3,7 +3,7 @@
 > **OverShell** = *Overseer Shell*. A Windows terminal **shell** (chrome, tabs, layout)
 > wrapped around the real Windows Terminal rendering engine.
 
-Last updated: 2026-09-13
+Last updated: 2026-09-14
 
 ---
 
@@ -270,9 +270,9 @@ Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN
 
 ```
 OverShell integrations status
-OverShell integrations install   <opencode|copilot|claude|all>
-OverShell integrations uninstall <opencode|copilot|claude|all>
-OverShell integrations show claude          # the hook entries, for adding by hand
+OverShell integrations install   <opencode|copilot|claude|codex|all>
+OverShell integrations uninstall <opencode|copilot|claude|codex|all>
+OverShell integrations show      <claude|codex>   # the entries, for adding by hand
 OverShell protocol status|register|unregister
 OverShell overshell://focus/<tabId>         # handed to the running window (§12.11)
 ```
@@ -752,6 +752,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Herd overseer P0** (§12.8) | `OverShell.Core` (WPF-free, 99 xunit tests): commands, `keybindings.jsonc`, agent rule files + `AgentStateMachine`, fuzzy search, notification policy, `settings.jsonc`, integration protocol + installer. App: every chord through `keybindings.jsonc` → `CommandRegistry`; palette / tab switcher / rename as an owned window (§12.7 spike 3); `TerminalStreamState` decodes BEL, OSC 9;4, 9/99/777, 133, DECSET 1004; detector fed by title, screen snapshot (UIA, 300 ms debounce), process tree probe (toolhelp), output activity; loopback endpoint with per-run token, environment injected into every child; Copilot hook shim + OpenCode plugin written by `integrations install`; two-line tab item with state dot / ring / pulse, unread badge, progress bar; `tab.jumpToAttention`; status-bar counts; sinks `overlay` (non-activating owned toast window), `taskbar` (badge + progress + flash), `sound`, `command` (Palantir recipe, flags verified); labels persisted per profile + directory. **Verified in-process** (§12.9) including the real OpenCode plugin end-to-end; ConPTY stdio bug found and fixed (§7.14) |
 | **Herd overseer P1 — views** (§12.10) | Layouts as JSONC regions (`layouts/*.jsonc`, 8 presets, user files replace by name); four views (`terminal`, `herd`, `dashboard`, `zen`) = layout + content, retunable in `settings.jsonc`; the tab strip in three shapes (strip / list / rail) moved between caption, bottom and side hosts — the terminal never re-parents; the **Herd sidebar** (grouped by project, attention → recency, rollups, activity age, context menu); the **Dashboard** (one card per tab, body = UIA screen text in the tab's colours, refreshed once a second while showing); view switch with attention badge; `view.*`, `view.toggle`, `layout.*` (per-session override), `settings.reload` commands; **hot reload** of `settings.jsonc`, `keybindings.jsonc`, `agents\`, `layouts\` (watcher, 400 ms debounce); switcher screen preview; git branch from `.git/HEAD` (+ optional dirty marker via `git status`); right-click tab menu. 110 unit tests; 60+ in-process checks incl. every preset rendered (§12.10) |
 | **Herd overseer P2 — depth** (§12.11) | **Session restore**: `session.json` written on close and every 30 s, tabs (profile, directory, label, group), view and layout overrides reopened at start, an agent that was running gets its **resume command typed** once the shell is quiet (`opencode --session <id>` etc., from the integration's report or the rule file). **`overshell://`** registered per user (HKCU) at start; a second instance hands its URL to the running one over a named pipe and exits, granting it the foreground — so a Palantir toast click (`--launch overshell://focus/{tab.id}`, now in the shipped recipe) lands on its tab. **Prompt bar** (`Ctrl+Shift+Enter`): send to the active tab, every agent, the agents needing you, or every tab; history; **snippets** from `snippets.jsonc` as commands and a menu. **Tab groups** (`tab.moveToGroup`, headers in strip and list) and **drag reorder** (live move as the pointer crosses neighbours; crossing a group joins it). **Explain panel** (`Ctrl+Shift+E`): harness, authority, session, processes, transitions. **XAML skins** (`skins\<name>.xaml`, `settings.skin`) with live recolour. **Claude Code hooks** merged into `~/.claude/settings.json` under a marker (refused, not rewritten, when the file has comments), `/v1/claude/{tab}/{event}`. 138 unit tests; 75 in-process checks + a restart pair; ConPTY-safe throughout |
+| **Herd overseer P3 — reach** (§12.12) | **Codex CLI `notify`**: `integrations install codex` writes a PowerShell shim next to `config.toml` and a marked `notify` line among its top-level keys (a `notify` of the user's is never replaced); the payload becomes an **advisory** report — the turn's end, the thread id for `codex resume`, the last message as summary — without taking authority, since Codex never says `working`. **Native toast sink** (`type: toast`): WinRT over hand-written COM, no CsWinRT (the output stays at 2 MB); AUMID under HKCU; click → `overshell://focus/<tab>`; verified by reading the shell's notification history back with Windows PowerShell. **Tear-off windows** (`Ctrl+Shift+D` / `Ctrl+Shift+A`): the live surface moves into a window of its own and back — same HWND, session alive — while the tab stays in the collection for detection, sidebar, dashboard, notifications and the session file; chords, right-click and link hover follow the window they happen in. 145 unit tests; 84 in-process checks + restart pair + OpenCode e2e |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -790,6 +791,7 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | Two-line tabs, badge, counts, taskbar badge/flash | Rendered in-process; look-and-feel is a human call |
 | Views, layouts, sidebar, dashboard, view switch | Every preset applied and rendered in-process (§12.10); clicking through them, the sidebar rows, the cards and the right-click menu is a human call |
 | Prompt bar, drag reorder, groups, explain panel, session restore, toast click → tab | Prompt bar sends and broadcast verified in-process; drag is verified through the same move path (	ab.moveLeft/Right), the mouse gesture itself is not; restore verified across a real restart (§12.11); overshell:// handoff verified from a second process — clicking a Palantir toast is a human call |
+| Native toasts, tear-off windows | The toast is in the shell's history with its `launch` URL (§12.12); how it looks in Action Center and what a click does is a human call. Detach/attach verified in-process (same HWND, output flows); typing and resizing in the tear-off is a human call |
 
 ### Open — near term
 
@@ -811,9 +813,12 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 ### Open — the actual feature work
 
-- [ ] **P3** (§12.8): Codex `notify`; native WinRT toast sink; tear-off windows.
-- [ ] Drag between *windows* (tear-off) — the drag preview would draw in `OverlayHost`;
-      re-parenting a live surface to a second window is verified (§12.7, spike 2).
+- [ ] Drag a tab *out* of the strip to detach it (today: `Ctrl+Shift+D` or the menu); the
+      drag preview would draw in `OverlayHost`.
+- [ ] Codex `notify` against a live Codex CLI (not installed on the reference machine; the
+      script, translator and `config.toml` edit are verified without it).
+- [ ] Tear-off polish: link underline over a tear-off (the overlay is owned by the main
+      window), detached state remembered across restarts (today they come back attached).
 - [ ] Claude Code hooks against a live Claude Code (not installed on the reference
       machine; the shim, translator and settings.json merge are verified without it).
 - [ ] Split panes (our own splitter tree, independent of WT's panes).
@@ -1349,7 +1354,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
 - **P2 Depth** ✅ 2026-09-13 — prompt bar/broadcast; tab groups + drag reorder; session
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
-- **P3 Reach** — Codex `notify`; native toast sink; tear-off windows.
+- **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
 
 Each phase ends as §11 did: zero warnings, in-process verification where possible, a
 test-card section for what needs a hand, and this document updated.
@@ -1570,3 +1575,66 @@ taken the foreground mid-test: an owned window closing on `Deactivated` is the d
 behaviour, not a defect — the machine was in use during several runs, which also shrank
 the window to 844 px once and made one prompt-bar screen read inconclusive (it passed on
 the two quiet runs that followed).
+### 12.12 P3 — reach: Codex, native toasts, tear-off windows
+
+**Codex `notify`.** Codex CLI has one external hook: a top-level `notify = [program,
+args…]` in `config.toml`, spawned directly (no shell, stdio null) with the event JSON
+appended as the **last argument** — and it fires for `agent-turn-complete` only. Two
+consequences shaped the integration. First, the shim must take a JSON argument
+literally: a `cmd.exe /c` line or a PowerShell `-Command` string would both re-parse the
+quotes, so it is a script run with `powershell.exe -NoProfile -NonInteractive
+-ExecutionPolicy Bypass -File`, whose `$args` arrive verbatim; the body is posted as
+UTF-8 *bytes* because Windows PowerShell would otherwise re-encode a string body as
+Latin-1. Second, a hook that never says "working" cannot be an authority (§12.1): after
+its first `idle` the detector would be ignored for the rest of the run. So Codex's
+report is **advisory** — `IntegrationReport.Advisory`, also `"advisory": true` on the wire
+for one-shot scripts — and `AgentStateMachine.OnAdvisory` marks the moment (Done when
+unseen, Idle when viewed, attention raised, quiet timer reset so it cannot undo a fresh
+Done), records the thread id and the last assistant message, and leaves the detector in
+charge. `integrations install codex` writes the script into `$CODEX_HOME` and inserts a
+marker comment plus the `notify` line among the top-level keys — before the first
+`[table]`, where TOML requires them — touching nothing else; a `notify` the user wrote
+is never replaced (`integrations show codex` prints ours to combine by hand). Uninstall
+removes exactly the two lines and the script. Verified: the installed script, run from a
+tab with the documented payload, reached `/v1/codex/{tab}/notify`; the tab became a
+Codex agent with `codex resume thr-…` and the summary, authority still `Detector`.
+
+**Native toasts.** `type: "toast"` shows Windows toasts without an external program.
+The projection route (CsWinRT via a `net10.0-windows10.0.x` TFM) would put a ~30 MB
+`Microsoft.Windows.SDK.NET.dll` back into an output trimmed to 2 MB (§4), so the five
+interfaces needed — `IXmlDocumentIO`, `IToastNotificationFactory`,
+`IToastNotification2`, `IToastNotificationManagerStatics`, `IToastNotifier` — are
+declared by hand. Two facts the first attempt got wrong, both caught by the self-test:
+.NET 5+ has **no built-in WinRT marshalling** — `UnmanagedType.HString`,
+`UnmanagedType.IInspectable` and `ComInterfaceType.InterfaceIsIInspectable` throw
+`MarshalDirectiveException` — so HSTRINGs are created and freed through
+`WindowsCreateString`/`WindowsDeleteString` and every interface is IUnknown-based with
+IInspectable's three slots spelled out first; and property accessors must be declared as
+methods in IDL order (`put_Tag` comes before `get_Tag`; a C# property would emit the
+getter first and shift every later slot). An unpackaged app needs an AppUserModelID:
+`HKCU\Software\Classes\AppUserModelId\OverShell.Terminal` with a `DisplayName` is
+enough (Windows 10 1709+). The toast carries `activationType="protocol"` and
+`launch="overshell://focus/<tab>"`, so a click goes through the §12.11 handoff and no COM
+activator is needed. Silent on purpose — the sound sink owns sound. Verified
+independently: after the self-test, Windows PowerShell 5.1 (which can call WinRT) read
+`ToastNotificationManager.History.GetHistory("OverShell.Terminal")` and found the toast
+with its tag, group and `launch` URL. Off by default in favour of Palantir.
+
+**Tear-off windows.** `tab.detach` (`Ctrl+Shift+D`, the tab menu) moves a tab's surface
+into a `TearOffWindow` — standard chrome, the tab's background, titled by its label —
+and `tab.attach` (`Ctrl+Shift+A`, or closing that window) brings it back. Spike 2
+(§12.7) had shown the re-parent is safe; what P3 adds is everything around it: the tab
+**stays in `Tabs`** (`Detached = true`), so detection, the sidebar, the dashboard,
+notifications and the session file keep working; the main window shows the nearest
+neighbour; `ActiveTab = detachedTab` raises the tear-off instead of changing the main
+host; "viewed" is true when the tear-off is the foreground window; `ShortcutRouter`
+accepts more windows (`AddWindow`) so Tab/arrows are still hand-delivered there and
+chords fire — with `TargetTab` = the tear-off's tab while the chord comes from it, so
+`Ctrl+Shift+W` closes *that* tab; right-click copy/paste and link hover resolve the tab
+**from the HWND under the pointer** (`TabForTerminalHwnd`) rather than assuming the main
+window's active tab; closing a detached tab attaches first so one path tears the view
+down; a tear-off closed with a dead shell inside does not steal the active slot.
+Verified: same terminal HWND before, during and after; `Write-Host` in the detached tab
+appeared on its UIA screen; attach restored the host parent and the active tab, tear-off
+count 0. Known gap: the link underline (owned by the main window) may sit behind a
+tear-off in front of it.

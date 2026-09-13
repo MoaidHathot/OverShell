@@ -65,6 +65,21 @@ internal sealed class NotificationPipeline : IDisposable
                     _sinks.Add((name, config, e => _ = RunCommandAsync(name, config, e)));
                     break;
 
+                case "toast":
+                    // Windows toasts without an external program; a click opens overshell://focus/<tab>.
+                    try
+                    {
+                        NativeToast.EnsureRegistered("OverShell", null);
+                    }
+                    catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+                    {
+                        _trace.Write($"sink '{name}': could not register the toast id: {e.Message}");
+                        break;
+                    }
+
+                    _sinks.Add((name, config, e => _ = ShowToastAsync(name, config, e)));
+                    break;
+
                 default:
                     _trace.Write($"sink '{name}': unknown type '{config.Type}'");
                     break;
@@ -146,6 +161,30 @@ internal sealed class NotificationPipeline : IDisposable
                 }
 
                 break;
+        }
+    }
+
+    /// <summary>Last outcome of the toast sink, for diagnostics: null before the first toast, empty on success, else the failure.</summary>
+    public string? LastToastResult { get; private set; }
+
+    /// <summary>Toasts shown so far by the native sink.</summary>
+    public int ToastsShown { get; private set; }
+
+    /// <summary>Off the UI thread: WinRT activation and the shell's notification platform take a few milliseconds.</summary>
+    private async Task ShowToastAsync(string name, NotificationSinkConfig config, NotificationEvent e)
+    {
+        var values = e.TemplateValues();
+        var launch = Core.Integrations.ProtocolRequest.FocusUrl(e.TabId);
+        var result = await Task.Run(() => NativeToast.Show(values["title"], e.Message, e.Detail ?? e.WorkingDirectory, launch, "overshell-" + e.TabId, "overshell", silent: true)).ConfigureAwait(false);
+
+        LastToastResult = result ?? string.Empty;
+        if (result is null)
+        {
+            ToastsShown++;
+        }
+        else
+        {
+            _trace.Write($"sink '{name}': {result}");
         }
     }
 

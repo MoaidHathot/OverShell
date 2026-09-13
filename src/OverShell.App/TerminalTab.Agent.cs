@@ -51,6 +51,20 @@ public sealed partial class TerminalTab
     /// <summary>Short stable id for this run: what integrations address and what the endpoint lists.</summary>
     public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
 
+    /// <summary>The native terminal's HWND, found on first use; the same for the tab's whole life (spike 2).</summary>
+    public nint TerminalHwnd
+    {
+        get
+        {
+            if (_hwnd == 0)
+            {
+                _hwnd = MainWindow.FindTerminalHwnd(View);
+            }
+
+            return _hwnd;
+        }
+    }
+
     public AgentStateMachine Agent { get; private set; } = null!;
 
     /// <summary>Rule-set id of the harness detected in this tab, or null for a plain shell.</summary>
@@ -141,7 +155,8 @@ public sealed partial class TerminalTab
         {
             var state = StateText;
             var what = IsAgent ? Agent.Summary ?? Project : Project;
-            return state.Length == 0 ? what : what.Length == 0 ? state : $"{state} · {what}";
+            var detail = state.Length == 0 ? what : what.Length == 0 ? state : $"{state} · {what}";
+            return Detached ? "⧉ " + detail : detail;
         }
     }
 
@@ -381,7 +396,7 @@ public sealed partial class TerminalTab
         // Probe when output changed — a new program is the usual reason — and periodically
         // while an integration is authoritative, because the release rule needs to notice
         // a harness process that has gone without any further output.
-        var probeDue = version != _probeVersion || _integrationMissingProbes > 0 || Agent.Authority == AgentAuthority.Integration;
+        var probeDue = version != _probeVersion || _integrationMissingProbes > 0 || _harnessFromIntegration is not null;
         if (!_probeBusy && _harnessFromCommandline is null && probeDue && IsRunning &&
             now - _lastProbeAt >= TimeSpan.FromMilliseconds(_agents.Detection.ProcessProbeIntervalMs) &&
             Session.ProcessId is { } pid)
@@ -414,7 +429,14 @@ public sealed partial class TerminalTab
                 ReevaluateHarness(now, $"reported by {report.Source}");
             }
 
-            Agent.OnReport(report.Source, report.Seq, report.State, report.Message, report.Summary, report.SessionId, now);
+            if (report.Advisory)
+            {
+                Agent.OnAdvisory(report.Source, report.State, report.Message, report.Summary, report.SessionId, now);
+            }
+            else
+            {
+                Agent.OnReport(report.Source, report.Seq, report.State, report.Message, report.Summary, report.SessionId, now);
+            }
 
             // Whatever resumes this session: the integration's own command, else the rule file's
             // pattern with the id filled in. Kept for restore and for `tab.resume`.
@@ -520,13 +542,8 @@ public sealed partial class TerminalTab
         _lastSnapshotAt = now;
         try
         {
-            if (_hwnd == 0)
-            {
-                _hwnd = MainWindow.FindTerminalHwnd(View);
-            }
-
             var started = System.Diagnostics.Stopwatch.GetTimestamp();
-            var rows = await _agents.Screen.ReadRowsAsync(_hwnd);
+            var rows = await _agents.Screen.ReadRowsAsync(TerminalHwnd);
             if (_disposed || rows is null)
             {
                 return;
@@ -598,14 +615,13 @@ public sealed partial class TerminalTab
 
     /// <summary>
     /// An integration has no exit event we can rely on (<c>opencode run</c> just ends; a TUI
-    /// is quit), so its word stands only while a process of its harness still runs below
-    /// the shell. Two consecutive probes without one — five seconds — hand the tab back to
-    /// the detector; an unseen Done survives that hand-over.
+    /// is quit), so its word — and the harness identity it gave the tab — stands only while
+    /// a process of its harness still runs below the shell. Two consecutive probes without
+    /// one (five seconds) hand the tab back to the detector; an unseen Done survives that.
     /// </summary>
     private void ReleaseIntegrationIfGone(IReadOnlyList<string> images)
     {
-        if (_harnessFromIntegration is null || Agent.Authority != AgentAuthority.Integration ||
-            _agents.Rules.Find(_harnessFromIntegration) is not { Detect.Process.Length: > 0 } rules)
+        if (_harnessFromIntegration is null || _agents.Rules.Find(_harnessFromIntegration) is not { Detect.Process.Length: > 0 } rules)
         {
             _integrationMissingProbes = 0;
             return;
@@ -624,11 +640,14 @@ public sealed partial class TerminalTab
         }
 
         _integrationMissingProbes = 0;
-        var source = Agent.AuthoritySource!;
         var now = DateTimeOffset.Now;
-        Agent.OnRelease(source, now);
+        if (Agent.Authority == AgentAuthority.Integration && Agent.AuthoritySource is { } source)
+        {
+            Agent.OnRelease(source, now);
+            _agents.Trace.Write($"[{Id}] released {source}: no {rules.Id} process below the shell");
+        }
+
         _harnessFromIntegration = null;
-        _agents.Trace.Write($"[{Id}] released {source}: no {rules.Id} process below the shell");
         ReevaluateHarness(now, $"{rules.Id} process gone");
         RaiseAgentProperties();
     }

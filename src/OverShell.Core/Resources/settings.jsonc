@@ -71,6 +71,11 @@
         "sounds": { "blocked": "exclamation", "error": "hand", "done": "asterisk" }
       },
 
+      // Windows toasts without an external program (Action Center, click focuses the tab).
+      // Silent: the sound sink decides about sound. Off by default in favour of Palantir,
+      // which does richer toasts; turn one or the other on, not both.
+      "toast": { "type": "toast", "enabled": false, "when": { "notActiveTab": true } },
+
       // Windows toast through Palantir (https://github.com/MoaidHathot/Palantir).
       // {…} placeholders are filled from the event: kind, title, message, detail, time,
       // tab.id, tab.label, tab.harness, tab.harnessName, tab.project, tab.cwd.

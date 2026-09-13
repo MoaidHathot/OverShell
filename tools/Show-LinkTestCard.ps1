@@ -140,5 +140,12 @@ Case 50 "Close OverShell with two tabs, a label and a group; start it again: sam
 Case 51 "Enable the Palantir sink, let an agent finish in a background tab, click the Windows toast: OverShell comes to the front on that tab (no second window opens)."
 Case 52 "Save %APPDATA%\OverShell\skins\mine.xaml with a ResourceDictionary setting Accent.Base to a green brush and put `"skin`": `"mine`" in settings.jsonc: accents turn green without a restart; remove it: they turn back."
 Case 53 "OverShell integrations install claude: your ~/.claude/settings.json gains OverShell hook entries and keeps everything else; uninstall removes only those."
+
+Head "Reach (P3 - verified in-process, never by a human)"
+Case 54 "Ctrl+Shift+D: this tab moves into a window of its own; the shell keeps typing there (Tab completes, arrows recall history); Ctrl+Shift+W in that window closes THAT tab; closing the window with X brings the tab back instead."
+Case 55 "In the tear-off, right-click pastes / copies a selection; Ctrl+click on a URL opens it; Ctrl+Shift+A brings the tab back to the main window with the same scrollback."
+Case 56 "The sidebar and the dashboard still show the detached tab; clicking it there raises its window; its state keeps updating; it is saved in the session (and comes back attached)."
+Case 57 "Set `"toast`": { `"enabled`": true } in settings.jsonc, let an agent finish in a background tab: a Windows toast appears (Action Center too); clicking it brings OverShell up on that tab."
+Case 58 "OverShell integrations install codex, then run codex here and finish a turn: the tab shows Codex, 'done' when unseen, the explain panel lists the thread and 'codex resume <thread>'; the tab still shows 'working' on the next turn (detector)."
 Say ""
 Say "Report: one line per number (ok / what you saw), plus %TEMP%\overshell-links.log, overshell-agents.log (OVERSHELL_TRACE_AGENTS=1) and overshell-crash.log if present."

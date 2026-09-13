@@ -51,14 +51,17 @@ text, the process tree) plus, when installed, the harness's own hooks:
 ```powershell
 OverShell integrations install opencode   # writes a plugin into OpenCode's plugins folder
 OverShell integrations install copilot    # writes hooks into ~/.copilot/hooks
+OverShell integrations install claude     # merges hook entries into ~/.claude/settings.json
+OverShell integrations install codex      # a notify script + one line in ~/.codex/config.toml
 OverShell integrations status
 ```
 
-Both files are separate from your own configuration, do nothing outside OverShell, and
-are safe to delete. Claude Code keeps its hooks in `~/.claude/settings.json`, so
-`OverShell integrations install claude` merges OverShell's entries into that file under a
-marker (and refuses, rather than rewrites, a file with comments — `integrations show
-claude` prints the entries to add by hand). Inside a tab, `OVERSHELL_ENDPOINT`,
+The OpenCode and Copilot files are separate from your own configuration; Claude Code
+and Codex keep hooks in their own config files, so OverShell's entries are merged in under
+a marker and taken out again by `uninstall` — never replacing anything of yours (a Claude
+`settings.json` with comments, or a Codex `notify` you wrote, is left alone and
+`integrations show <claude|codex>` prints the entries to add by hand). All of them do
+nothing outside OverShell. Inside a tab, `OVERSHELL_ENDPOINT`,
 `OVERSHELL_TOKEN` and `OVERSHELL_TAB_ID` let any script report state with one `curl`:
 
 ```powershell
@@ -84,6 +87,8 @@ resume command typed (`opencode --session <id>`, `copilot --resume=<id>`) once t
 is ready. `Ctrl+Shift+G` puts a tab in a named group (headers in the strip and the list);
 drag a tab along the strip to reorder it, or use `Alt+Shift+←/→`. `Ctrl+Shift+E` opens
 the explain panel — why a tab is in its state, with the transition history.
+`Ctrl+Shift+D` detaches a tab into a window of its own (the terminal moves; nothing
+restarts) and `Ctrl+Shift+A`, or closing that window, brings it back.
 
 `overshell://focus/<tab>` is registered for your user at start; a clicked toast (the
 Palantir recipe sets `--launch`) opens the running window on that tab. A second
@@ -136,8 +141,9 @@ Terminal's shape; `"command": "unbound"` removes a default).
 
 `%APPDATA%\OverShell\settings.jsonc` names the sinks: an in-window toast for background
 tabs, a taskbar badge with the number of tabs needing you (amber while one is blocked),
-a system sound while the window is unfocused, and any command - the shipped recipe
-sends Windows toasts through [Palantir](https://github.com/MoaidHathot/Palantir):
+a system sound while the window is unfocused, a native Windows toast (`toast`, no
+external program; a click opens the tab), and any command - the shipped recipe sends
+richer toasts through [Palantir](https://github.com/MoaidHathot/Palantir):
 
 ```jsonc
 { "notifications": { "sinks": { "palantir": { "enabled": true } } } }
@@ -149,12 +155,14 @@ Working: single terminal on launch, tabs with live titles, profile menu, theming
 your colour schemes, custom chrome with a Windows 11 backdrop, links (hover underlines
 one in its own colour where the renderer would, Ctrl+click opens it), bracketed paste,
 the agent layer (detection, two-line tabs with state, palette, endpoint, OpenCode plugin,
-Copilot and Claude Code hooks, notifications), the views (layouts, Herd sidebar, Dashboard
-cards, Zen, live configuration reload, git branch per tab), and the depth features (prompt
-bar and broadcast, session restore with agent resume, `overshell://` toast clicks, tab
-groups and drag reorder, explain panel, skins).
+Copilot, Claude Code and Codex hooks, notifications incl. native toasts), the views
+(layouts, Herd sidebar, Dashboard cards, Zen, live configuration reload, git branch per
+tab), and the depth features (prompt bar and broadcast, session restore with agent
+resume, `overshell://` toast clicks, tab groups and drag reorder, explain panel, skins,
+tear-off windows).
 
-In progress: Codex `notify`, a native toast sink, tear-off windows.
+Not yet confirmed by a human: see the test card (`tools\Show-LinkTestCard.ps1`) and
+[DESIGN.md 8](DESIGN.md#8-status).
 
 Not possible on the default terminal surface: transparency of the terminal body - see
 [DESIGN.md 7.6](DESIGN.md#76-transparency-is-structurally-impossible-here) for why, and

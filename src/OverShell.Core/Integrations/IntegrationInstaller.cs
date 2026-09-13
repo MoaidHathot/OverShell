@@ -26,7 +26,7 @@ public static class IntegrationInstaller
     /// <summary>Every hook command we write contains this, which is how uninstall finds its own entries.</summary>
     public const string CommandMarker = "OVERSHELL_ENDPOINT";
 
-    public static IReadOnlyList<string> Ids => ["opencode", "copilot", "claude"];
+    public static IReadOnlyList<string> Ids => ["opencode", "copilot", "claude", "codex"];
 
     // ------------------------------------------------------------------ paths
 
@@ -63,9 +63,36 @@ public static class IntegrationInstaller
         return Path.Combine(root, "settings.json");
     }
 
+    /// <summary>Codex's home: <c>$CODEX_HOME</c>, else <c>~/.codex</c>. Holds <c>config.toml</c> and our notify script.</summary>
+    public static string CodexHomeDir()
+    {
+        var home = Environment.GetEnvironmentVariable("CODEX_HOME");
+        return !string.IsNullOrWhiteSpace(home)
+            ? Path.GetFullPath(home)
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
+    }
+
+    public static string CodexConfigPath() => Path.Combine(CodexHomeDir(), "config.toml");
+
+    public static string CodexScriptPath() => Path.Combine(CodexHomeDir(), "overshell-notify.ps1");
+
     // ------------------------------------------------------------------ content
 
     public static string OpenCodePluginContent() => EmbeddedResources.Read("integrations/opencode-overshell.ts");
+
+    public static string CodexScriptContent() => EmbeddedResources.Read("integrations/codex-overshell-notify.ps1");
+
+    /// <summary>
+    /// The <c>notify</c> line for <c>config.toml</c>. Codex spawns the program directly
+    /// (no shell, JSON appended as the last argument), so the shim is a PowerShell script
+    /// run with <c>-File</c>: script arguments arrive literally, which a <c>-Command</c>
+    /// string or a <c>cmd.exe</c> line would not survive with JSON in it. Windows PowerShell
+    /// rather than <c>pwsh</c>: always present.
+    /// </summary>
+    public static string CodexNotifyLine() =>
+        $"notify = [\"powershell.exe\", \"-NoProfile\", \"-NonInteractive\", \"-ExecutionPolicy\", \"Bypass\", \"-File\", \"{TomlEscape(CodexScriptPath())}\"]";
+
+    private static string TomlEscape(string s) => s.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
 
     /// <summary>
     /// The one shim every hook-style harness gets: a <c>cmd.exe /d /c</c> line that cmd
@@ -124,6 +151,7 @@ public static class IntegrationInstaller
         "opencode" => Describe(id, OpenCodePluginPath(), OpenCodePluginContent(), "opencode"),
         "copilot" => Describe(id, CopilotHookPath(), CopilotHookContent(), "copilot"),
         "claude" => ClaudeStatus(),
+        "codex" => CodexStatus(),
         _ => throw new ArgumentException($"Unknown integration '{id}'. Known: {string.Join(", ", Ids)}."),
     };
 
@@ -139,6 +167,8 @@ public static class IntegrationInstaller
                 return Status(id);
             case "claude":
                 return ClaudeInstall(remove: false);
+            case "codex":
+                return CodexInstall(remove: false);
             default:
                 throw new ArgumentException($"Unknown integration '{id}'. Known: {string.Join(", ", Ids)}.");
         }
@@ -149,6 +179,11 @@ public static class IntegrationInstaller
         if (id.Equals("claude", StringComparison.OrdinalIgnoreCase))
         {
             return ClaudeInstall(remove: true);
+        }
+
+        if (id.Equals("codex", StringComparison.OrdinalIgnoreCase))
+        {
+            return CodexInstall(remove: true);
         }
 
         var status = Status(id);
@@ -336,6 +371,133 @@ public static class IntegrationInstaller
         list.Any(h => h is JsonObject ho && ho["command"] is JsonValue v && v.TryGetValue<string>(out var c) && c.Contains(CommandMarker, StringComparison.Ordinal));
 
     private static string Normalize(string s) => s.ReplaceLineEndings("\n").Trim();
+
+    // ------------------------------------------------------------------ codex
+
+    /// <summary>The comment that marks our <c>notify</c> line in <c>config.toml</c>; the line after it is ours.</summary>
+    private const string CodexMarkerLine = "# " + Marker + " - written by `OverShell integrations install codex`; safe to delete these two lines.";
+
+    private static IntegrationStatus CodexStatus()
+    {
+        var config = CodexConfigPath();
+        var found = OnPath("codex");
+        var scriptCurrent = File.Exists(CodexScriptPath()) && SafeRead(CodexScriptPath()) is { } s && Normalize(s) == Normalize(CodexScriptContent());
+
+        if (!File.Exists(config))
+        {
+            return new IntegrationStatus("codex", config, false, false, found);
+        }
+
+        var lines = SafeRead(config)?.ReplaceLineEndings("\n").Split('\n') ?? [];
+        var ours = Array.IndexOf(lines, CodexMarkerLine);
+        var installed = ours >= 0 && ours + 1 < lines.Length && lines[ours + 1].TrimStart().StartsWith("notify", StringComparison.Ordinal);
+        var current = installed && lines[ours + 1].Trim() == CodexNotifyLine() && scriptCurrent;
+
+        string? note = null;
+        if (!installed && lines.Any(IsForeignNotify))
+        {
+            note = "config.toml already has a notify command of yours; Codex allows one, so OverShell will not replace it — `OverShell integrations show codex` prints ours to combine by hand";
+        }
+
+        return new IntegrationStatus("codex", config, installed, current, found, note);
+    }
+
+    /// <summary>
+    /// Writes the notify script next to <c>config.toml</c> and puts (or takes out) a
+    /// marked <c>notify</c> line among the file's top-level keys — before the first
+    /// <c>[table]</c>, where TOML requires top-level keys to be. Everything else in the
+    /// file is left byte for byte; a <c>notify</c> the user wrote is never touched.
+    /// </summary>
+    private static IntegrationStatus CodexInstall(bool remove)
+    {
+        var config = CodexConfigPath();
+        var text = File.Exists(config) ? SafeRead(config) ?? string.Empty : string.Empty;
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var lines = text.Length == 0 ? new List<string>() : text.ReplaceLineEndings("\n").Split('\n').ToList();
+
+        // Take ours out first; install re-adds it, so a re-run refreshes the line.
+        var marker = lines.IndexOf(CodexMarkerLine);
+        if (marker >= 0)
+        {
+            lines.RemoveAt(marker);
+            if (marker < lines.Count && lines[marker].TrimStart().StartsWith("notify", StringComparison.Ordinal))
+            {
+                lines.RemoveAt(marker);
+            }
+
+            // The blank lines that framed our block would now be doubled; keep one.
+            while (marker > 0 && marker < lines.Count && lines[marker].Trim().Length == 0 && lines[marker - 1].Trim().Length == 0)
+            {
+                lines.RemoveAt(marker);
+            }
+        }
+
+        if (remove)
+        {
+            if (File.Exists(CodexScriptPath()))
+            {
+                File.Delete(CodexScriptPath());
+            }
+        }
+        else
+        {
+            if (lines.Any(IsForeignNotify))
+            {
+                return CodexStatus();
+            }
+
+            // Top-level keys end at the first table header.
+            var firstTable = lines.FindIndex(l => l.TrimStart().StartsWith('['));
+            var insertAt = firstTable < 0 ? lines.Count : firstTable;
+            if (insertAt > 0 && lines[insertAt - 1].Trim().Length > 0)
+            {
+                lines.Insert(insertAt++, string.Empty);
+            }
+
+            lines.Insert(insertAt++, CodexMarkerLine);
+            lines.Insert(insertAt++, CodexNotifyLine());
+            if (insertAt < lines.Count && lines[insertAt].Trim().Length > 0)
+            {
+                lines.Insert(insertAt, string.Empty);
+            }
+
+            WriteFile(CodexScriptPath(), CodexScriptContent());
+        }
+
+        // Drop trailing blank lines left by a removal, keep one newline at the end.
+        while (lines.Count > 0 && lines[^1].Trim().Length == 0)
+        {
+            lines.RemoveAt(lines.Count - 1);
+        }
+
+        if (lines.Count > 0 || File.Exists(config))
+        {
+            WriteFile(config, string.Join(newline, lines) + newline);
+        }
+
+        return CodexStatus();
+    }
+
+    /// <summary>A top-level <c>notify</c> assignment that is not ours.</summary>
+    private static bool IsForeignNotify(string line)
+    {
+        var trimmed = line.TrimStart();
+        return trimmed.StartsWith("notify", StringComparison.Ordinal) &&
+               trimmed.Length > 6 && (trimmed[6] == ' ' || trimmed[6] == '=') &&
+               !trimmed.Contains("overshell-notify.ps1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? SafeRead(string path)
+    {
+        try
+        {
+            return File.ReadAllText(path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>True when <paramref name="name"/> (with any PATHEXT extension) exists on PATH.</summary>
     public static bool OnPath(string name)

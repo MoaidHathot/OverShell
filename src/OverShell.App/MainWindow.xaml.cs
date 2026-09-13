@@ -79,6 +79,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WireRouter();
         InitializeViews();
         InitializeDepth();
+        InitializeTearOff();
 
         // The saved session, else a single terminal — panes and extra tabs are opt-in.
         var initialView = RestoreOrOpenDefault();
@@ -133,6 +134,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             if (ReferenceEquals(_activeTab, value))
             {
+                return;
+            }
+
+            // A detached tab is looked at in its own window; the main host keeps what it has.
+            if (value is { Detached: true } detached)
+            {
+                _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, detached))?.Activate();
                 return;
             }
 
@@ -206,6 +214,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        // A detached tab comes home first, so one path tears the view down.
+        if (tab.Detached)
+        {
+            Attach(tab);
+        }
+
         // Dispose first: it suppresses further input, so the focus and key messages
         // generated while the HwndHost is unloaded can't reach a closed pseudoconsole.
         tab.Dispose();
@@ -223,7 +237,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         if (ReferenceEquals(tab, ActiveTab))
         {
-            ActiveTab = Tabs[Math.Min(index, Tabs.Count - 1)];
+            // The nearest tab that still lives in this window; detached ones have their own.
+            var next = Tabs.Where(t => !t.Detached).OrderBy(t => Math.Abs(Tabs.IndexOf(t) - index)).FirstOrDefault() ?? Tabs[Math.Min(index, Tabs.Count - 1)];
+            ActiveTab = next;
         }
 
         RefreshAttention();
@@ -261,17 +277,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // Every chord goes through keybindings.jsonc → command; nothing is hard-coded here.
         router.Chord = OnChord;
 
-        // Classic console behaviour: right-click copies a selection, else pastes.
+        // Classic console behaviour: right-click copies a selection, else pastes — in the
+        // main window's terminal or in a tear-off's.
         router.RightClick = screenPoint =>
         {
-            if (ActiveTab is null || !IsPointOverTerminal(screenPoint))
+            var tab = IsPointOverTerminal(screenPoint) ? ActiveTab : TearOffForRoot(_shortcuts.CurrentRoot)?.Tab;
+            if (tab is null)
             {
                 return false;
             }
 
-            if (!Copy())
+            if (!Copy(tab))
             {
-                Paste();
+                Paste(tab);
             }
 
             return true;
@@ -299,9 +317,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     /// <returns>True when a selection existed and was copied.</returns>
-    private bool Copy()
+    private bool Copy() => Copy(TargetTab);
+
+    private bool Copy(TerminalTab? tab)
     {
-        var selection = ActiveTab?.SelectedText();
+        var selection = tab?.SelectedText();
         if (string.IsNullOrEmpty(selection))
         {
             return false;
@@ -311,9 +331,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return true;
     }
 
-    private void Paste()
+    private void Paste() => Paste(TargetTab);
+
+    private void Paste(TerminalTab? tab)
     {
-        if (ActiveTab is not { } tab)
+        if (tab is null)
         {
             return;
         }
@@ -377,7 +399,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         switch (e.Kind)
         {
             case TerminalMouseKind.LeftDown or TerminalMouseKind.LeftDoubleClick:
-                if (!e.Control || e.Shift || ActiveTab is not { MouseTracking: false } tab)
+                if (!e.Control || e.Shift || TabForTerminalHwnd(e.Hwnd) is not { MouseTracking: false } tab)
                 {
                     return false;
                 }
@@ -424,7 +446,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
                 _lastPointer = e;
 
-                if (e.LeftButtonDown || ActiveTab is not { MouseTracking: false })
+                if (e.LeftButtonDown || TabForTerminalHwnd(e.Hwnd) is not { MouseTracking: false })
                 {
                     // A selection is being dragged, or the application owns the mouse.
                     ClearLinkHover();
@@ -456,7 +478,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             UpdatePointer(hovered);
         }
 
-        if (_shortcuts.PointerOverTerminal && _lastPointer is { LeftButtonDown: false } pointer && ActiveTab is { MouseTracking: false })
+        if (_shortcuts.PointerOverTerminal && _lastPointer is { LeftButtonDown: false } pointer && TabForTerminalHwnd(pointer.Hwnd) is { MouseTracking: false })
         {
             QueueHoverProbe(pointer with { Control = true });
         }
@@ -493,7 +515,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _hoverBusy = true;
         try
         {
-            while (_hoverPending is { } e && ActiveTab is { } tab)
+            while (_hoverPending is { } e && TabForTerminalHwnd(e.Hwnd) is { } tab)
             {
                 _hoverPending = null;
 
@@ -507,8 +529,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 var result = await _textProbe.ProbeAsync(e.Hwnd, e.ScreenPoint, tab.Grid.Columns, tab.ResolveLink);
                 LinkTrace($"hover {e.ScreenPoint} -> {Describe(result)} in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
 
-                // The tab may have changed under us while the probe was running.
-                if (!ReferenceEquals(tab, ActiveTab))
+                // The tab may have gone, or its window, while the probe was running.
+                if (!Tabs.Contains(tab) || (!tab.Detached && !ReferenceEquals(tab, ActiveTab)))
                 {
                     break;
                 }
@@ -1007,8 +1029,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // session ids are the real ones.
         SaveSession(force: true);
 
+        CloseTearOffs();
         _shortcuts.Dispose();
         _palette?.Close();
+        _explain?.Close();
         _notifications?.Dispose();
         _endpoint?.Dispose();
 

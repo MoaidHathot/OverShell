@@ -473,6 +473,75 @@ public sealed class AgentStateMachine
         }
     }
 
+    /// <summary>
+    /// A one-shot report with no continuing authority (Codex's <c>notify</c> fires once per
+    /// turn and never says "working"). Applied like a notification the detector trusts:
+    /// it marks the moment and remembers the session, and the detector goes on deciding.
+    /// Ignored while a real integration holds authority — it knows better.
+    /// </summary>
+    public void OnAdvisory(string source, AgentState state, string? message, string? summary, string? sessionId, DateTimeOffset now)
+    {
+        LastActivity = now;
+        if (State == AgentState.Exited || Authority == AgentAuthority.Integration)
+        {
+            return;
+        }
+
+        if (summary is not null)
+        {
+            Summary = summary;
+        }
+
+        if (sessionId is not null)
+        {
+            SessionId = sessionId;
+        }
+
+        var reason = $"{source} said {state}{(message is null ? string.Empty : ": " + message)}";
+        switch (state)
+        {
+            case AgentState.Blocked or AgentState.Error:
+                Set(state, reason, now);
+                Unread = true;
+                AttentionSince ??= now;
+                AttentionRequested?.Invoke(new AgentAttention(state, reason, message, now));
+                break;
+
+            case AgentState.Working:
+                _workingSince ??= now;
+                Set(AgentState.Working, reason, now);
+                break;
+
+            case AgentState.Idle or AgentState.Done:
+                if (State == AgentState.Done && !_viewed)
+                {
+                    Explain = reason;
+                    break;
+                }
+
+                // The turn ended: what the detector inferred from output is superseded, and the
+                // quiet timer must not turn a fresh Done back into Idle.
+                _fromTitle = _fromScreen = _fromProgress = null;
+                _lastOutput = null;
+                _firstOutputInBurst = null;
+                if (!_viewed)
+                {
+                    _workingSince = null;
+                    Set(AgentState.Done, reason, now);
+                    Unread = true;
+                    AttentionSince ??= now;
+                    AttentionRequested?.Invoke(new AgentAttention(AgentState.Done, reason, message ?? summary, now));
+                }
+                else
+                {
+                    _workingSince = null;
+                    Set(AgentState.Idle, reason, now);
+                }
+
+                break;
+        }
+    }
+
     // ------------------------------------------------------------------ evaluation
 
     private void Evaluate(DateTimeOffset now, string trigger)

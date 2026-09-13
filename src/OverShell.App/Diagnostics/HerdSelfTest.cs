@@ -638,6 +638,57 @@ internal static class HerdSelfTest
         Check(tab.Agent.AuthoritySource == ClaudeHookTranslator.Source && tab.State == AgentState.Blocked && tab.Harness == "claude", "the Claude shim reached /v1/claude/{tab}/Notification and blocked the tab");
         Check(tab.Agent.SessionId == "claude-selftest", "Claude's session_id was recorded");
 
+        // ---- 14. P3: Codex notify shim, native toast, tear-off ----
+        // The Codex shim exactly as installed (script from the embedded resource, JSON as the
+        // last argument), run from the second tab, which nothing has claimed.
+        var codexScript = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest-codex-notify.ps1");
+        System.IO.File.WriteAllText(codexScript, IntegrationInstaller.CodexScriptContent());
+        window.ActiveTab = second;
+        await Task.Delay(300);
+        var codexJson = "{\"type\":\"agent-turn-complete\",\"thread-id\":\"thr-selftest\",\"turn-id\":\"t1\",\"cwd\":\"C:\\\\x\",\"input-messages\":[\"hi\"],\"last-assistant-message\":\"All done here.\"}";
+        second.SendText($"& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '{codexScript}' '{codexJson}'; Write-Host selftest-codex-done\r");
+        var codexDeadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < codexDeadline && second.Agent.SessionId != "thr-selftest")
+        {
+            await Task.Delay(250);
+        }
+
+        Log($"  codex notify: session={second.Agent.SessionId} state={second.State} authority={second.Agent.Authority} harness={second.Harness} summary='{second.Summary}' resume='{second.ResumeCommand}' explain='{second.Agent.Explain}'");
+        Check(second.Agent.SessionId == "thr-selftest" && second.Harness == "codex", "the Codex notify script posted the turn-complete payload and the tab became a Codex agent");
+        Check(second.Agent.Authority == AgentAuthority.Detector, "…without taking authority (advisory)");
+        Check(second.ResumeCommand == "codex resume thr-selftest" && second.Summary == "All done here.", "…recording the thread for resume and the last message as the summary");
+        System.IO.File.Delete(codexScript);
+
+        // The native toast sink: WinRT through hand-written COM. The shell's history is read
+        // back by Windows PowerShell (which can call WinRT) after the run, in the run script.
+        var toastResult = Notifications.NativeToast.Show("OverShell self-test", "toast sink check", "you can dismiss this", OverShell.Core.Integrations.ProtocolRequest.FocusUrl(tab.Id), "overshell-selftest", "overshell", silent: true);
+        Log($"  toast: {(toastResult ?? "shown")}");
+        Check(toastResult is null, "the native toast was accepted by the notification platform");
+
+        // Tear-off: the live surface moves to a second window and back — same HWND, session alive.
+        window.ActiveTab = tab;
+        await Task.Delay(300);
+        var hwndBefore = second.TerminalHwnd;
+        var tearOff = window.Detach(second);
+        await Task.Delay(800);
+        var tearOffHwnd = tearOff is null ? 0 : new System.Windows.Interop.WindowInteropHelper(tearOff).Handle;
+        Log($"  detach: window=0x{tearOffHwnd:X} visible={tearOff?.IsVisible} detached={second.Detached} view-parent={second.View.Parent?.GetType().Name} hwnd before=0x{hwndBefore:X} after=0x{second.TerminalHwnd:X} main-active={window.ActiveTab?.Id} tabs={window.Tabs.Count}");
+        Check(tearOff is { IsVisible: true } && second.Detached && !ReferenceEquals(second.View.Parent, window.FindName("TerminalHost")), "tab.detach moved the surface into its own window");
+        Check(second.TerminalHwnd == hwndBefore && second.IsRunning, "same terminal HWND, session alive");
+        Check(window.Tabs.Contains(second) && ReferenceEquals(window.ActiveTab, tab), "the tab stays in the collection; the main window shows its neighbour");
+
+        second.SendText("Write-Host selftest-tearoff-ok\r");
+        await Task.Delay(1500);
+        second.RequestScreen();
+        await Task.Delay(400);
+        Check(second.ScreenRows.Any(r => r.Trim() == "selftest-tearoff-ok"), "output written in the tear-off shows on its screen (UIA reads the moved HWND)");
+
+        window.Attach(second);
+        await Task.Delay(600);
+        Log($"  attach: detached={second.Detached} view-parent={second.View.Parent?.GetType().Name} tear-offs={window.TearOffs.Count} active={window.ActiveTab?.Id} hwnd=0x{second.TerminalHwnd:X}");
+        Check(!second.Detached && ReferenceEquals(second.View.Parent, window.FindName("TerminalHost")) && window.TearOffs.Count == 0, "tab.attach brought the surface back and closed the window");
+        Check(ReferenceEquals(window.ActiveTab, second) && second.TerminalHwnd == hwndBefore && second.IsRunning, "…active again, same HWND, still alive");
+
         window.CloseTab(second);
         await Task.Delay(300);
         Check(window.Tabs.Count == 1, "closed the second tab");

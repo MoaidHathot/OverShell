@@ -48,6 +48,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     private string? _workingDirectory;
     private long _outputVersion;
     private bool _isActive;
+    private bool _detached;
     private bool _revealed;
     private bool _exitNotified;
     private bool _disposed;
@@ -205,9 +206,31 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     /// lands. While the view stays hidden the host grid — painted with the profile's
     /// background — shows instead, so the transition is a solid colour throughout.
     /// </para>
+    /// <para>A detached tab has a window of its own and is always shown there.</para>
     /// </summary>
     private void UpdateVisibility() =>
-        View.Visibility = _isActive && _revealed ? Visibility.Visible : Visibility.Hidden;
+        View.Visibility = (_isActive || _detached) && _revealed ? Visibility.Visible : Visibility.Hidden;
+
+    /// <summary>True while the tab's surface lives in a tear-off window (§12.12) rather than the main host.</summary>
+    public bool Detached
+    {
+        get => _detached;
+        internal set
+        {
+            if (_detached == value)
+            {
+                return;
+            }
+
+            _detached = value;
+            _hwnd = 0; // re-found on demand; the HWND is the same, but cheap to be sure
+            UpdateVisibility();
+            Raise();
+            Raise(nameof(Detail));
+            Raise(nameof(SidebarDetail));
+            Raise(nameof(Tooltip));
+        }
+    }
 
     private void MarkRevealed()
     {

@@ -177,7 +177,17 @@ public partial class MainWindow
         // Commands act on the active tab, so the menu first makes this one active.
         Add("Rename…", HintFor("tab.rename"), () => { ActiveTab = tab; _commands.TryExecute("tab.rename"); });
         Add(tab.IsAgent ? "Treat as a shell" : "Treat as an agent", null, () => { if (tab.IsAgent) tab.MarkAsShell(); else tab.MarkAsAgent(); });
-        Add("Explain state", null, () => ShowStatusMessage($"{tab.Label}: {tab.State} — {tab.Agent.Explain} ({tab.Agent.Authority}{(tab.Harness is null ? string.Empty : ", " + tab.Harness)})"));
+        Add("Explain state", HintFor("tab.explain"), () => { ActiveTab = tab; _commands.TryExecute("tab.explain"); });
+        Add("Move to group…", HintFor("tab.moveToGroup"), () => { ActiveTab = tab; _commands.TryExecute("tab.moveToGroup"); });
+        if (tab.Detached)
+        {
+            Add("Attach to the main window", HintFor("tab.attach"), () => Attach(tab));
+        }
+        else
+        {
+            Add("Detach into its own window", HintFor("tab.detach"), () => Detach(tab), enabled: Tabs.Count > 1);
+        }
+
         menu.Items.Add(new Separator { Style = (Style)FindResource("MenuSeparator") });
         Add("Close tab", HintFor("tab.close"), () => CloseTab(tab));
 

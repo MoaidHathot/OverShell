@@ -5,6 +5,11 @@ using OverShell.Core.Agents;
 namespace OverShell.Core.Integrations;
 
 /// <summary>What a harness integration tells OverShell about one tab.</summary>
+/// <param name="Advisory">
+/// A one-shot report that carries no continuing authority: the detector keeps deciding,
+/// this only marks the moment (Codex's <c>notify</c> fires once per turn and never says
+/// "working"). Wire: <c>"advisory": true</c>.
+/// </param>
 public sealed record IntegrationReport(
     string TabId,
     string Source,
@@ -15,7 +20,8 @@ public sealed record IntegrationReport(
     string? Summary,
     string? SessionId,
     string? ResumeCommand,
-    bool Release)
+    bool Release,
+    bool Advisory = false)
 {
     /// <summary>The wire shape of <c>POST /v1/report</c>.</summary>
     public static IntegrationReport? Parse(string tabId, JsonNode? body, out string? error)
@@ -44,6 +50,7 @@ public sealed record IntegrationReport(
 
         long? seq = o["seq"] is JsonValue sv && sv.TryGetValue<long>(out var s) ? s : null;
         var session = o["session"] as JsonObject;
+        var advisory = o["advisory"] is JsonValue av && av.TryGetValue<bool>(out var a) && a;
 
         return new IntegrationReport(
             tab,
@@ -55,7 +62,8 @@ public sealed record IntegrationReport(
             Str(o, "summary"),
             session is null ? Str(o, "sessionId") : Str(session, "id"),
             session is null ? null : Str(session, "resumeCommand"),
-            Release: state == AgentState.Exited);
+            Release: state == AgentState.Exited,
+            Advisory: advisory);
     }
 
     public static bool TryParseState(string text, out AgentState state)
@@ -219,6 +227,52 @@ public static class ClaudeHookTranslator
 
     private static string? Str(JsonObject? o, string name) =>
         o?[name] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+
+    private static string? Trim(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s))
+        {
+            return null;
+        }
+
+        var line = s.ReplaceLineEndings(" ").Trim();
+        return line.Length <= 120 ? line : line[..117] + "…";
+    }
+}
+
+/// <summary>
+/// Turns the JSON Codex CLI's <c>notify</c> hook appends to its command line into a
+/// report. Codex fires it for <c>agent-turn-complete</c> only and never says "working", so
+/// the report is <em>advisory</em>: the detector keeps deciding; this marks the turn's end,
+/// records the thread id for <c>codex resume</c>, and carries the last assistant message
+/// as the summary. Wire names are kebab-case (<c>thread-id</c>, <c>last-assistant-message</c>).
+/// </summary>
+public static class CodexNotifyTranslator
+{
+    public const string Source = "codex-notify";
+
+    public static IntegrationReport? Translate(string tabId, JsonNode? payload)
+    {
+        if (payload is not JsonObject o)
+        {
+            return null;
+        }
+
+        var type = Str(o, "type") ?? string.Empty;
+        var threadId = Str(o, "thread-id") ?? Str(o, "thread_id");
+        var last = Str(o, "last-assistant-message") ?? Str(o, "last_assistant_message");
+
+        return type switch
+        {
+            "agent-turn-complete" => new IntegrationReport(
+                tabId, Source, null, AgentState.Idle, "codex", "turn finished", Trim(last), threadId,
+                threadId is null ? null : $"codex resume {threadId}", Release: false, Advisory: true),
+            _ => null,
+        };
+    }
+
+    private static string? Str(JsonObject o, string name) =>
+        o[name] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
     private static string? Trim(string? s)
     {

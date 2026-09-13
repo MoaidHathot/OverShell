@@ -99,13 +99,14 @@ public class NotificationTests
 public class SettingsTests
 {
     [Fact]
-    public void Defaults_load_and_name_the_four_sinks()
+    public void Defaults_load_and_name_the_five_sinks()
     {
         var s = AppSettings.LoadDefaults();
         Assert.Empty(s.Problems);
         Assert.Equal("terminal", s.View);
         Assert.Equal(300, s.Detection.SnapshotDebounceMs);
-        Assert.Equal(["overlay", "palantir", "sound", "taskbar"], s.Notifications.Sinks.Keys.Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(["overlay", "palantir", "sound", "taskbar", "toast"], s.Notifications.Sinks.Keys.Order(StringComparer.Ordinal).ToArray());
+        Assert.False(s.Notifications.Sinks["toast"].Enabled);
         Assert.False(s.Notifications.Sinks["palantir"].Enabled);
         Assert.Equal("palantir", s.Notifications.Sinks["palantir"].Exe);
         Assert.True(s.Notifications.Sinks["overlay"].When.NotActiveTab);

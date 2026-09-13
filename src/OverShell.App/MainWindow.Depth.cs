@@ -213,7 +213,7 @@ public partial class MainWindow
 
     private void OpenExplain()
     {
-        if (ActiveTab is not { } tab)
+        if (TargetTab is not { } tab)
         {
             return;
         }

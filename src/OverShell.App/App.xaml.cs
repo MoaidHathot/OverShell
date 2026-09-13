@@ -156,6 +156,17 @@ public partial class App : Application
 
                 case "show":
                     out_.WriteLine();
+                    var which = args.Length > 1 ? args[1].ToLowerInvariant() : "claude";
+                    if (which == "codex")
+                    {
+                        out_.WriteLine($"  Codex CLI: add to {IntegrationInstaller.CodexConfigPath()} (top level, before any [table]):");
+                        out_.WriteLine();
+                        out_.WriteLine("  " + IntegrationInstaller.CodexNotifyLine());
+                        out_.WriteLine();
+                        out_.WriteLine($"  and put the script at {IntegrationInstaller.CodexScriptPath()} (`integrations install codex` writes it).");
+                        return 0;
+                    }
+
                     out_.WriteLine("  Claude Code: add under \"hooks\" in ~/.claude/settings.json:");
                     out_.WriteLine();
                     var hooks = new System.Text.Json.Nodes.JsonObject();
@@ -170,9 +181,9 @@ public partial class App : Application
                 default:
                     out_.WriteLine();
                     out_.WriteLine("usage: OverShell integrations status");
-                    out_.WriteLine("       OverShell integrations install   <opencode|copilot|claude|all>");
-                    out_.WriteLine("       OverShell integrations uninstall <opencode|copilot|claude|all>");
-                    out_.WriteLine("       OverShell integrations show claude");
+                    out_.WriteLine("       OverShell integrations install   <opencode|copilot|claude|codex|all>");
+                    out_.WriteLine("       OverShell integrations uninstall <opencode|copilot|claude|codex|all>");
+                    out_.WriteLine("       OverShell integrations show      <claude|codex>");
                     return 2;
             }
         }

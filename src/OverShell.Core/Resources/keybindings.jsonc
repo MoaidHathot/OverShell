@@ -30,6 +30,8 @@
   { "keys": "alt+shift+left",      "command": "tab.moveLeft" },
   { "keys": "alt+shift+right",     "command": "tab.moveRight" },
   { "keys": "ctrl+shift+e",        "command": "tab.explain" },
+  { "keys": "ctrl+shift+d",        "command": "tab.detach" },
+  { "keys": "ctrl+shift+a",        "command": "tab.attach" },
   { "keys": "ctrl+shift+space",    "command": "palette.tabs" },
 
   // ---- prompt bar ----
