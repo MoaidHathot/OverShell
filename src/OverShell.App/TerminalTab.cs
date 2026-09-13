@@ -6,17 +6,23 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
-using EasyWindowsTerminalControl;
+using OverShell.App.Terminal;
+using OverShell.App.Terminal.Hyperlinks;
 using OverShell.Config;
 
 namespace OverShell.App;
 
 /// <summary>
-/// One terminal tab: a profile, its live PTY session, and the control that renders it.
+/// One terminal tab: a profile, its live session, and the surface that shows it.
 /// <para>
-/// Each tab keeps its own <see cref="EasyTerminalControl"/> rather than sharing one and
-/// swapping connections. The scrollback buffer lives in the control, not the PTY, so
-/// sharing a control would discard history every time you switched tabs.
+/// Each tab keeps its own surface rather than sharing one and swapping sessions. The
+/// scrollback buffer lives in the surface, not the session, so sharing a surface would
+/// discard history every time you switched tabs.
+/// </para>
+/// <para>
+/// This is the only type that touches <see cref="ITerminalSession"/> and
+/// <see cref="ITerminalSurface"/>; the chrome sees a <see cref="View"/> and a handful of
+/// properties. Keep it that way — it is what makes a second surface a local change.
 /// </para>
 /// </summary>
 public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
@@ -32,16 +38,16 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     [GeneratedRegex("\u001b\\]7;file://[^/]*(/[^\u0007\u001b]*)(?:\u0007|\u001b\\\\)", RegexOptions.Compiled)]
     private static partial Regex Osc7CwdRegex { get; }
 
-    /// <summary>Curated hues so tabs are told apart at a glance without looking noisy.</summary>
     private readonly StringBuilder _tail = new();
     private readonly Lock _tailGate = new();
+    private readonly TerminalStreamState _stream = new();
     private readonly Dispatcher _dispatcher;
 
     private string? _shellTitle;
     private string? _workingDirectory;
+    private long _outputVersion;
     private bool _isActive;
     private bool _revealed;
-    private bool _inputSuppressed;
     private bool _exitNotified;
     private bool _disposed;
     private DispatcherTimer? _revealTimeout;
@@ -54,38 +60,38 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
         Accent = TabAccent.For(profile.Id);
         Background = TerminalThemeMapper.ToBrush(scheme.Background);
+        Foreground = TerminalThemeMapper.ToBrush(scheme.Foreground);
 
         var startingDirectory = ResolveStartingDirectory(profile);
 
         // Seed the directory so the status bar is useful before the shell emits OSC 7/9;9.
         _workingDirectory = startingDirectory;
 
-        View = new EasyTerminalControl
+        var descriptor = new SessionDescriptor
         {
-            StartupCommandLine = Expand(profile.CommandLine) ?? "powershell.exe",
+            CommandLine = Expand(profile.CommandLine) ?? "powershell.exe",
             WorkingDirectory = startingDirectory,
-            FontFamilyWhenSettingTheme = new FontFamily(profile.FontFace ?? "Cascadia Mono, Consolas"),
-            FontSizeWhenSettingTheme = (int)Math.Round(profile.FontSize ?? 12),
-            Theme = scheme.ToTerminalTheme(profile.CursorShape),
-            Visibility = Visibility.Hidden,
-
-            // Breathing room so glyphs never touch the window chrome. The host grid
-            // paints the same background, so this reads as terminal padding.
-            Margin = new Thickness(10, 6, 2, 6),
+            ProfileId = profile.Id,
         };
 
-        if (View.ConPTYTerm is { } pty)
-        {
-            pty.InterceptOutputToUITerminal = OnOutput;
-            pty.TermReady += (_, _) => _dispatcher.BeginInvoke(() =>
-            {
-                Raise(nameof(IsRunning));
-                MarkRevealed();
-            });
-        }
+        (Session, Surface) = TerminalFactory.Create(descriptor);
 
-        // Safety net: if the pseudoconsole never signals ready — a bad commandline, a
-        // shell that dies instantly — reveal anyway rather than leaving a blank pane.
+        Surface.ApplyTheme(scheme, profile);
+        Surface.View.Visibility = Visibility.Hidden;
+
+        // Breathing room so glyphs never touch the window chrome. The host grid paints
+        // the same background, so this reads as terminal padding.
+        Surface.View.Margin = new Thickness(10, 6, 2, 6);
+
+        Session.OutputReceived += OnOutput;
+        Session.Started += (_, _) => _dispatcher.BeginInvoke(() => Raise(nameof(IsRunning)));
+        Session.Exited += (_, _) => _dispatcher.BeginInvoke(NotifyExited);
+        Surface.Ready += (_, _) => MarkRevealed();
+
+        Surface.Attach(Session);
+
+        // Safety net: if the session never signals ready — a bad commandline, a shell
+        // that dies instantly — reveal anyway rather than leaving a blank pane.
         _revealTimeout = new DispatcherTimer(DispatcherPriority.Background, _dispatcher)
         {
             Interval = TimeSpan.FromSeconds(2),
@@ -103,11 +109,19 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
     public ColorScheme Scheme { get; }
 
-    public EasyTerminalControl View { get; }
+    public ITerminalSession Session { get; }
+
+    public ITerminalSurface Surface { get; }
+
+    /// <summary>The element the chrome hosts. Shorthand for <c>Surface.View</c>.</summary>
+    public FrameworkElement View => Surface.View;
 
     public Brush Accent { get; }
 
     public Brush Background { get; }
+
+    /// <summary>The scheme's default foreground — what a hovered link is underlined with.</summary>
+    public Brush Foreground { get; }
 
     /// <summary>What the tab shows: the shell's own title when it is meaningful, else the profile name.</summary>
     public string Title =>
@@ -133,15 +147,15 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         }
     }
 
-    /// <summary>True once the pseudoconsole has actually been started.</summary>
-    public bool HasStarted => View.ConPTYTerm?.TermProcIsStarted == true;
+    /// <summary>True once the session's process actually exists.</summary>
+    public bool HasStarted => Session.HasStarted;
 
     /// <summary>
     /// True while the shell process is alive. Deliberately false before
-    /// <see cref="HasStarted"/> — the PTY starts on a background thread, so callers must
-    /// check <see cref="HasStarted"/> before treating this as "the shell died".
+    /// <see cref="HasStarted"/> — the session starts on a background thread, so callers
+    /// must check <see cref="HasStarted"/> before treating this as "the shell died".
     /// </summary>
-    public bool IsRunning => HasStarted && View.ConPTYTerm?.Process?.HasExited == false;
+    public bool IsRunning => Session.IsRunning;
 
     public bool IsActive
     {
@@ -159,18 +173,18 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
             if (value)
             {
-                _dispatcher.BeginInvoke(() => View.Focus(), DispatcherPriority.Input);
+                _dispatcher.BeginInvoke(Surface.Focus, DispatcherPriority.Input);
             }
         }
     }
 
     /// <summary>
-    /// Shows the control only once it has something to draw.
+    /// Shows the surface only once it has something to draw.
     /// <para>
-    /// A freshly created terminal owns a child HWND whose swapchain has not presented a
-    /// frame yet. That surface composites as fully transparent, so revealing it
-    /// immediately flashes the desktop through the window before the first paint lands.
-    /// While the control stays hidden the host grid — painted with the profile's
+    /// A freshly created native terminal owns a child HWND whose swapchain has not
+    /// presented a frame yet. That surface composites as fully transparent, so revealing
+    /// it immediately flashes the desktop through the window before the first paint
+    /// lands. While the view stays hidden the host grid — painted with the profile's
     /// background — shows instead, so the transition is a solid colour throughout.
     /// </para>
     /// </summary>
@@ -196,64 +210,93 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>True while the application in the shell has asked for mouse clicks itself (DECSET 1000/1002/1003).</summary>
+    public bool MouseTracking => _stream.MouseTracking;
+
     /// <summary>
-    /// Writes text to the shell as if typed. Note this goes through the raw
-    /// <c>WriteToTerm</c>, which — unlike the control's own input path — does not consult
-    /// the read-only flag, so it needs its own guard.
+    /// Increments with every chunk the session produces. Lets the chrome tell whether what
+    /// is on screen may have changed since it last looked — without knowing what changed.
     /// </summary>
+    public long OutputVersion => Volatile.Read(ref _outputVersion);
+
+    /// <summary>Writes text to the shell as if typed, verbatim.</summary>
     public void SendText(string text)
     {
-        if (_inputSuppressed || _disposed || !HasStarted)
+        if (_disposed)
         {
             return;
         }
 
-        try
-        {
-            View.ConPTYTerm?.WriteToTerm(text);
-        }
-        catch (InvalidOperationException)
-        {
-            // The session ended between the guard and the write.
-            SuppressInput();
-        }
+        Session.WriteInput(text);
     }
-
-    public string SelectedText() => View.Terminal?.GetSelectedText() ?? string.Empty;
-
-    public (int Columns, int Rows) Grid =>
-        View.Terminal is { } t ? (t.Columns, t.Rows) : (0, 0);
 
     /// <summary>
-    /// Stops the terminal control from writing any further input into the pseudoconsole.
-    /// <para>
-    /// The control keeps its <c>Connection</c> reference and keeps delivering focus and
-    /// key messages after a session ends or is torn down. <c>TermPTY.WriteToTerm</c>
-    /// throws once its writers are gone, and <c>ITerminalConnection.WriteInput</c> only
-    /// checks the read-only flag — so setting it is the one supported way to make those
-    /// late writes harmless.
-    /// </para>
+    /// Pastes the way Windows Terminal does: line endings become CR, other C0 controls
+    /// are dropped, and the whole thing is bracketed when the application asked for it
+    /// (DECSET 2004) — so a multi-line paste lands as one unit in shells that support it.
     /// </summary>
-    public void SuppressInput()
+    public void Paste(string text)
     {
-        if (_inputSuppressed)
+        if (_disposed || string.IsNullOrEmpty(text))
         {
             return;
         }
 
-        _inputSuppressed = true;
+        var filtered = new StringBuilder(text.Length + 16);
 
-        // updateCursor: false — hiding the cursor would emit VT back through the very
-        // path we are trying to shut down.
-        try
+        if (_stream.BracketedPaste)
         {
-            View.ConPTYTerm?.SetReadOnly(true, updateCursor: false);
+            filtered.Append("\u001b[200~");
         }
-        catch
+
+        for (var i = 0; i < text.Length; i++)
         {
-            // Nothing useful to do; we are already on a teardown path.
+            var c = text[i];
+
+            if (c == '\r')
+            {
+                filtered.Append('\r');
+
+                if (i + 1 < text.Length && text[i + 1] == '\n')
+                {
+                    i++;
+                }
+            }
+            else if (c == '\n')
+            {
+                filtered.Append('\r');
+            }
+            else if (c < ' ' && c != '\t')
+            {
+                // Other control codes have no business being typed.
+            }
+            else
+            {
+                filtered.Append(c);
+            }
         }
+
+        if (_stream.BracketedPaste)
+        {
+            filtered.Append("\u001b[201~");
+        }
+
+        Session.WriteInput(filtered.ToString());
     }
+
+    /// <summary>
+    /// The link at an offset in a logical line, if any: a URL printed as text, else an OSC 8
+    /// hyperlink whose visible text sits there. Pure text logic; safe on any thread.
+    /// </summary>
+    internal LinkMatch? ResolveLink(string line, int offset) =>
+        HyperlinkDetector.MatchUrl(line, offset) ?? _stream.FindOsc8Link(line, offset);
+
+    public string SelectedText() => Surface.GetSelectedText();
+
+    public (int Columns, int Rows) Grid => Surface.Grid;
+
+    /// <summary>Stops the surface from writing any further input into the session.</summary>
+    public void SuppressInput() => Session.CloseInput();
 
     public void Dispose()
     {
@@ -266,19 +309,22 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         _revealTimeout?.Stop();
         _revealTimeout = null;
 
-        // Order matters: the writers must stop being reachable before they are closed.
-        SuppressInput();
+        Session.OutputReceived -= OnOutput;
 
-        var pty = View.ConPTYTerm;
-        try { pty?.CloseStdinToApp(); } catch { /* tearing down */ }
-        try { pty?.StopExternalTermOnly(); } catch { /* tearing down */ }
+        // Input first, then the process, then the view: the surface keeps generating
+        // focus traffic while it unloads, and that must land on a closed input path.
+        Session.Dispose();
+        Surface.Dispose();
     }
 
     // ------------------------------------------------------------ internals
 
-    /// <summary>Runs on the PTY read thread — keep it cheap and marshal anything UI-facing.</summary>
-    private void OnOutput(ref Span<char> chunk)
+    /// <summary>Runs on the session's I/O thread — keep it cheap and marshal anything UI-facing.</summary>
+    private void OnOutput(object? sender, string chunk)
     {
+        Interlocked.Increment(ref _outputVersion);
+        _stream.Observe(chunk);
+
         string? title;
         string? cwd;
 

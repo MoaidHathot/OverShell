@@ -26,18 +26,25 @@ backdrop). x64 only.
 |---|---|---|
 | `OVERSHELL_BACKDROP` | `acrylic` (default), `mica`, `micaalt`, `none` | Backdrop behind the chrome |
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
+| `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
+
+To exercise the link handling and shortcuts by hand, run `tools\Show-LinkTestCard.ps1`
+inside a tab: it prints every case with what should happen.
 
 ## Status
 
 Working: single terminal on launch, tabs with live titles, profile menu, theming from
-your colour schemes, custom chrome with a Windows 11 backdrop.
+your colour schemes, custom chrome with a Windows 11 backdrop, links — hover underlines
+one (in its own colour, where the renderer would) and previews it in the status bar,
+Ctrl+click opens it — and bracketed paste.
 
 In progress: configurable tab strip placement, multiple tab groups, drag-and-drop.
 
-Not possible in the current design: transparency of the terminal body — see
-[DESIGN.md §7.6](DESIGN.md#76-transparency-is-structurally-impossible-here) for why.
+Not possible on the default terminal surface: transparency of the terminal body — see
+[DESIGN.md §7.6](DESIGN.md#76-transparency-is-structurally-impossible-here) for why, and
+§11 for the surface abstraction that would allow a second, translucent one.
 
 ## Documentation
 

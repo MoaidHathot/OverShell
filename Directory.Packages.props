@@ -7,13 +7,18 @@
 
   <ItemGroup>
     <!--
-      Wraps the official Windows Terminal WPF control + ConPTY.
-      Transitively brings in:
-        CI.Microsoft.Terminal.Wpf          -> Microsoft.Terminal.Wpf.dll (managed)
-                                              Microsoft.Terminal.Control.dll (native, the real WT control)
-        Microsoft.Windows.Console.ConPTY   -> official Microsoft ConPTY
+      The official Windows Terminal WPF control, repackaged from Microsoft's CI feed
+      (microsoft/terminal#15404 — there is no signed release of it):
+        Microsoft.Terminal.Wpf.dll      managed HwndHost wrapper, ITerminalConnection
+        Microsoft.Terminal.Control.dll  native — the real WT parser, buffer and renderer
     -->
-    <PackageVersion Include="EasyWindowsTerminalControl" Version="1.0.38" />
+    <PackageVersion Include="CI.Microsoft.Terminal.Wpf" Version="1.25.260303002" />
+
+    <!--
+      Microsoft's redistributable pseudoconsole: conpty.dll plus the OpenConsole.exe it
+      launches, so ConPTY behaviour does not depend on the OS's conhost.exe.
+    -->
+    <PackageVersion Include="Microsoft.Windows.Console.ConPTY" Version="1.24.260710001" />
   </ItemGroup>
 
 </Project>

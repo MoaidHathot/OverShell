@@ -234,7 +234,8 @@
                                    FontSize="{StaticResource Font.Size.Small}" />
                     </StackPanel>
 
-                    <TextBlock Grid.Column="1"
+                    <TextBlock x:Name="TxtDetail"
+                               Grid.Column="1"
                                Text="{Binding ActiveTab.StatusDetail}"
                                Margin="18,0"
                                VerticalAlignment="Center"
@@ -242,6 +243,27 @@
                                Foreground="{StaticResource Text.Disabled}"
                                FontFamily="{StaticResource Font.Ui}"
                                FontSize="{StaticResource Font.Size.Small}" />
+
+                    <!-- Link under the pointer while Ctrl is held; takes the detail slot. -->
+                    <StackPanel x:Name="LinkHintPanel"
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                Margin="18,0"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                        <TextBlock Text="&#xE71B;"
+                                   FontFamily="{StaticResource Font.Icons}"
+                                   FontSize="10"
+                                   Margin="0,1,7,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Text.Secondary}" />
+                        <TextBlock x:Name="TxtLinkHint"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{StaticResource Text.Secondary}"
+                                   FontFamily="{StaticResource Font.Ui}"
+                                   FontSize="{StaticResource Font.Size.Small}" />
+                    </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock x:Name="TxtGrid"

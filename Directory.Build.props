@@ -13,10 +13,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
 
     <!--
-      EasyWindowsTerminalControl (and the native Microsoft.Terminal.Control.dll it
-      P/Invokes) is published x64-only, so the whole solution is pinned to x64.
-      Naming the RID explicitly also stops the SDK dragging in the win-x86 and
-      win-arm64 copies of the native control.
+      The native Microsoft.Terminal.Control.dll is published per architecture, not
+      AnyCPU, so the whole solution is pinned to x64. Naming the RID explicitly also
+      stops the SDK dragging in the win-x86 and win-arm64 copies of the native control.
     -->
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>

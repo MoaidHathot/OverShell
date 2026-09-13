@@ -6,10 +6,23 @@
     <RootNamespace>OverShell.App</RootNamespace>
     <AssemblyName>OverShell</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- LibraryImport with raw pointers in the ConPTY interop. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!--
+      Microsoft.Windows.Console.ConPTY copies an OpenConsole.exe per host architecture it
+      thinks an x64 process might run on. conpty.dll looks for <dir>\OpenConsole.exe, then
+      <dir>\<arch>\OpenConsole.exe, then falls back to the in-box conhost.exe. We ship the
+      x64 one only: the app is win-x64 and never runs under ARM64 emulation in practice.
+    -->
+    <ConptyRequiresARM64Host>false</ConptyRequiresARM64Host>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="EasyWindowsTerminalControl" />
+    <!-- Microsoft.Terminal.Wpf.dll (managed HwndHost) + Microsoft.Terminal.Control.dll (native). -->
+    <PackageReference Include="CI.Microsoft.Terminal.Wpf" />
+    <!-- conpty.dll + OpenConsole.exe, the same pseudoconsole host Windows Terminal ships. -->
+    <PackageReference Include="Microsoft.Windows.Console.ConPTY" />
   </ItemGroup>
 
   <ItemGroup>
