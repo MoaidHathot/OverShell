@@ -746,6 +746,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Overlay host** (§7.12, §11.5) | Click-through, never-activated owned window for drawing over the terminal body. Carries the link underline today; the drag preview, toasts and badges go here next |
 | **Paste parity** | Line endings → CR, other C0 dropped, bracketed when DECSET 2004 is on |
 | **Herd overseer P0** (§12.8) | `OverShell.Core` (WPF-free, 99 xunit tests): commands, `keybindings.jsonc`, agent rule files + `AgentStateMachine`, fuzzy search, notification policy, `settings.jsonc`, integration protocol + installer. App: every chord through `keybindings.jsonc` → `CommandRegistry`; palette / tab switcher / rename as an owned window (§12.7 spike 3); `TerminalStreamState` decodes BEL, OSC 9;4, 9/99/777, 133, DECSET 1004; detector fed by title, screen snapshot (UIA, 300 ms debounce), process tree probe (toolhelp), output activity; loopback endpoint with per-run token, environment injected into every child; Copilot hook shim + OpenCode plugin written by `integrations install`; two-line tab item with state dot / ring / pulse, unread badge, progress bar; `tab.jumpToAttention`; status-bar counts; sinks `overlay` (non-activating owned toast window), `taskbar` (badge + progress + flash), `sound`, `command` (Palantir recipe, flags verified); labels persisted per profile + directory. **Verified in-process** (§12.9) including the real OpenCode plugin end-to-end; ConPTY stdio bug found and fixed (§7.14) |
+| **Herd overseer P1 — views** (§12.10) | Layouts as JSONC regions (`layouts/*.jsonc`, 8 presets, user files replace by name); four views (`terminal`, `herd`, `dashboard`, `zen`) = layout + content, retunable in `settings.jsonc`; the tab strip in three shapes (strip / list / rail) moved between caption, bottom and side hosts — the terminal never re-parents; the **Herd sidebar** (grouped by project, attention → recency, rollups, activity age, context menu); the **Dashboard** (one card per tab, body = UIA screen text in the tab's colours, refreshed once a second while showing); view switch with attention badge; `view.*`, `view.toggle`, `layout.*` (per-session override), `settings.reload` commands; **hot reload** of `settings.jsonc`, `keybindings.jsonc`, `agents\`, `layouts\` (watcher, 400 ms debounce); switcher screen preview; git branch from `.git/HEAD` (+ optional dirty marker via `git status`); right-click tab menu. 110 unit tests; 60+ in-process checks incl. every preset rendered (§12.10) |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -782,33 +783,35 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | Palette / switcher / rename take the keyboard and give it back | Owned activated window; focus in/out verified in-process (§12.9), typing not yet by a human |
 | Toasts are readable and clickable over the terminal | Non-activating owned window at the terminal's top-right; rendered and counted in-process, click-to-focus not yet by a human |
 | Two-line tabs, badge, counts, taskbar badge/flash | Rendered in-process; look-and-feel is a human call |
+| Views, layouts, sidebar, dashboard, view switch | Every preset applied and rendered in-process (§12.10); clicking through them, the sidebar rows, the cards and the right-click menu is a human call |
 
 ### Open — near term
 
 - [ ] **Verify shortcuts on real hardware.** `Ctrl+T`, `Ctrl+Shift+W`, `Ctrl+Tab`,
       `Alt+1..9`, `Ctrl+C`/`Ctrl+V`, `Ctrl+Shift+C`/`V`, right-click copy-or-paste, and now
       `Ctrl+Shift+P` (commands), `Ctrl+Shift+Space` (tabs), `Ctrl+Shift+J` (jump),
-      `Ctrl+Shift+R` (rename). Chord → command resolution is verified in-process; the
-      Win32 pre-dispatch path with a real keyboard is not. The test card lists them all.
+      `Ctrl+Shift+R` (rename), `Ctrl+Shift+1..4` (views), ``Ctrl+Shift+` `` (toggle).
+      Chord → command resolution is verified in-process; the Win32 pre-dispatch path with
+      a real keyboard is not. The test card lists them all.
 - [ ] **Watch for double-Tab.** If one press yields two tabs, the terminal is receiving
       both the forwarded `WM_KEYDOWN` and a `WM_CHAR`; narrow the forward.
-- [ ] Live settings reload — `FileSystemWatcher` on `settings.jsonc` / `keybindings.jsonc`
-      / `agents\*.jsonc` (P1).
 - [ ] `closeOnExit` semantics. Today a dead tab stays open, dimmed and italic, with the
       exit banner in the buffer.
 - [ ] Copilot CLI end-to-end with the real `copilot` (the shim is verified verbatim against
       the endpoint; the harness firing it is not — `~/.copilot/hooks` did not exist on the
       reference machine before `integrations install copilot`).
+- [ ] A new file under `layouts\` applies live through views and hot reload, but gets its
+      `layout.<name>` palette command only at the next start (commands are registered once).
 
 ### Open — the actual feature work
 
-- [ ] **P1** (§12.8): layouts + views, Herd sidebar and Dashboard cards, settings hot
-      reload, tab switcher preview, git branch/dirty per tab.
-- [ ] **Multiple independent tab groups** with splitters.
+- [ ] **P2** (§12.8): prompt bar / broadcast; tab groups + drag reorder; session
+      persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
+      explain panel.
 - [ ] **Drag-and-drop tab reorder and move between groups.** The drag preview draws in
       `OverlayHost` (§7.12), which already exists for the link underline. Note the
       scrollback caveat in §7.1.
-- [ ] Layout persistence to `%APPDATA%\OverShell\layout.json`.
+- [ ] Layout persistence to `%APPDATA%\OverShell\layout.json` (which tabs were open, where).
 - [ ] Split panes (our own splitter tree, independent of WT's panes).
 
 ### Open — later
@@ -837,6 +840,7 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | WPF cannot draw over the terminal in-tree | Airspace — same as WebView2 | `OverlayHost` (§7.12); HTML overlays inside an xterm.js surface |
 | Chrome text is grayscale-antialiased | Transparent composition target disables ClearType | `OVERSHELL_BACKDROP=none` |
 | No search / shell-integration marks in the control | Not in the Hwnd C API | Marks: `TerminalStreamState` (§11.6). Search: UIA `FindText` (§7.10) or a second surface |
+| Working directory only updates when the shell says so | OSC 9;9 / OSC 7 come from the shell's prompt; the reference machine's pwsh profile emits neither, so `cd` is invisible and the status bar keeps the starting directory | Add the one-liner Windows Terminal documents to the profile; the branch, project and cards follow immediately |
 | A URL ending in the last column of a non-wrapped row, or longer than 9 rows, gets approximate or no geometry | `FindText` off-by-one pushes such a match out of range (§7.10); the row walk is capped | Cosmetic; the link still opens |
 | A link whose text is not uniformly coloured is underlined in the scheme foreground | The colour attribute reports "mixed" for the range | Split by colour run if it ever matters |
 | x64 only | Native control not published AnyCPU | No |
@@ -1336,8 +1340,8 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   Tab model; detector v1 + bundled rules; endpoint + OpenCode plugin + Copilot hooks +
   `integrations install/status`; rich tab item + `jumpToAttention` + status counts;
   notification pipeline with all four sinks + Palantir recipe; labels persisted.
-- **P1 Views** — layouts + view switching; Herd sidebar **and** Dashboard cards;
-  `settings.jsonc` + hot reload; tab switcher; git branch/dirty per tab.
+- **P1 Views** ✅ 2026-09-13 — layouts + view switching; Herd sidebar **and** Dashboard
+  cards; `settings.jsonc` + hot reload; tab switcher preview; git branch/dirty per tab.
 - **P2 Depth** — prompt bar/broadcast; tab groups + drag reorder; session
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
@@ -1397,3 +1401,75 @@ uses WPF's `TaskbarItemInfo` (ITaskbarList3) for the badge and progress colour p
 `FlashWindowEx`; `command` spawns without a shell, arguments templated. Palantir 2.0.1's
 flags were verified against `--help`; `--launch overshell://…` waits for the P2 protocol
 handler so a click does not open the "choose an app" dialog.
+
+### 12.10 P1 — views, layouts, sidebar, dashboard, reload
+
+**Layouts are regions, not a grid.** `ChromeLayout` (`Core/Layout`) says where the tabs
+go (`top | bottom | left | right | hidden`) and how they look (`strip | list | rail`),
+whether the Herd sidebar shows and on which side, and whether the status bar shows. A
+free-form grid was considered and rejected: every arrangement anyone asked for is one of
+these, a JSONC file stays five lines, and the window can hold the invariant that matters —
+**the terminal keeps the middle cell whatever the layout**, so switching never re-parents
+the native window (spike 2 says it would survive; not doing it is still cheaper). Eight
+presets ship as embedded `layouts/*.jsonc`; a same-name file under
+`%APPDATA%\OverShell\layouts\` replaces one wholesale, like the agent rule files.
+
+**One strip, one sidebar, moved between hosts.** `TabStrip` is a single control with three
+item templates; `ApplyLayout` detaches it and the `HerdSidebar` from wherever they are and
+places them in the caption host, the bottom bar, or the left/right side panels (a list and
+a sidebar on the same side sit side by side). The caption bar is 54 DIPs when it carries
+the strip and 38 otherwise, and the backdrop bands follow (§7.5) — including no bottom
+band in Zen, where the status bar is gone.
+
+**A view is a layout plus content.** `settings.jsonc` → `views.{terminal,herd,dashboard,zen}`
+each name a layout and `terminal` or `dashboard` content. `view.*` commands and the
+caption switch (with the attention badge on the Herd button) change views; `view.toggle`
+returns to the previous one; `layout.<name>` overrides the current view's layout for the
+session. Switching to the dashboard collapses the terminal host — the native windows are
+hidden, UIA still reads them (spike 1) — and gives the window keyboard focus so chords
+keep routing; switching back refocuses the terminal (verified: Win32 focus = terminal HWND).
+
+**Herd sidebar.** `HerdOrdering` (Core, tested) groups by project and sorts attention →
+recency → tab order; groups by worst state → recency → name. The sidebar recomputes on
+the heartbeat but compares a signature string first, so the visual tree is touched only
+when something actually moved; rows bind to the live tabs for everything else. Activity
+age ("12 s ago") is a per-tab property refreshed on the heartbeat.
+
+**Dashboard.** One card per tab: header (state dot, glyph, label, project · branch), body
+= the last 14 viewport rows read through UIA in the tab's scheme colours, footer (state,
+summary, activity, progress). While the dashboard shows — or the switcher is open — every
+tab is `ScreenWatched`: snapshots run about once a second whenever output changed,
+regardless of settling; agents additionally keep their settle-based snapshot for detection.
+A tab opened while the dashboard shows is watched from birth. Measured: 0.4–30 ms per
+snapshot, on the worker thread.
+
+**Hot reload.** One `FileSystemWatcher` on the configuration root (`*.jsonc`, subfolders),
+400 ms debounce; the changed file decides what reloads: keybindings → chord map;
+`agents\` → rule sets swapped in `AgentServices` and every tab re-detects
+(`RulesReloaded`); `layouts\` → catalog, current view re-applied; `settings.jsonc` →
+detection tuning, notification pipeline rebuilt, view re-applied. Verified live: a user
+`layouts\top.jsonc` moved the strip to a left list with the sidebar on the right within
+1.5 s of the write, a `keybindings.jsonc` bound `Ctrl+Alt+9` and unbound `Ctrl+T`, and
+deleting both restored the presets.
+
+**Git.** `GitRepository` (Core, tested) finds the root above a directory and reads the
+branch from `HEAD`, following a `.git` *file* for worktrees; the tab re-reads only when
+the directory or `HEAD`'s write time changed, every 2 s. The dirty marker spawns `git
+status --porcelain` per repository through `GitStatusService`, at most once per
+`git.statusIntervalMs`, and is **off by default**. The reference machine's pwsh profile
+emits no OSC 9;9/7, so `cd` does not move the tab's directory (§9); the self-test
+therefore opens a tab whose profile *starts* in the repository and sees `main`.
+
+**Switcher preview.** In tabs mode the palette grows a 340 DIP pane showing the selected
+tab's screen text, refreshed every 500 ms while open. Tabs are `ScreenWatched` for the
+palette's lifetime and released on close unless the dashboard needs them.
+
+**Self-test additions** (`OVERSHELL_SELFTEST=1`, 60+ checks): each view applied and
+asserted (layout name, hosts, caption height, terminal/dashboard visibility, sidebar rows
+= tabs, one card per tab with non-empty screen text, focus back in the terminal); every
+preset applied and rendered to `%TEMP%\overshell-selftest-layout-*.png`; hot reload
+through a temporary `OVERSHELL_CONFIG_DIR` (the test refuses to touch a real
+configuration root); git branch on a repository tab. Palette focus checks **skip** when
+OverShell is not the foreground window: an owned window cannot take focus then and closes
+itself on `Deactivated`, by design — the machine was in use during several runs, which
+also produced view switches and a `^C` in the transcript that were the user's, not ours.

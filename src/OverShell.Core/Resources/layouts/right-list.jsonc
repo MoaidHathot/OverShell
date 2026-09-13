@@ -1,0 +1,7 @@
+// The same list on the right, for people whose eyes live there.
+{
+  "description": "Tab list on the right",
+  "tabs":    { "placement": "right", "style": "list", "width": 240 },
+  "sidebar": { "placement": "hidden" },
+  "status":  { "visible": true }
+}

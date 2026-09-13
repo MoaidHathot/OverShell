@@ -1,0 +1,8 @@
+// Just the terminal: no tabs, no status bar, a slim caption bar. Ctrl+Shift+4 to enter,
+// Ctrl+Shift+1 (or any view key) to leave.
+{
+  "description": "Terminal only",
+  "tabs":    { "placement": "hidden" },
+  "sidebar": { "placement": "hidden" },
+  "status":  { "visible": false }
+}

@@ -1,0 +1,8 @@
+// The Dashboard view's chrome: the strip stays so a card can be reached by tab too; the
+// cards replace the terminal in the middle (that part is the view, not the layout).
+{
+  "description": "Chrome around the dashboard cards",
+  "tabs":    { "placement": "top", "style": "strip" },
+  "sidebar": { "placement": "hidden" },
+  "status":  { "visible": true }
+}

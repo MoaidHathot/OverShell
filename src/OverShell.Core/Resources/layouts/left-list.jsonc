@@ -1,0 +1,7 @@
+// A vertical list of two-line tab items on the left, like an editor's file list.
+{
+  "description": "Tab list on the left",
+  "tabs":    { "placement": "left", "style": "list", "width": 240 },
+  "sidebar": { "placement": "hidden" },
+  "status":  { "visible": true }
+}

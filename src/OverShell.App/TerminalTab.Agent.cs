@@ -178,11 +178,45 @@ public sealed partial class TerminalTab
         ReevaluateHarness(DateTimeOffset.Now, "marked as shell by user");
     }
 
+    /// <summary>The rule files were reloaded: the same harness id now means the new rules; re-detect from what is known.</summary>
+    internal void RulesReloaded()
+    {
+        var now = DateTimeOffset.Now;
+        _harnessFromCommandline = _agents.Rules.DetectFromCommandline(Session.Descriptor.CommandLine);
+        _harnessFromTitle = _agents.Rules.DetectFromTitle(_shellTitle);
+        ReevaluateHarness(now, "rules reloaded", force: true);
+        RaiseAgentProperties();
+    }
+
     public double? Progress => Agent.Progress;
 
     public bool ProgressIndeterminate => Agent.ProgressIndeterminate;
 
     public string? Summary => Agent.Summary;
+
+    /// <summary>The viewport as last read through UI Automation, top to bottom; empty until the first snapshot.</summary>
+    public IReadOnlyList<string> ScreenRows { get; private set; } = [];
+
+    /// <summary>The last rows of <see cref="ScreenRows"/> joined, for cards and the switcher preview.</summary>
+    public string ScreenText { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Set while a dashboard or switcher wants this tab's screen: snapshots then run for
+    /// shells too, about once a second while output changes, regardless of settling.
+    /// </summary>
+    public bool ScreenWatched { get; set; }
+
+    /// <summary>"just now", "12 s ago", "3 min ago" — refreshed by the heartbeat.</summary>
+    public string ActivityText { get; private set; } = string.Empty;
+
+    /// <summary>Takes a snapshot as soon as possible, for a preview that cannot wait for the heartbeat.</summary>
+    internal void RequestScreen()
+    {
+        if (!_disposed && !_snapshotBusy)
+        {
+            _ = SnapshotAsync(OutputVersion, DateTimeOffset.Now);
+        }
+    }
 
     /// <summary>Raised on the UI thread when the agent wants the user; the notification pipeline listens.</summary>
     public event Action<TerminalTab, AgentAttention>? AttentionRequested;
@@ -243,13 +277,28 @@ public sealed partial class TerminalTab
             RaiseAgentProperties();
         }
 
+        var activity = Agent.LastActivity is { } last ? Ago(now - last) : string.Empty;
+        if (activity != ActivityText)
+        {
+            ActivityText = activity;
+            Raise(nameof(ActivityText));
+        }
+
         var version = OutputVersion;
 
-        if (IsAgent && !_snapshotBusy && version != _snapshotVersion)
+        if (!_snapshotBusy && version != _snapshotVersion)
         {
-            var sinceOutput = now - new DateTimeOffset(Volatile.Read(ref _lastOutputTicks), TimeSpan.Zero).ToLocalTime();
-            if (sinceOutput >= TimeSpan.FromMilliseconds(_agents.Detection.SnapshotDebounceMs) &&
-                now - _lastSnapshotAt >= TimeSpan.FromMilliseconds(_agents.Detection.SnapshotMinIntervalMs))
+            var sinceOutput = now - new DateTimeOffset(Volatile.Read(ref _lastOutputTicks), TimeSpan.Zero);
+            var sinceSnapshot = now - _lastSnapshotAt;
+
+            // Agents: wait for output to settle, so a prompt is read whole. Watched screens
+            // (cards, previews): a steady once-a-second refresh while output flows.
+            var agentDue = IsAgent &&
+                           sinceOutput >= TimeSpan.FromMilliseconds(_agents.Detection.SnapshotDebounceMs) &&
+                           sinceSnapshot >= TimeSpan.FromMilliseconds(_agents.Detection.SnapshotMinIntervalMs);
+            var watchedDue = ScreenWatched && sinceSnapshot >= TimeSpan.FromSeconds(1);
+
+            if (agentDue || watchedDue)
             {
                 _ = SnapshotAsync(version, now);
             }
@@ -398,6 +447,16 @@ public sealed partial class TerminalTab
                 return;
             }
 
+            ScreenRows = rows;
+            ScreenText = string.Join('\n', rows.Skip(Math.Max(0, rows.Count - 14)));
+            Raise(nameof(ScreenRows));
+            Raise(nameof(ScreenText));
+
+            if (!IsAgent)
+            {
+                return;
+            }
+
             var before = Agent.State;
             Agent.OnScreen(rows, DateTimeOffset.Now);
             _agents.Trace.Write($"[{Id}] snapshot {rows.Count} rows in {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms -> {Agent.State}{(Agent.State != before ? $" ({Agent.Explain})" : string.Empty)}");
@@ -494,7 +553,7 @@ public sealed partial class TerminalTab
     /// word, then the launch command line, then a known process below the shell, then the
     /// title. Switching rules clears agent evidence when the tab becomes a shell again.
     /// </summary>
-    private void ReevaluateHarness(DateTimeOffset now, string trigger)
+    private void ReevaluateHarness(DateTimeOffset now, string trigger, bool force = false)
     {
         var id = _harnessFromIntegration ?? _harnessFromCommandline ?? _harnessFromProcess ?? _harnessFromTitle;
 
@@ -507,7 +566,7 @@ public sealed partial class TerminalTab
 
         var isAgent = _userOverride ?? (id is not null || _agents.Detection.TreatUnknownAsAgent);
 
-        if (id == Harness && isAgent == IsAgent)
+        if (!force && id == Harness && isAgent == IsAgent)
         {
             return;
         }
@@ -544,6 +603,7 @@ public sealed partial class TerminalTab
         Raise(nameof(Unread));
         Raise(nameof(Label));
         Raise(nameof(Detail));
+        Raise(nameof(SidebarDetail));
         Raise(nameof(Tooltip));
         Raise(nameof(Progress));
         Raise(nameof(ProgressIndeterminate));
@@ -554,20 +614,37 @@ public sealed partial class TerminalTab
     {
         try
         {
-            var dir = new DirectoryInfo(cwd);
-            for (var probe = dir; probe is not null; probe = probe.Parent)
+            if (Core.Git.GitRepository.FindRoot(cwd) is { } root)
             {
-                if (Directory.Exists(Path.Combine(probe.FullName, ".git")) || File.Exists(Path.Combine(probe.FullName, ".git")))
-                {
-                    return probe.Name;
-                }
+                return new DirectoryInfo(root).Name;
             }
 
+            var dir = new DirectoryInfo(cwd);
             return dir.Name.Length > 0 ? dir.Name : cwd;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or System.Security.SecurityException)
         {
             return cwd;
         }
+    }
+
+    private static string Ago(TimeSpan age)
+    {
+        if (age < TimeSpan.FromSeconds(3))
+        {
+            return "just now";
+        }
+
+        if (age < TimeSpan.FromMinutes(1))
+        {
+            return $"{(int)age.TotalSeconds} s ago";
+        }
+
+        if (age < TimeSpan.FromHours(1))
+        {
+            return $"{(int)age.TotalMinutes} min ago";
+        }
+
+        return age < TimeSpan.FromDays(1) ? $"{(int)age.TotalHours} h ago" : $"{(int)age.TotalDays} d ago";
     }
 }

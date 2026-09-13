@@ -409,7 +409,10 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
             {
                 Raise(nameof(WorkingDirectory));
                 Raise(nameof(Project));
+                Raise(nameof(ProjectAndBranch));
                 Raise(nameof(Detail));
+                Raise(nameof(SidebarDetail));
+                Raise(nameof(Tooltip));
             }
 
             Raise(nameof(StatusDetail));

@@ -1,0 +1,7 @@
+// Tab strip along the bottom, above the status bar; a slim caption bar on top.
+{
+  "description": "Tab strip at the bottom",
+  "tabs":    { "placement": "bottom", "style": "strip" },
+  "sidebar": { "placement": "hidden" },
+  "status":  { "visible": true }
+}

@@ -33,6 +33,40 @@ public sealed class TabSettings
     public bool ShowHarnessGlyph { get; init; } = true;
 }
 
+/// <summary>What fills the middle of the window.</summary>
+public enum ViewContent
+{
+    /// <summary>The active tab's live terminal.</summary>
+    Terminal,
+
+    /// <summary>One card per tab, bodies from screen text.</summary>
+    Dashboard,
+}
+
+/// <summary>A view is a layout plus what the middle shows (DESIGN.md §12.5). Four ship; users may retune them.</summary>
+public sealed class ViewDefinition
+{
+    /// <summary>A layout preset name or a file under <c>layouts\</c>.</summary>
+    public string Layout { get; init; } = "top";
+
+    public ViewContent Content { get; init; } = ViewContent.Terminal;
+
+    public string? Title { get; init; }
+}
+
+/// <summary>Git decoration per tab.</summary>
+public sealed class GitSettings
+{
+    /// <summary>Read <c>.git/HEAD</c> for the branch name. Cheap; on by default.</summary>
+    public bool Branch { get; init; } = true;
+
+    /// <summary>Run <c>git status --porcelain</c> per repository for the dirty marker. Off by default: it spawns a process.</summary>
+    public bool Dirty { get; init; }
+
+    /// <summary>How often one repository is asked for its status, when <see cref="Dirty"/> is on.</summary>
+    public int StatusIntervalMs { get; init; } = 10_000;
+}
+
 /// <summary>
 /// <c>settings.jsonc</c>. The embedded defaults are merged with the user's file, so the
 /// user names only what changes; a broken user file falls back to defaults with the
@@ -40,11 +74,13 @@ public sealed class TabSettings
 /// </summary>
 public sealed class AppSettings
 {
-    /// <summary><c>terminal</c>, <c>herd</c>, <c>dashboard</c>, <c>zen</c>.</summary>
+    public static readonly string[] ViewOrder = ["terminal", "herd", "dashboard", "zen"];
+
+    /// <summary>The view shown at start: <c>terminal</c>, <c>herd</c>, <c>dashboard</c>, <c>zen</c>.</summary>
     public string View { get; init; } = "terminal";
 
-    /// <summary>A layout preset name or a file under <c>layouts/</c>.</summary>
-    public string Layout { get; init; } = "top";
+    /// <summary>The four views and their layouts; a user file may retune any of them.</summary>
+    public Dictionary<string, ViewDefinition> Views { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
     public DetectionSettings Detection { get; init; } = new();
 
@@ -52,7 +88,12 @@ public sealed class AppSettings
 
     public TabSettings Tabs { get; init; } = new();
 
+    public GitSettings Git { get; init; } = new();
+
     public List<string> Problems { get; } = [];
+
+    /// <summary>The view's definition, else a terminal view on the default layout.</summary>
+    public ViewDefinition ViewFor(string id) => Views.GetValueOrDefault(id) ?? new ViewDefinition();
 
     public static AppSettings LoadDefaults() => Load(null);
 

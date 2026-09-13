@@ -57,7 +57,14 @@
 
             <Border Height="1" Background="{StaticResource Surface.Border}" />
 
-            <ListBox x:Name="List"
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="PreviewColumn" Width="0" />
+                </Grid.ColumnDefinitions>
+
+                <ListBox x:Name="List"
+                     Grid.Column="0"
                      Background="Transparent"
                      BorderThickness="0"
                      Margin="6"
@@ -65,6 +72,7 @@
                      Focusable="False"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                      ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     SelectionChanged="List_SelectionChanged"
                      MouseLeftButtonUp="List_MouseLeftButtonUp">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
@@ -139,6 +147,29 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+                <!-- Screen preview of the selected tab (switcher only): the last rows, in
+                     monospace, read through UIA — never a live terminal (§12.7, spike 6). -->
+                <Border x:Name="Preview"
+                        Grid.Column="1"
+                        Margin="0,6,6,6"
+                        CornerRadius="6"
+                        Background="{StaticResource Surface.Base}"
+                        BorderBrush="{StaticResource Surface.Border}"
+                        BorderThickness="1"
+                        ClipToBounds="True"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="TxtPreview"
+                               Margin="10,8"
+                               VerticalAlignment="Bottom"
+                               TextWrapping="NoWrap"
+                               FontFamily="{StaticResource Font.Mono}"
+                               FontSize="10.5"
+                               LineHeight="14"
+                               LineStackingStrategy="BlockLineHeight"
+                               Foreground="{StaticResource Text.Secondary}" />
+                </Border>
+            </Grid>
 
             <TextBlock x:Name="TxtEmpty"
                        Margin="16,4,16,12"

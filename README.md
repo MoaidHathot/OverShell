@@ -66,12 +66,42 @@ curl.exe -X POST "$env:OVERSHELL_ENDPOINT/v1/report?token=$env:OVERSHELL_TOKEN" 
 Rules per harness live in `%APPDATA%\OverShell\agents\*.jsonc` (bundled defaults inside
 the app; a file with the same name replaces one wholesale).
 
+## Views & layouts
+
+Four views, one key each (`Ctrl+Shift+1..4`, `` Ctrl+Shift+` `` toggles the last two), and a
+switch in the caption bar with a badge for tabs that need you:
+
+| View | What it is |
+|---|---|
+| **Terminal** | The live tab; tab strip in the caption bar |
+| **Herd** | The live tab plus a sidebar: every tab grouped by project, the ones needing you first |
+| **Dashboard** | One card per tab — header, the last screen rows in the tab's colours, state and activity — no live terminal is shrunk into a tile |
+| **Zen** | Just the terminal |
+
+A view is a **layout** plus what the middle shows. Layouts are small JSONC files: where
+the tabs go (`top`, `bottom`, `left`, `right`, `hidden`), how they look (`strip`, `list`,
+`rail`), whether the sidebar and status bar show. Eight presets ship (`top`, `bottom`,
+`left-rail`, `left-list`, `right-list`, `zen`, `herd`, `dashboard`); drop a same-named file
+into `%APPDATA%\OverShell\layouts\` to change one, or pick any preset for the current view
+from the palette (`Layout: …`). Retune the views in `settings.jsonc`:
+
+```jsonc
+{ "views": { "terminal": { "layout": "left-list" } } }
+```
+
+Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.jsonc`,
+`layouts\*.jsonc` — reloads live when saved. Tabs in a git repository show their branch
+(from `.git/HEAD`, no process spawned); `"git": { "dirty": true }` adds a `*` from
+`git status`.
+
 ## Keys & palette
 
-`Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`) ·
-`Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename · `Ctrl+T` /
-`Ctrl+Shift+W` / `Ctrl+Tab` / `Alt+1..9` tabs · `Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard
-(`Ctrl+C` copies only with a selection).
+`Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
+screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
+`Ctrl+Shift+1..4` views · `Ctrl+T` / `Ctrl+Shift+W` / `Ctrl+Tab` / `Alt+1..9` tabs ·
+`Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection).
+Right-click a tab, a sidebar row or a card for rename / treat as agent or shell / explain /
+close.
 
 Everything is a command bound in `%APPDATA%\OverShell\keybindings.jsonc` (Windows
 Terminal's shape; `"command": "unbound"` removes a default).
@@ -92,11 +122,12 @@ sends Windows toasts through [Palantir](https://github.com/MoaidHathot/Palantir)
 Working: single terminal on launch, tabs with live titles, profile menu, theming from
 your colour schemes, custom chrome with a Windows 11 backdrop, links (hover underlines
 one in its own colour where the renderer would, Ctrl+click opens it), bracketed paste,
-and the agent layer above: detection, two-line tabs with state, palette, endpoint,
-OpenCode plugin and Copilot hooks, notifications.
+the agent layer (detection, two-line tabs with state, palette, endpoint, OpenCode plugin
+and Copilot hooks, notifications), and the views above (layouts, Herd sidebar, Dashboard
+cards, Zen, live configuration reload, git branch per tab).
 
-In progress: layouts and views (Herd sidebar, Dashboard cards), settings hot reload, git
-branch per tab, tab groups, drag-and-drop.
+In progress: prompt bar and broadcast to agents, tab groups, drag-and-drop, session
+persistence and harness resume, `overshell://`, XAML skins.
 
 Not possible on the default terminal surface: transparency of the terminal body - see
 [DESIGN.md 7.6](DESIGN.md#76-transparency-is-structurally-impossible-here) for why, and

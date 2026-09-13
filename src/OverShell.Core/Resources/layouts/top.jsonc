@@ -1,0 +1,11 @@
+// Tabs in the caption bar, terminal below, status bar at the bottom. The default.
+//
+// Copy any preset into %APPDATA%\OverShell\layouts\<name>.jsonc to change it; a file
+// with the same name replaces the preset wholesale. Layouts are referenced by the views
+// in settings.jsonc ("views": { "terminal": { "layout": "top" } }).
+{
+  "description": "Tab strip in the caption bar",
+  "tabs":    { "placement": "top", "style": "strip" },
+  "sidebar": { "placement": "hidden" },
+  "status":  { "visible": true }
+}

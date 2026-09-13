@@ -1,0 +1,7 @@
+// A narrow rail of state dots and harness glyphs on the left; labels on hover.
+{
+  "description": "Narrow rail on the left",
+  "tabs":    { "placement": "left", "style": "rail" },
+  "sidebar": { "placement": "hidden" },
+  "status":  { "visible": true }
+}

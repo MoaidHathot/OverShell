@@ -304,20 +304,29 @@ internal static class HerdSelfTest
         await Task.Delay(300);
         var terminalHwnd = MainWindow.FindTerminalHwnd(tab.View);
         var focusBefore = ShortcutRouter.FocusedWindow();
-        window.Commands.TryExecute("palette.commands");
-        await Task.Delay(700);
-        var palette = window.Palette;
-        var focusInPalette = ShortcutRouter.FocusedWindow();
-        var paletteHwnd = palette is null ? 0 : new System.Windows.Interop.WindowInteropHelper(palette).Handle;
-        var paletteItems = palette?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Count : -1;
-        Log($"  palette: open={palette?.IsVisible} hwnd=0x{paletteHwnd:X} items={paletteItems} focus before=0x{focusBefore:X} in=0x{focusInPalette:X} terminal=0x{terminalHwnd:X}");
-        Check(palette is { IsVisible: true } && paletteItems > 5, "palette.commands opened with the command list");
-        Check(focusInPalette != terminalHwnd && focusInPalette != 0, "Win32 focus left the terminal for the palette (owned window, not a Popup)");
-        palette?.Close();
-        await Task.Delay(700);
-        var focusAfter = ShortcutRouter.FocusedWindow();
-        Log($"  palette closed: focus after=0x{focusAfter:X}");
-        Check(focusAfter == terminalHwnd, "focus returned to the terminal after the palette closed");
+        if (!window.IsActive)
+        {
+            // Another application holds the foreground (the machine is in use): an owned window
+            // cannot take focus and closes itself on Deactivated, by design. Not a failure of ours.
+            Log("  SKIP  palette focus checks: OverShell is not the foreground window");
+        }
+        else
+        {
+            window.Commands.TryExecute("palette.commands");
+            await Task.Delay(700);
+            var palette = window.Palette;
+            var focusInPalette = ShortcutRouter.FocusedWindow();
+            var paletteHwnd = palette is null ? 0 : new System.Windows.Interop.WindowInteropHelper(palette).Handle;
+            var paletteItems = palette?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Count : -1;
+            Log($"  palette: open={palette?.IsVisible} hwnd=0x{paletteHwnd:X} items={paletteItems} focus before=0x{focusBefore:X} in=0x{focusInPalette:X} terminal=0x{terminalHwnd:X}");
+            Check(palette is { IsVisible: true } && paletteItems > 5, "palette.commands opened with the command list");
+            Check(focusInPalette != terminalHwnd && focusInPalette != 0, "Win32 focus left the terminal for the palette (owned window, not a Popup)");
+            palette?.Close();
+            await Task.Delay(700);
+            var focusAfter = ShortcutRouter.FocusedWindow();
+            Log($"  palette closed: focus after=0x{focusAfter:X}");
+            Check(focusAfter == terminalHwnd, "focus returned to the terminal after the palette closed");
+        }
 
         // ---- 9. labels persist against profile + directory ----
         window.Commands.TryExecute("tab.rename");
@@ -333,6 +342,122 @@ internal static class HerdSelfTest
         Check(tab.Label == "selftest label", "the tab shows the user's label");
         state.SetLabel(tab.Profile.Id, tab.WorkingDirectory, null);
         tab.UserLabel = null;
+
+        // ---- 10. views and layouts (P1) ----
+        window.Commands.TryExecute("view.herd");
+        await Task.Delay(600);
+        Log($"  herd: layout={window.CurrentLayout.Name} caption={window.CaptionHeight} right-panel={window.FindName("RightPanel") is System.Windows.FrameworkElement rp && rp.Visibility == System.Windows.Visibility.Visible} groups={window.Sidebar.Items.Count} rows={window.Sidebar.Items.Sum(g => g.Tabs.Count)}");
+        Check(window.CurrentLayout.Name == "herd" && window.ViewId == "herd", "view.herd applied the herd layout");
+        Check(window.Sidebar.IsVisible && window.Sidebar.Items.Sum(g => g.Tabs.Count) == window.Tabs.Count, "the Herd sidebar lists every tab, grouped by project");
+        Check(window.Sidebar.Items.Count >= 1 && window.Sidebar.Items[0].Tabs.Count >= 1, "groups are non-empty");
+        SaveVisual(window.Sidebar, "overshell-selftest-sidebar.png");
+
+        window.Commands.TryExecute("view.dashboard");
+        await Task.Delay(1800);
+        var dashboard = (System.Windows.FrameworkElement)window.FindName("Dashboard")!;
+        var terminalHost = (System.Windows.FrameworkElement)window.FindName("TerminalHost")!;
+        var cards = dashboard.FindName("Cards") as System.Windows.Controls.ItemsControl;
+        Log($"  dashboard: visible={dashboard.IsVisible} terminal-visible={terminalHost.IsVisible} cards={cards?.Items.Count} screen-lengths=[{string.Join(", ", window.Tabs.Select(t => t.ScreenText.Length))}] watched=[{string.Join(", ", window.Tabs.Select(t => t.ScreenWatched))}]");
+        Check(dashboard.IsVisible && !terminalHost.IsVisible, "view.dashboard shows the cards and hides the terminal host");
+        Check(cards?.Items.Count == window.Tabs.Count, "one card per tab");
+        Check(window.Tabs.All(t => t.ScreenText.Length > 0), "every card body has screen text read through UIA while the terminals are hidden");
+        Check(window.ViewId == "dashboard" && window.CurrentLayout.Name == "dashboard", "dashboard view id and layout");
+        SaveVisual(dashboard, "overshell-selftest-dashboard.png");
+
+        window.Commands.TryExecute("view.zen");
+        await Task.Delay(500);
+        var status = (System.Windows.FrameworkElement)window.FindName("StatusBarSurface")!;
+        Log($"  zen: caption={window.CaptionHeight} status-visible={status.IsVisible} strip-visible={window.Strip.IsVisible} terminal-visible={terminalHost.IsVisible}");
+        Check(window.CaptionHeight < 40 && !status.IsVisible && !window.Strip.IsVisible && terminalHost.IsVisible, "view.zen hides tabs and status and slims the caption");
+
+        window.Commands.TryExecute("view.toggle");
+        await Task.Delay(400);
+        Check(window.ViewId == "dashboard", "view.toggle returns to the previous view");
+
+        window.Commands.TryExecute("view.terminal");
+        await Task.Delay(700);
+        Log($"  terminal: layout={window.CurrentLayout.Name} caption={window.CaptionHeight} strip-in-caption={window.Strip.Parent is System.Windows.Controls.ContentControl { Name: "CaptionTabsHost" }} focus=0x{ShortcutRouter.FocusedWindow():X} terminal=0x{MainWindow.FindTerminalHwnd(window.ActiveTab!.View):X}");
+        Check(window.CurrentLayout.Name == "top" && window.CaptionHeight > 50 && window.Strip.Parent is System.Windows.Controls.ContentControl, "view.terminal restores the top layout with the strip in the caption");
+        Check(!window.IsActive || ShortcutRouter.FocusedWindow() == MainWindow.FindTerminalHwnd(window.ActiveTab!.View), "focus is back in the terminal (when the window is foreground)");
+        Check(window.Tabs.All(t => !t.ScreenWatched), "screen watching stops when no view needs it");
+
+        // Every preset, applied and rendered: placements are asserted, the pictures are evidence.
+        var windowRoot = (System.Windows.FrameworkElement)window.FindName("WindowRoot")!;
+        var bottomBar = (System.Windows.FrameworkElement)window.FindName("BottomBar")!;
+        var leftHost = (System.Windows.FrameworkElement)window.FindName("LeftPanel")!;
+        var rightHost = (System.Windows.FrameworkElement)window.FindName("RightPanel")!;
+        foreach (var preset in new[] { "bottom", "left-rail", "left-list", "right-list", "herd", "zen", "top" })
+        {
+            Check(window.ApplyLayoutByName(preset), $"layout preset '{preset}' exists");
+            await Task.Delay(350);
+            var layout = window.CurrentLayout;
+            Log($"  layout {preset}: tabs={layout.Tabs.Placement}/{layout.Tabs.EffectiveStyle} strip-parent={window.Strip.Parent?.GetType().Name} strip-width={window.Strip.Width} bottom={bottomBar.IsVisible} left={leftHost.IsVisible} right={rightHost.IsVisible} sidebar={window.Sidebar.IsVisible} status={status.IsVisible} caption={window.CaptionHeight}");
+            SaveVisual(windowRoot, $"overshell-selftest-layout-{preset}.png");
+        }
+
+        Check(window.CurrentLayout.Name == "top" && window.Strip.Parent is System.Windows.Controls.ContentControl { Name: "CaptionTabsHost" }, "the cycle ends back on the top preset");
+
+        // ---- 11. layouts through configuration: a user layout file, hot-reloaded ----
+        var configRoot = OverShell.Core.AppPaths.ConfigRoot;
+        var tempConfig = configRoot.StartsWith(System.IO.Path.GetTempPath(), StringComparison.OrdinalIgnoreCase);
+        if (!tempConfig)
+        {
+            Log($"  SKIP  hot-reload checks: OVERSHELL_CONFIG_DIR is not under %TEMP% ({configRoot}); not touching real configuration");
+        }
+        else
+        {
+            System.IO.Directory.CreateDirectory(OverShell.Core.AppPaths.LayoutsDir);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(OverShell.Core.AppPaths.LayoutsDir, "top.jsonc"),
+                """{ "description": "selftest override", "tabs": { "placement": "left", "style": "list", "width": 210 }, "sidebar": { "placement": "right", "width": 260 } }""");
+            System.IO.File.WriteAllText(OverShell.Core.AppPaths.KeybindingsFile, """[ { "keys": "ctrl+alt+9", "command": "tab.new" }, { "keys": "ctrl+t", "command": "unbound" } ]""");
+            await Task.Delay(1500);
+
+            var leftPanel = (System.Windows.FrameworkElement)window.FindName("LeftPanel")!;
+            Log($"  after reload: layout={window.CurrentLayout.Name} tabs={window.CurrentLayout.Tabs.Placement}/{window.CurrentLayout.Tabs.EffectiveStyle} width={window.Strip.Width} left-visible={leftPanel.IsVisible} sidebar-visible={window.Sidebar.IsVisible} caption={window.CaptionHeight}");
+            Check(window.CurrentLayout.Tabs.Placement == OverShell.Core.Layout.TabsPlacement.Left && leftPanel.IsVisible && Math.Abs(window.Strip.Width - 210) < 0.5, "a user layouts\\top.jsonc was picked up and applied live: tab list on the left");
+            Check(window.Sidebar.IsVisible && window.CurrentLayout.Sidebar.Placement == OverShell.Core.Layout.SidePlacement.Right, "…with the sidebar on the right");
+            Check(window.CaptionHeight < 40, "…and a slim caption, since the strip left it");
+
+            var tabsBeforeReload = window.Tabs.Count;
+            Check(window.DispatchChord(System.Windows.Input.Key.D9, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Alt), "a reloaded keybindings.jsonc binds Ctrl+Alt+9 to tab.new");
+            await Task.Delay(1000);
+            Check(window.Tabs.Count == tabsBeforeReload + 1, "…and it opened a tab");
+            Check(!window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control), "…and \"unbound\" removed Ctrl+T");
+            window.CloseTab(window.Tabs[^1]);
+
+            System.IO.File.Delete(System.IO.Path.Combine(OverShell.Core.AppPaths.LayoutsDir, "top.jsonc"));
+            System.IO.File.Delete(OverShell.Core.AppPaths.KeybindingsFile);
+            await Task.Delay(1500);
+            Log($"  after removing overrides: layout tabs={window.CurrentLayout.Tabs.Placement} caption={window.CaptionHeight}");
+            Check(window.CurrentLayout.Tabs.Placement == OverShell.Core.Layout.TabsPlacement.Top && window.CaptionHeight > 50, "deleting the override restores the preset live");
+            Check(window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control), "…and Ctrl+T is bound again");
+            await Task.Delay(800);
+            window.CloseTab(window.Tabs[^1]);
+        }
+
+        // ---- 12. git decoration: a tab that starts in a repository shows its branch ----
+        var repo = OverShell.Core.Git.GitRepository.FindRoot(AppContext.BaseDirectory) ?? "W:\\Github\\OverShell";
+        if (System.IO.Directory.Exists(System.IO.Path.Combine(repo, ".git")) || System.IO.File.Exists(System.IO.Path.Combine(repo, ".git")))
+        {
+            // The shell in this profile emits no OSC 9;9 / OSC 7, so `cd` would not be seen; a
+            // profile starting in the repository exercises the same path from the first heartbeat.
+            var repoTab = window.AddTab(tab.Profile with { StartingDirectory = repo }, activate: false);
+            var gitDeadline = DateTime.UtcNow.AddSeconds(8);
+            while (DateTime.UtcNow < gitDeadline && repoTab.Branch is null)
+            {
+                await Task.Delay(250);
+            }
+
+            Log($"  git: cwd='{repoTab.WorkingDirectory}' root='{repoTab.GitRoot}' branch='{repoTab.Branch}' project='{repoTab.Project}' detail='{repoTab.SidebarDetail}' header='{repoTab.ProjectAndBranch}'");
+            Check(repoTab.Branch == OverShell.Core.Git.GitRepository.ReadBranch(repo), "a tab in a repository shows the branch from .git/HEAD");
+            Check(repoTab.ProjectAndBranch.EndsWith(repoTab.Branch ?? "?", StringComparison.Ordinal), "ProjectAndBranch carries it for cards and the sidebar");
+            Check(repoTab.Project == new System.IO.DirectoryInfo(repo).Name, "the project is the repository's directory name");
+            window.CloseTab(repoTab);
+        }
+        else
+        {
+            Log($"  SKIP  git checks: no repository found from {AppContext.BaseDirectory}");
+        }
 
         window.CloseTab(second);
         await Task.Delay(300);

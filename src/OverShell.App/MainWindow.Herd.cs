@@ -101,10 +101,10 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>Needs the visual tree: the toast layer anchors to the terminal area.</summary>
+    /// <summary>Needs the visual tree: the toast layer anchors to the middle of the window.</summary>
     private void InitializeNotifications()
     {
-        _notifications = new NotificationPipeline(this, TerminalHost, FocusTabById, _settings.Notifications);
+        _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications);
         _trace.Write($"notification sinks: {string.Join(", ", _notifications.ActiveSinks)}");
     }
 
@@ -204,11 +204,27 @@ public partial class MainWindow
             return;
         }
 
+        // The switcher previews screens: read every tab once now, then once a second while open.
+        foreach (var tab in Tabs)
+        {
+            tab.ScreenWatched = true;
+            tab.RequestScreen();
+        }
+
         _palette = PaletteWindow.Show(this, initial, BuildPaletteItems);
         _palette.Closed += (_, _) =>
         {
             _palette = null;
-            ActiveTab?.Surface.Focus();
+            var dashboard = _settings.ViewFor(_viewId).Content == ViewContent.Dashboard;
+            foreach (var tab in Tabs)
+            {
+                tab.ScreenWatched = dashboard;
+            }
+
+            if (!dashboard)
+            {
+                ActiveTab?.Surface.Focus();
+            }
         };
     }
 
@@ -273,6 +289,7 @@ public partial class MainWindow
                     Detail = string.IsNullOrEmpty(tab.Detail) ? tab.WorkingDirectory : $"{tab.Detail}  ·  {tab.WorkingDirectory}",
                     Hint = i < 9 ? $"Alt+{i + 1}" : null,
                     Dot = tab.StateBrush,
+                    Preview = () => captured.ScreenText,
                     Invoke = () => ActiveTab = captured,
                 }));
             }

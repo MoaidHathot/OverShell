@@ -1,0 +1,8 @@
+// The Herd view: tab strip on top and the agent sidebar beside the live terminal, tabs
+// grouped by project and sorted by who needs you.
+{
+  "description": "Agent sidebar beside the terminal",
+  "tabs":    { "placement": "top", "style": "strip" },
+  "sidebar": { "placement": "right", "width": 320 },
+  "status":  { "visible": true }
+}

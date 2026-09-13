@@ -14,6 +14,7 @@ using OverShell.App.Terminal;
 using OverShell.App.Terminal.Hyperlinks;
 using OverShell.App.Terminal.WindowsTerminal;
 using OverShell.Config;
+using OverShell.Core.Settings;
 
 namespace OverShell.App;
 
@@ -76,6 +77,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         RegisterCommands();
         LoadKeybindings();
         WireRouter();
+        InitializeViews();
 
         // Single terminal on launch — panes and extra tabs are opt-in.
         if (_catalog.DefaultProfile is { } profile)
@@ -173,6 +175,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         tab.AttentionRequested += OnAttention;
         tab.StateChanged += (_, _) => RefreshAttention();
+
+        // A dashboard or an open switcher wants this tab's screen from the start.
+        tab.ScreenWatched = _settings.ViewFor(_viewId).Content == ViewContent.Dashboard || _palette is not null;
 
         Tabs.Add(tab);
         _tabsById[tab.Id] = tab;
@@ -917,15 +922,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // -------------------------------------------------------- event handlers
 
-    private void NewTab_Click(object sender, RoutedEventArgs e) => NewTab(_catalog.DefaultProfile);
-
-    private void Profiles_Click(object sender, RoutedEventArgs e)
+    private void ShowProfilesMenu(Button button)
     {
-        if (sender is not Button button)
-        {
-            return;
-        }
-
         var menu = new ContextMenu
         {
             Style = (Style)FindResource("ShellContextMenu"),
@@ -962,37 +960,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         menu.IsOpen = true;
-    }
-
-    private void Tab_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: TerminalTab tab })
-        {
-            ActiveTab = tab;
-
-            // Stop this bubbling to the title bar, which would start a window drag.
-            e.Handled = true;
-        }
-    }
-
-    private void Tab_MouseDown(object sender, MouseButtonEventArgs e)
-    {
-        // Middle-click closes, matching every other tabbed app.
-        if (e.ChangedButton == MouseButton.Middle &&
-            sender is FrameworkElement { DataContext: TerminalTab tab })
-        {
-            CloseTab(tab);
-            e.Handled = true;
-        }
-    }
-
-    private void CloseTab_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is FrameworkElement { DataContext: TerminalTab tab })
-        {
-            CloseTab(tab);
-            e.Handled = true;
-        }
     }
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -1033,6 +1000,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     protected override void OnClosed(EventArgs e)
     {
         _statusTimer.Stop();
+        _reloadTimer?.Stop();
+        _configWatcher?.Dispose();
         _shortcuts.Dispose();
         _palette?.Close();
         _notifications?.Dispose();
@@ -1064,8 +1033,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// </summary>
     private void ApplyBackdrop()
     {
-        var top = (double)FindResource("Metrics.TitleBarHeight");
-        var bottom = (double)FindResource("Metrics.StatusBarHeight");
+        // The bands follow the layout: a slim caption without tabs, no status band in Zen.
+        var top = CaptionHeight;
+        var bottom = _statusVisible ? (double)FindResource("Metrics.StatusBarHeight") : 0;
 
         var active = WindowChromeInterop.Apply(this, WindowChromeInterop.Resolve(), top, bottom);
 
@@ -1149,6 +1119,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         RefreshAttention();
+        RefreshViews(now);
 
         if (ActiveTab is not { } active)
         {

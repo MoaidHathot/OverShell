@@ -6,18 +6,32 @@
 //
 //   { "notifications": { "sinks": { "palantir": { "enabled": true } } } }
 {
-  // terminal | herd | dashboard | zen
+  // The view shown at start: terminal | herd | dashboard | zen.
   "view": "terminal",
 
-  // A preset (top, bottom, left-rail, left-list, right-list, zen, herd) or a file name
-  // under %APPDATA%\OverShell\layouts\.
-  "layout": "top",
+  // A view is a layout (a preset name or a file under %APPDATA%\OverShell\layouts\) plus
+  // what the middle shows: "terminal" (the live tab) or "dashboard" (one card per tab).
+  // Ctrl+Shift+1..4 switch; Ctrl+Shift+` toggles between the last two.
+  "views": {
+    "terminal":  { "layout": "top",       "content": "terminal",  "title": "Terminal" },
+    "herd":      { "layout": "herd",      "content": "terminal",  "title": "Herd" },
+    "dashboard": { "layout": "dashboard", "content": "dashboard", "title": "Dashboard" },
+    "zen":       { "layout": "zen",       "content": "terminal",  "title": "Zen" }
+  },
 
   "detection": {
     "snapshotDebounceMs": 300,
     "snapshotMinIntervalMs": 300,
     "processProbeIntervalMs": 2500,
     "treatUnknownAsAgent": false
+  },
+
+  // Branch comes from .git/HEAD (free). The dirty marker runs `git status` per repository
+  // every statusIntervalMs and is off by default because it spawns a process.
+  "git": {
+    "branch": true,
+    "dirty": false,
+    "statusIntervalMs": 10000
   },
 
   "notifications": {

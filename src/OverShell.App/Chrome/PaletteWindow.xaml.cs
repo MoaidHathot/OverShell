@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using OverShell.Core.Search;
 
 namespace OverShell.App.Chrome;
@@ -29,6 +30,9 @@ public sealed class PaletteItem
     /// <summary>Project name for the <c>#project</c> filter; null for commands.</summary>
     public string? Project { get; init; }
 
+    /// <summary>Text shown in the preview pane while this row is selected; null hides the pane.</summary>
+    public Func<string?>? Preview { get; init; }
+
     public required Action Invoke { get; init; }
 
     public Visibility DotVisibility => Dot is null ? Visibility.Collapsed : Visibility.Visible;
@@ -46,8 +50,12 @@ public sealed class PaletteItem
 /// </summary>
 public partial class PaletteWindow : Window
 {
+    private const double ListWidth = 620;
+    private const double PreviewWidth = 340;
+
     private readonly Func<PaletteQuery, IReadOnlyList<PaletteItem>> _source;
     private readonly Action<string>? _accept;
+    private readonly DispatcherTimer _previewTimer;
     private bool _closing;
 
     private PaletteWindow(Window owner, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source, Action<string>? accept)
@@ -57,12 +65,13 @@ public partial class PaletteWindow : Window
         _source = source;
         _accept = accept;
 
-        // Just below the tab strip, centred — where the eye already is.
-        Left = owner.Left + ((owner.ActualWidth - Width) / 2);
-        Top = owner.Top + 72;
+        // The screen behind a preview keeps changing; refresh the text while the row is selected.
+        _previewTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
+        _previewTimer.Tick += (_, _) => UpdatePreview();
 
         Deactivated += (_, _) => CloseOnce();
-        Loaded += (_, _) => { Input.Focus(); Input.CaretIndex = Input.Text.Length; };
+        Loaded += (_, _) => { Input.Focus(); Input.CaretIndex = Input.Text.Length; Place(); };
+        Closed += (_, _) => _previewTimer.Stop();
     }
 
     /// <summary>Opens the search palette. <paramref name="initial"/> seeds the box (<c>&gt;</c> for commands).</summary>
@@ -71,6 +80,7 @@ public partial class PaletteWindow : Window
         var window = new PaletteWindow(owner, source, accept: null);
         window.Input.Text = initial;
         window.Refresh();
+        window.Place();
         window.Show();
         return window;
     }
@@ -88,9 +98,22 @@ public partial class PaletteWindow : Window
         // SizeToContent measures once at Show; content changed after InitializeComponent
         // must be laid out first or the last line is clipped by its own margin.
         window.UpdateLayout();
+        window.Place();
         window.Show();
         window.Input.SelectAll();
         return window;
+    }
+
+    /// <summary>Just below the tab strip, centred on the owner — where the eye already is. Re-run when the width changes.</summary>
+    private void Place()
+    {
+        if (Owner is not { } owner)
+        {
+            return;
+        }
+
+        Left = owner.Left + ((owner.ActualWidth - Width) / 2);
+        Top = owner.Top + 72;
     }
 
     private void Refresh()
@@ -107,9 +130,42 @@ public partial class PaletteWindow : Window
         TxtEmpty.Text = query.CommandsMode ? "No matching command" : "No matching tab";
         TxtEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         TxtPrompt.Text = query.CommandsMode ? "\uE756" : "\uE721"; // command prompt / search
+
+        var preview = items.Any(i => i.Preview is not null);
+        PreviewColumn.Width = preview ? new GridLength(PreviewWidth) : new GridLength(0);
+        Preview.Visibility = preview ? Visibility.Visible : Visibility.Collapsed;
+        Width = preview ? ListWidth + PreviewWidth : ListWidth;
+        if (IsLoaded)
+        {
+            Place();
+        }
+
+        UpdatePreview();
+        if (preview)
+        {
+            _previewTimer.Start();
+        }
+        else
+        {
+            _previewTimer.Stop();
+        }
+    }
+
+    private void UpdatePreview()
+    {
+        if (List.SelectedItem is PaletteItem { Preview: { } preview })
+        {
+            var text = preview() ?? string.Empty;
+            if (TxtPreview.Text != text)
+            {
+                TxtPreview.Text = text.Length == 0 ? "(reading…)" : text;
+            }
+        }
     }
 
     private void Input_TextChanged(object sender, TextChangedEventArgs e) => Refresh();
+
+    private void List_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdatePreview();
 
     private void Input_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -192,7 +248,7 @@ public partial class PaletteWindow : Window
 
         if (then is not null)
         {
-            Dispatcher.BeginInvoke(then, System.Windows.Threading.DispatcherPriority.Input);
+            Dispatcher.BeginInvoke(then, DispatcherPriority.Input);
         }
     }
 

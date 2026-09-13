@@ -6,13 +6,14 @@ namespace OverShell.App.Agents;
 
 /// <summary>
 /// What every tab needs to detect and track the agent inside it. One instance per
-/// window; tabs share the rules, the tuning and the screen reader.
+/// window; tabs share the rules, the tuning and the screen reader. Rules and tuning are
+/// swapped in place on a configuration reload; tabs read them on their next heartbeat.
 /// </summary>
 internal sealed class AgentServices
 {
-    public required AgentRules Rules { get; init; }
+    public required AgentRules Rules { get; set; }
 
-    public required DetectionSettings Detection { get; init; }
+    public required DetectionSettings Detection { get; set; }
 
     public ScreenReader Screen { get; } = new();
 
