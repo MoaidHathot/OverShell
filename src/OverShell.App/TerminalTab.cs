@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
+using OverShell.App.Agents;
 using OverShell.App.Terminal;
 using OverShell.App.Terminal.Hyperlinks;
 using OverShell.Config;
@@ -52,11 +53,12 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     private bool _disposed;
     private DispatcherTimer? _revealTimeout;
 
-    public TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher)
+    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null)
     {
         Profile = profile;
         Scheme = scheme;
         _dispatcher = dispatcher;
+        _userLabel = string.IsNullOrWhiteSpace(userLabel) ? null : userLabel.Trim();
 
         Accent = TabAccent.For(profile.Id);
         Background = TerminalThemeMapper.ToBrush(scheme.Background);
@@ -67,12 +69,28 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         // Seed the directory so the status bar is useful before the shell emits OSC 7/9;9.
         _workingDirectory = startingDirectory;
 
+        var commandLine = Expand(profile.CommandLine) ?? "powershell.exe";
+
+        // Integrations inside the child find their way back by these variables (§12.4).
+        var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        if (agents.EnvironmentFor?.Invoke(Id) is { } endpoint)
+        {
+            foreach (var (key, value) in endpoint)
+            {
+                environment[key] = value;
+            }
+        }
+
         var descriptor = new SessionDescriptor
         {
-            CommandLine = Expand(profile.CommandLine) ?? "powershell.exe",
+            CommandLine = commandLine,
             WorkingDirectory = startingDirectory,
             ProfileId = profile.Id,
+            Environment = environment,
         };
+
+        // Before the session exists: the stream's signals must have a listener from the first byte.
+        InitializeAgent(agents, commandLine);
 
         (Session, Surface) = TerminalFactory.Create(descriptor);
 
@@ -310,6 +328,11 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         _revealTimeout = null;
 
         Session.OutputReceived -= OnOutput;
+        _stream.Signal -= OnSignal;
+        if (_hwnd != 0)
+        {
+            _agents.Screen.Forget(_hwnd);
+        }
 
         // Input first, then the process, then the view: the surface keeps generating
         // focus traffic while it unloads, and that must land on a closed input path.
@@ -324,6 +347,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     {
         Interlocked.Increment(ref _outputVersion);
         _stream.Observe(chunk);
+        NoteOutput();
 
         string? title;
         string? cwd;
@@ -370,14 +394,22 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
         _dispatcher.BeginInvoke(() =>
         {
+            if (_disposed)
+            {
+                return;
+            }
+
             if (titleChanged)
             {
                 Raise(nameof(Title));
+                OnTitleChanged(title!);
             }
 
             if (cwdChanged)
             {
                 Raise(nameof(WorkingDirectory));
+                Raise(nameof(Project));
+                Raise(nameof(Detail));
             }
 
             Raise(nameof(StatusDetail));
@@ -406,7 +438,8 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     /// <summary>Raised once, the first time the shell process is observed to have exited.</summary>
     internal void NotifyExited()
     {
-        if (_exitNotified)
+        // A tab the user closed is not news; the exit arrives on the dispatcher after Dispose.
+        if (_exitNotified || _disposed)
         {
             return;
         }
@@ -416,8 +449,11 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         // The shell is gone; further keystrokes would hit a dead pseudoconsole.
         SuppressInput();
 
+        Agent.OnExit(Session.ExitCode, DateTimeOffset.Now);
+
         Raise(nameof(IsRunning));
         Raise(nameof(Title));
+        RaiseAgentProperties();
         Exited?.Invoke(this, EventArgs.Empty);
     }
 

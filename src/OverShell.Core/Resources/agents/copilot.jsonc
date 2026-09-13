@@ -1,0 +1,36 @@
+// GitHub Copilot CLI — https://github.com/github/copilot-cli
+//
+// Exact state comes from hooks (`OverShell integrations install copilot`): userPromptSubmitted,
+// agentStop, notification(permission_prompt | elicitation_dialog), sessionStart/End. Without
+// them the screen rules below carry detection; they are conservative on purpose.
+{
+  "id": "copilot",
+  "displayName": "Copilot CLI",
+  "glyph": "✦",
+  "detect": {
+    "commandline": ["(^|[\\\\/\\s\"'])copilot(\\.(exe|cmd|ps1))?(\\s|$|[\"'])"],
+    "title": ["\\bCopilot\\b"],
+    "process": ["copilot"]
+  },
+  "title": {},
+  "screen": {
+    "blocked": [
+      "Yes, and approve",
+      "tell Copilot what to do",
+      "\\bAllow\\b[^\\n]{0,40}\\bDeny\\b",
+      "Do you want to (allow|run|proceed|continue)",
+      "\\[y/N\\]",
+      "\\(y/n\\)"
+    ],
+    "working": ["\\bThinking\\b", "\\besc\\b[^\\n]{0,12}\\b(cancel|interrupt)\\b", "\\bWorking\\b"],
+    "idle": ["\\? for shortcuts"]
+  },
+  "notification": {
+    "blocked": ["permission", "approval", "allow", "needs your input", "question"],
+    "error": ["\\berror\\b", "\\bfailed\\b"],
+    "done": ["\\bcomplete", "\\bfinished\\b", "\\bidle\\b", "\\bdone\\b"]
+  },
+  "idleAfterMs": 1500,
+  "screenRows": 12,
+  "resumeCommand": "copilot --resume={sessionId}"
+}

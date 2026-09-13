@@ -1,0 +1,70 @@
+// OverShell default settings.
+//
+// Copy only what you want to change into %APPDATA%\OverShell\settings.jsonc. Objects merge
+// key by key; arrays replace as a whole; setting a key to null removes it. Sinks are named
+// so that enabling one is a one-liner:
+//
+//   { "notifications": { "sinks": { "palantir": { "enabled": true } } } }
+{
+  // terminal | herd | dashboard | zen
+  "view": "terminal",
+
+  // A preset (top, bottom, left-rail, left-list, right-list, zen, herd) or a file name
+  // under %APPDATA%\OverShell\layouts\.
+  "layout": "top",
+
+  "detection": {
+    "snapshotDebounceMs": 300,
+    "snapshotMinIntervalMs": 300,
+    "processProbeIntervalMs": 2500,
+    "treatUnknownAsAgent": false
+  },
+
+  "notifications": {
+    // Every enabled sink runs for every event its "when" allows. Kinds: blocked, done,
+    // error, exited. Harnesses: opencode, copilot, claude, codex, generic, shell.
+    "sinks": {
+      // In-window toast over the terminal. Never for the tab you are looking at.
+      "overlay": { "type": "overlay", "durationMs": 6000, "when": { "notActiveTab": true } },
+
+      // Taskbar overlay badge with the number of tabs needing attention, plus a flash
+      // when the window is not in the foreground.
+      "taskbar": { "type": "taskbar" },
+
+      // System sounds only while you are away from the window.
+      "sound": {
+        "type": "sound",
+        "when": { "windowUnfocused": true },
+        "sounds": { "blocked": "exclamation", "error": "hand", "done": "asterisk" }
+      },
+
+      // Windows toast through Palantir (https://github.com/MoaidHathot/Palantir).
+      // {…} placeholders are filled from the event: kind, title, message, detail, time,
+      // tab.id, tab.label, tab.harness, tab.harnessName, tab.project, tab.cwd.
+      // Flags verified against palantir 2.0.1 --help. Add
+      //   "--launch", "overshell://focus/{tab.id}"
+      // once the overshell:// handler ships (P2); until then a click would open the
+      // "choose an app" dialog.
+      "palantir": {
+        "type": "command",
+        "enabled": false,
+        "exe": "palantir",
+        "args": [
+          "-t", "{title}",
+          "-m", "{message}",
+          "-b", "{tab.cwd}",
+          "--tag", "overshell-{tab.id}",
+          "--replace",
+          "-q"
+        ],
+        "stdinJson": false,
+        "when": { "notActiveTab": true }
+      }
+    }
+  },
+
+  "tabs": {
+    "twoLine": true,
+    "showHarnessGlyph": true
+  }
+}

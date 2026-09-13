@@ -71,8 +71,6 @@ internal sealed class ShortcutRouter : IDisposable
     private const int VkProcessKey = 0xE5;
     private const int VkPacket = 0xE7;
 
-    private readonly List<Binding> _bindings = [];
-
     private IntPtr _windowHandle;
     private bool _pointerOverTerminal;
     private bool _disposed;
@@ -168,12 +166,12 @@ internal sealed class ShortcutRouter : IDisposable
         Key.Tab, Key.Left, Key.Right, Key.Up, Key.Down,
     ];
 
-    /// <param name="handler">Return true to swallow the key, false to let it reach the shell.</param>
-    public void Add(Key key, ModifierKeys modifiers, Func<bool> handler) =>
-        _bindings.Add(new Binding(key, modifiers, handler));
-
-    public void Add(Key key, ModifierKeys modifiers, Action action) =>
-        Add(key, modifiers, () => { action(); return true; });
+    /// <summary>
+    /// Every key chord pressed while a terminal (or the window) has focus, before the
+    /// terminal sees it. Return true to swallow the key, false to let it reach the shell.
+    /// The window maps chords to commands here; this class only sees virtual keys.
+    /// </summary>
+    public Func<Key, ModifierKeys, bool>? Chord { get; set; }
 
     public void Dispose()
     {
@@ -265,18 +263,9 @@ internal sealed class ShortcutRouter : IDisposable
         var modifiers = CurrentModifiers();
         Trace(virtualKey, key, modifiers);
 
-        foreach (var binding in _bindings)
+        if (Chord?.Invoke(key, modifiers) == true)
         {
-            if (binding.Key != key || binding.Modifiers != modifiers)
-            {
-                continue;
-            }
-
-            if (binding.Handler())
-            {
-                handled = true;
-            }
-
+            handled = true;
             return;
         }
 
@@ -419,8 +408,6 @@ internal sealed class ShortcutRouter : IDisposable
 
         return modifiers;
     }
-
-    private readonly record struct Binding(Key Key, ModifierKeys Modifiers, Func<bool> Handler);
 
     /// <summary>
     /// Set <c>OVERSHELL_TRACE_KEYS=1</c> to log every chord the router observes to

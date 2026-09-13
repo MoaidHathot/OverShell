@@ -1,0 +1,46 @@
+// OverShell default keybindings.
+//
+// Copy the entries you want to change into %APPDATA%\OverShell\keybindings.jsonc — only
+// what you list there is changed. To remove a default, bind its keys to "unbound":
+//   { "keys": "ctrl+t", "command": "unbound" }
+//
+// Key names follow Windows Terminal: ctrl, shift, alt, win; letters, digits, f1..f24,
+// tab, esc, enter, space, backspace, del, ins, home, end, pgup, pgdn, up/down/left/right,
+// plus, minus, comma, period, slash, backslash, semicolon, quote, backtick, [ and ].
+[
+  // ---- tabs ----
+  { "keys": "ctrl+t",              "command": "tab.new" },
+  { "keys": "ctrl+shift+w",        "command": "tab.close" },
+  { "keys": "ctrl+tab",            "command": "tab.next" },
+  { "keys": "ctrl+shift+tab",      "command": "tab.previous" },
+  { "keys": "ctrl+pgdn",           "command": "tab.next" },
+  { "keys": "ctrl+pgup",           "command": "tab.previous" },
+  { "keys": "alt+1",               "command": "tab.switchTo.1" },
+  { "keys": "alt+2",               "command": "tab.switchTo.2" },
+  { "keys": "alt+3",               "command": "tab.switchTo.3" },
+  { "keys": "alt+4",               "command": "tab.switchTo.4" },
+  { "keys": "alt+5",               "command": "tab.switchTo.5" },
+  { "keys": "alt+6",               "command": "tab.switchTo.6" },
+  { "keys": "alt+7",               "command": "tab.switchTo.7" },
+  { "keys": "alt+8",               "command": "tab.switchTo.8" },
+  { "keys": "alt+9",               "command": "tab.switchTo.9" },
+  { "keys": "ctrl+shift+j",        "command": "tab.jumpToAttention" },
+  { "keys": "ctrl+shift+r",        "command": "tab.rename" },
+  { "keys": "ctrl+shift+space",    "command": "palette.tabs" },
+
+  // ---- palette & views ----
+  { "keys": "ctrl+shift+p",        "command": "palette.commands" },
+  { "keys": "ctrl+shift+1",        "command": "view.terminal" },
+  { "keys": "ctrl+shift+2",        "command": "view.herd" },
+  { "keys": "ctrl+shift+3",        "command": "view.dashboard" },
+  { "keys": "ctrl+shift+4",        "command": "view.zen" },
+  { "keys": "ctrl+shift+backtick", "command": "view.toggle" },
+
+  // ---- clipboard ----
+  // Ctrl+C copies only when something is selected; otherwise it reaches the shell as an
+  // interrupt, which is what a terminal user expects.
+  { "keys": "ctrl+c",              "command": "clipboard.copyIfSelection" },
+  { "keys": "ctrl+v",              "command": "clipboard.paste" },
+  { "keys": "ctrl+shift+c",        "command": "clipboard.copy" },
+  { "keys": "ctrl+shift+v",        "command": "clipboard.paste" },
+]

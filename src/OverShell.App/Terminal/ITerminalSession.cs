@@ -23,6 +23,9 @@ public interface ITerminalSession : IDisposable
 
     int? ExitCode { get; }
 
+    /// <summary>The root process's id once it exists; the agent detector walks its descendants.</summary>
+    int? ProcessId { get; }
+
     /// <summary>Raised on a background thread once the child process exists.</summary>
     event EventHandler? Started;
 

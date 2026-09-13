@@ -1,0 +1,40 @@
+// Claude Code — https://code.claude.com
+//
+// The OSC 0 title is the reliable turn signal (reverse-engineered from v2.1.86): "✳" idle,
+// a braille spinner while working. OSC 9/99/777 notifications are idle-for-60s timers and are
+// never sent when the terminal is detected as Windows Terminal, which — because OverShell sets
+// WT_SESSION — includes us. Hooks land later (DESIGN.md §12.8, P2).
+{
+  "id": "claude",
+  "displayName": "Claude Code",
+  "glyph": "✳",
+  "detect": {
+    "commandline": ["(^|[\\\\/\\s\"'])claude(\\.(exe|cmd|ps1))?(\\s|$|[\"'])"],
+    "title": ["Claude Code"],
+    "process": ["claude"]
+  },
+  "title": {
+    "working": ["^[\\u2800-\\u28FF]"],
+    "idle": ["^✳"]
+  },
+  "screen": {
+    "blocked": [
+      "Do you want to (proceed|make this edit|create|allow|continue)",
+      "don't ask again",
+      "tell Claude what to do differently",
+      "\\[Y/n\\]",
+      "\\(y/n\\)"
+    ],
+    "working": ["Esc to interrupt", "^[✻✽✶✳✢·⠂⠐⠈⠠⠄⠁]\\s.*…", "\\bThinking\\b"],
+    "idle": ["\\? for shortcuts"]
+  },
+  "notification": {
+    "blocked": ["permission", "approve"],
+    "done": ["waiting for your input", "\\bcomplete", "\\bfinished\\b"]
+  },
+  // The status line Claude draws while working: "✻ Thinking… (12s · ↓ 1.2k tokens)".
+  "summary": "^[✻✽✶✳✢·]\\s+(.+)$",
+  "idleAfterMs": 1500,
+  "screenRows": 12,
+  "resumeCommand": "claude --resume {sessionId}"
+}

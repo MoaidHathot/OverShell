@@ -255,14 +255,34 @@ solution pins x64 so only that copy is shipped.
 | Variable | Values | Purpose |
 |---|---|---|
 | `OVERSHELL_BACKDROP` | `acrylic` (default), `mica`, `micaalt`, `none` | System backdrop behind the chrome |
+| `OVERSHELL_CONFIG_DIR` | a directory | Configuration root instead of `%APPDATA%\OverShell` (`settings.jsonc`, `keybindings.jsonc`, `agents\`) |
 | `OVERSHELL_TRACE_KEYS` | `1` | Log every chord the router sees to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Log link hover/click resolution to `%TEMP%\overshell-links.log`, and run one UIA self-probe after the first tab is ready |
+| `OVERSHELL_TRACE_AGENTS` | `1` | Log harness detection, state transitions with their evidence, endpoint traffic and notification dispatch to `%TEMP%\overshell-agents.log` |
+| `OVERSHELL_SPIKES` | `1` | Run the §12.7 spikes in-process, log to `%TEMP%\overshell-spikes.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode` | Run the P0 end-to-end self-test in-process (§12.9): stream signals, endpoint, Copilot shim, process probe, palette focus, labels; `opencode` runs the real `opencode run` with the installed plugin. Log: `%TEMP%\overshell-selftest.log` |
+
+Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
+`OVERSHELL_TAB_ID` and `COPILOT_HOOK_ALLOW_LOCALHOST=1` (§12.4).
+
+### Command line
+
+```
+OverShell integrations status
+OverShell integrations install   <opencode|copilot|all>
+OverShell integrations uninstall <opencode|copilot|all>
+```
+
+A GUI process has no console; the parent's is attached — unless stdout is redirected,
+in which case the redirected handle is used as-is (`AttachConsole` would replace it).
 
 ### Diagnostics
 
 - `%TEMP%\overshell-crash.log` — every unhandled exception, always written
 - `%TEMP%\overshell-keys.log` — key trace, only when `OVERSHELL_TRACE_KEYS=1`
 - `%TEMP%\overshell-links.log` — link trace, only when `OVERSHELL_TRACE_LINKS=1`
+- `%TEMP%\overshell-agents.log` — agent trace, only when `OVERSHELL_TRACE_AGENTS=1`
+- `GET %OVERSHELL_ENDPOINT%/v1/tabs?token=%OVERSHELL_TOKEN%` from inside any tab — every tab's harness, state and explain trail
 
 ### Build layout
 
@@ -290,10 +310,14 @@ pinning the private feed would leak an internal URL into a public repository, an
 - Comments explain **why**, never what. If a line looks wrong but is deliberate, the
   comment says what breaks without it.
 - Zero build warnings. Not "few" — zero.
-- `OverShell.Config` must stay free of any WPF reference.
+- `OverShell.Config` and `OverShell.Core` must stay free of any WPF reference. `Core`
+  holds everything testable by plain xunit: commands, keybindings, agent rules and the
+  state machine, search, notifications policy, settings, the integration protocol.
 - Anything touching a session assumes it may already be dead (see §7.3).
 - Only `TerminalTab` and the `Terminal/` folder may name a session or surface
   implementation. The chrome sees `ITerminalSession` / `ITerminalSurface` and nothing else.
+- Every chord goes through `keybindings.jsonc` → command id → `CommandRegistry`. Nothing
+  in the window binds a key directly.
 
 ---
 
@@ -667,6 +691,37 @@ the overlay falls back to a bar near the cell's bottom.
 Verified live: predicted `14×28` = observed, underline top 23 / thickness 1 against a
 baseline of 22, and the overlay window placed at `y = 110 + 23`.
 
+### 7.14 A pseudoconsole child inherits *our* redirected stdio unless told otherwise
+
+Found by launching OverShell from a tool with stdin/stdout piped: the tab's `pwsh` printed
+its banner into that pipe, complained that "the console output doesn't support virtual
+terminal processing or it's redirected", read EOF from the pipe and exited 0 within
+1.4 s. The pseudoconsole never saw it.
+
+Without `STARTF_USESTDHANDLES`, the console subsystem gives a console child the parent's
+standard handles whenever those are not console handles — a pipeline, a CI runner, a
+launcher that captures output. `bInheritHandles = FALSE` does not prevent it. Setting the
+flag with all three handles `NULL` makes the child take the pseudoconsole's own. Windows
+Terminal never hits this because a packaged GUI app has no standard handles at all.
+
+Verified: same launch, shell alive after 6 s, nothing leaked to the pipe, clean exit.
+
+### 7.15 What ConPTY forwards from the application to us
+
+Measured with the self-test (§12.9), one `pwsh` command line emitting each sequence:
+
+| Sequence | Forwarded by the bundled OpenConsole? |
+|---|---|
+| OSC 0 / 2 title | yes (already relied on) |
+| OSC 9;4 progress (`state;percent`) | yes |
+| OSC 777;notify;title;body | **yes** — the rule files' `notification` patterns do fire |
+| bare BEL | yes |
+| OSC 133 A/B/C/D marks | yes |
+| DECSET 2004 / 1000–1003 / 1004 | yes (the private-mode tracker sees them) |
+
+`TerminalStreamState` decodes them on the I/O thread and queues them; the tab drains the
+queue on the UI thread into `AgentStateMachine`, one dispatcher operation per burst.
+
 ---
 
 ## 8. Status
@@ -690,6 +745,7 @@ baseline of 22, and the overlay window placed at `y = 110 + 23`.
 | **Hyperlinks** (§11.8) | Hovering underlines the link under the pointer in its own colour at the renderer's underline position and shows it in the status bar; Ctrl turns the pointer into a hand; Ctrl+click opens it; OSC 8 links resolved by visible text; wrapped URLs and wide glyphs handled by asking the terminal (§7.10). Text logic and metric reconstruction verified by script (34 checks); UIA walk, `FindText` geometry, colour/font attributes and the overlay verified in-process by the trace-mode self-test; **confirmed by a human 2026-09-13** (below) |
 | **Overlay host** (§7.12, §11.5) | Click-through, never-activated owned window for drawing over the terminal body. Carries the link underline today; the drag preview, toasts and badges go here next |
 | **Paste parity** | Line endings → CR, other C0 dropped, bracketed when DECSET 2004 is on |
+| **Herd overseer P0** (§12.8) | `OverShell.Core` (WPF-free, 99 xunit tests): commands, `keybindings.jsonc`, agent rule files + `AgentStateMachine`, fuzzy search, notification policy, `settings.jsonc`, integration protocol + installer. App: every chord through `keybindings.jsonc` → `CommandRegistry`; palette / tab switcher / rename as an owned window (§12.7 spike 3); `TerminalStreamState` decodes BEL, OSC 9;4, 9/99/777, 133, DECSET 1004; detector fed by title, screen snapshot (UIA, 300 ms debounce), process tree probe (toolhelp), output activity; loopback endpoint with per-run token, environment injected into every child; Copilot hook shim + OpenCode plugin written by `integrations install`; two-line tab item with state dot / ring / pulse, unread badge, progress bar; `tab.jumpToAttention`; status-bar counts; sinks `overlay` (non-activating owned toast window), `taskbar` (badge + progress + flash), `sound`, `command` (Palantir recipe, flags verified); labels persisted per profile + directory. **Verified in-process** (§12.9) including the real OpenCode plugin end-to-end; ConPTY stdio bug found and fixed (§7.14) |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -714,7 +770,7 @@ yet confirmed"). They are on the card.
 
 ### Fixed but not yet confirmed by a human
 
-Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last section; run it in a tab.
+Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run it in a tab.
 
 | Item | Fix |
 |---|---|
@@ -723,43 +779,49 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last section; run 
 | Transparent flash on new tab | Reveal after `Ready` + render turn (§7.5) |
 | Doubled caption icons | `GlassFrameThickness` back to `0` (§7.5) |
 | `InvalidOperationException` on tab/app close | Gone by construction: `WriteInput` never throws (§7.3) |
+| Palette / switcher / rename take the keyboard and give it back | Owned activated window; focus in/out verified in-process (§12.9), typing not yet by a human |
+| Toasts are readable and clickable over the terminal | Non-activating owned window at the terminal's top-right; rendered and counted in-process, click-to-focus not yet by a human |
+| Two-line tabs, badge, counts, taskbar badge/flash | Rendered in-process; look-and-feel is a human call |
 
 ### Open — near term
 
 - [ ] **Verify shortcuts on real hardware.** `Ctrl+T`, `Ctrl+Shift+W`, `Ctrl+Tab`,
-      `Alt+1..9`, `Ctrl+C`/`Ctrl+V`, `Ctrl+Shift+C`/`V`, right-click copy-or-paste.
-      Not yet reported on by a human — the test card (§7.8) lists them all. (Links were
-      confirmed 2026-09-13.)
+      `Alt+1..9`, `Ctrl+C`/`Ctrl+V`, `Ctrl+Shift+C`/`V`, right-click copy-or-paste, and now
+      `Ctrl+Shift+P` (commands), `Ctrl+Shift+Space` (tabs), `Ctrl+Shift+J` (jump),
+      `Ctrl+Shift+R` (rename). Chord → command resolution is verified in-process; the
+      Win32 pre-dispatch path with a real keyboard is not. The test card lists them all.
 - [ ] **Watch for double-Tab.** If one press yields two tabs, the terminal is receiving
       both the forwarded `WM_KEYDOWN` and a `WM_CHAR`; narrow the forward.
-- [ ] Live settings reload — `FileSystemWatcher` on `settings.json` (designed, not built).
+- [ ] Live settings reload — `FileSystemWatcher` on `settings.jsonc` / `keybindings.jsonc`
+      / `agents\*.jsonc` (P1).
 - [ ] `closeOnExit` semantics. Today a dead tab stays open, dimmed and italic, with the
       exit banner in the buffer.
-- [ ] Commit. Nothing is committed yet beyond the initial commit.
+- [ ] Copilot CLI end-to-end with the real `copilot` (the shim is verified verbatim against
+      the endpoint; the harness firing it is not — `~/.copilot/hooks` did not exist on the
+      reference machine before `integrations install copilot`).
 
 ### Open — the actual feature work
 
-- [ ] **Configurable tab strip placement** — top / left / bottom / right at runtime.
+- [ ] **P1** (§12.8): layouts + views, Herd sidebar and Dashboard cards, settings hot
+      reload, tab switcher preview, git branch/dirty per tab.
 - [ ] **Multiple independent tab groups** with splitters.
 - [ ] **Drag-and-drop tab reorder and move between groups.** The drag preview draws in
       `OverlayHost` (§7.12), which already exists for the link underline. Note the
       scrollback caveat in §7.1.
 - [ ] Layout persistence to `%APPDATA%\OverShell\layout.json`.
 - [ ] Split panes (our own splitter tree, independent of WT's panes).
-- [ ] **Stream observers for agent sessions** (§11.6): OSC 133 marks, OSC 9;4 progress,
-      OSC 9 / 777 notifications, BEL → tab badge + overlay toast. `TerminalStreamState`
-      is where they go.
 
 ### Open — later
 
 - [ ] Search. WT's search box is UWP-only; would have to be built over the buffer — the
       UIA `ITextProvider` exposes `FindText` (§7.10), or it comes free with an xterm.js
       surface (§11.4a).
-- [ ] Keybindings driven from `settings.json` `actions` / `keybindings`.
+- [ ] Import Windows Terminal's `actions` / `keybindings` into `keybindings.jsonc` (the
+      object shape is already accepted).
 - [ ] Profile icons in the tab strip and new-tab menu (paths are already parsed).
 - [ ] Azure Cloud Shell generator.
 - [ ] Unit tests for `OverShell.Config`, `HyperlinkDetector` and `TerminalStreamState` —
-      the genuinely testable layers (the latter two are currently checked by a script).
+      the latter two are checked by a script and the in-process self-test today.
 - [ ] `ReplaySession` (§11.3) so the tab pipeline can be tested without synthetic input.
 - [ ] Second surface prototype: xterm.js / WebView2 (§11.7 phase 4).
 
@@ -1113,3 +1175,225 @@ How it works:
 
 What remains approximate is in §9: a URL ending in the very last column of a non-wrapped
 row, one longer than nine rows, and links whose text is not one colour.
+
+---
+
+## 12. The herd overseer — architecture and plan
+
+Decided 2026-09-13, after studying herdr, sidekick.nvim, Conductor/Claude Squad/Vibe
+Kanban/Crystal/Superset/AgentsRoom, and what the agents themselves emit (§12.2). The
+goal from §1 restated: OverShell manages a **herd** of AI coding agents from *outside*
+their terminals — rich chrome, not a richer TUI.
+
+### 12.1 Principles
+
+1. **Attention-first.** Every surface — tab, sidebar, dashboard, taskbar, toast — ranks
+   by "needs you now". AgentsRoom put it best: *the number of agents was never the hard
+   part; knowing which one needs you, right now, always was.*
+2. **Harness-agnostic core, integrations additive.** Detection works with nothing
+   installed; a hook or plugin makes it exact. herdr's rule: one **state authority** per
+   tab — an integration that is reporting wins, otherwise the detector decides. Never two
+   competing sources of truth.
+3. **Chrome outside the terminal.** We never inject into or restyle a TUI.
+4. **Terminals are immortal across UI changes.** Layout and view switches re-parent
+   surfaces; only closing a tab disposes one (§3, one surface per tab). `HwndHost`
+   re-parents rather than destroys when its `PresentationSource` changes.
+5. **Everything is a command** — named, palette-searchable, bindable from a file.
+6. **Cheap by default.** Screen snapshots only when `OutputVersion` changes, debounced;
+   no new polling loops; the status timer stays the single 500 ms heartbeat.
+
+### 12.2 What agents actually emit — the evidence the detector is built on
+
+| Harness | Without any integration | With integration |
+|---|---|---|
+| **OpenCode** | Title carries a status icon; `attention` (off by default) → OSC notification only when the terminal is *blurred* | Plugin API: `session.idle`, `session.status`, `session.error`, `session.created`, `permission.asked/replied`; plugin gets `directory`, `worktree`, can `fetch` |
+| **Copilot CLI** | Nothing documented; screen rules only | Hooks: `userPromptSubmitted` (→ working), `agentStop` (→ idle), `notification` with `notification_type: permission_prompt \| elicitation_dialog` (→ blocked), `sessionStart/sessionEnd` with `sessionId`, `preToolUse toolName=ask_user`; hooks may be **`type: "http"` to localhost** when `COPILOT_HOOK_ALLOW_LOCALHOST=1` — no script needed |
+| **Claude Code** | OSC 0/2 title prefix is the *only* reliable turn signal: `✳` idle, braille spinner working. OSC 9/99/777 are **idle-for-60 s timers**, and the channel is chosen from the detected terminal — **`WT_SESSION` → "windows-terminal" → `no_method_available` → silent** | Hooks (`Notification`, `Stop`, `SessionStart`); OSC 9;4 progress when it believes it is in iTerm2 |
+| **Codex** | `[tui] notification_method = osc9 \| bel`; events `agent-turn-complete`, `approval-requested`; suppressed while focused unless `focused_notifications` | `notify = [cmd]` with JSON (`agent-turn-complete` only) |
+
+Consequences: title transitions + screen-bottom rules + BEL/OSC 9/99/777 + OSC 9;4 +
+OSC 133 + output activity + exit is the agnostic core. Because we set `WT_SESSION`
+(§7.9), Claude Code sends us titles but never a notification — `TERM_PROGRAM` spoofing is
+a spike (§12.7), not a plan. OpenCode and Codex gate notifications on terminal *blur*, so
+DECSET 1004 focus reporting is answered honestly: an inactive tab is blurred.
+
+### 12.3 Model
+
+```
+Workspace
+└── TabGroup                       rollup: worst state of its tabs
+    └── Tab  (TerminalTab grows)   Label · Kind (Shell | Agent:<harness>) · Project (repo root or cwd)
+                                   Branch · State · Attention (+since) · Unread · LastActivity
+                                   Progress (OSC 9;4) · Summary · Pinned · Color
+```
+
+States: `Unknown | Idle | Working | Blocked | Done | Exited`. `Done` is "the turn ended
+while you were not looking" and stays until viewed; `Blocked` is a strict match on
+approval/question UI or an integration saying so — herdr's "fall back to idle, never to
+blocked" rule, because a false blocked is a false alarm every time.
+
+`AgentStateTracker` per tab: inputs are the stream signals above plus a **screen-bottom
+snapshot** (UIA, last N rows, on `OutputVersion` change, 300 ms debounce) matched against
+**rule files** — JSONC per harness under `%APPDATA%\OverShell\agents\` with bundled
+defaults for OpenCode, Copilot, Claude, Codex: patterns for *blocked*, *idle prompt*,
+*working*. Output: state + confidence + an **explain** trail (`why is this tab blocked?`).
+
+### 12.4 Integration endpoint — one transport for every harness
+
+An in-process `HttpListener` on `127.0.0.1:<random>` with a per-run bearer token. The
+child environment gets `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`, `OVERSHELL_TAB_ID`, and
+`COPILOT_HOOK_ALLOW_LOCALHOST=1`. Copilot hooks (`type: http`), an OpenCode plugin
+(`fetch`), a PowerShell one-liner and any future harness reach it with zero glue.
+
+```
+POST /v1/report   { tab, source, seq, state, message?, session?: { id, resumeCommand }, summary? }
+POST /v1/release  { tab, source }
+GET  /v1/tabs     (diagnostics)
+```
+
+Stale `seq` from the same `source` is ignored (herdr). `OverShell integrations install
+<opencode|copilot>` writes the plugin/hook file and `status` shows what is installed.
+Claude Code hooks and Codex `notify` follow later; they need a script shim.
+
+### 12.5 Chrome
+
+- **Commands & keys.** `CommandRegistry` (id, title, category, `when`, handler);
+  `keybindings.jsonc` in Windows Terminal's shape; the palette searches it.
+  `ShortcutRouter` stays the Win32 layer underneath.
+- **Layouts & views.** `ChromeLayout` JSONC: a grid plus regions (`tabs terminal status
+  sidebar dashboard`) → cell + options. Presets `top bottom left-rail left-list
+  right-list zen herd`; user layouts in `%APPDATA%\OverShell\layouts\`. A **View** =
+  layout + components + behaviours: **Terminal**, **Herd** (agent sidebar beside the
+  live terminal), **Dashboard** (cards), **Zen**. `view.*` commands, one hotkey each, an
+  attention badge on the view switch. **Skins**: optional XAML `ResourceDictionary`
+  files overriding named templates, loaded with `XamlReader`, hot-reloaded, documented
+  as trusted config.
+- **Rich tab item.** Two lines (label / state · cwd tail · branch), state dot with motion
+  (working pulse, blocked amber ring, done green until viewed, exited grey), progress
+  ring, unread badge, harness glyph, pin, colour. Orientation-aware: strip, list, rail.
+- **Tab switcher.** A `Popup` — its own HWND, so it renders over the terminal. Fuzzy over
+  label/title/cwd/branch/harness/state; filters `@blocked @working #repo >command`; MRU;
+  a screen-snapshot preview; **letter hints** for one-keystroke jumps; `Alt+1..9` stays
+  as visible-order shortcuts. `tab.jumpToAttention`: next blocked, then done-unread.
+- **Agent sidebar** (Herd): grouped by project, sorted attention → recency; token rows;
+  rollups; hover peek; context actions. **Dashboard cards**: header (dot, label,
+  harness, project/branch), body = last N screen rows in scheme colours **from UIA
+  text**, footer (activity, progress, actions). Deliberately not live scaled-down HWNDs:
+  shrinking a live terminal to a tile reflows the agent's TUI.
+- **Prompt bar** (P2): send to focused/selected agents from a WPF input; broadcast;
+  snippets — we own `WriteInput`.
+
+### 12.6 Notifications — a sink pipeline
+
+Events `blocked done exited error`; policy filters (`notActiveTab`, `windowUnfocused`,
+per-harness, quiet hours); sinks run in parallel: `overlay` (toast layer, an
+interactive sibling of `OverlayHost`), `taskbar` (`ITaskbarList3` overlay badge and
+progress, `FlashWindowEx`), `sound`, and **`command`** — spawn an exe with templated
+args and the event as JSON on stdin. The shipped recipe uses
+[Palantir](https://github.com/MoaidHathot/Palantir) (flags verified against 2.0.1
+`--help`, 2026-09-13):
+
+```jsonc
+{ "type": "command", "exe": "palantir",
+  "args": ["-t", "{title}", "-m", "{message}", "-b", "{tab.cwd}",
+           "--tag", "overshell-{tab.id}", "--replace", "-q"],
+  "when": { "notActiveTab": true } }
+```
+
+`overshell://` protocol + single-instance handoff (toast click focuses the tab, via
+`--launch overshell://focus/{tab.id}`): P2. A native WinRT toast sink: P3, optional.
+
+### 12.7 Verify-first spikes
+
+Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
+`%TEMP%\overshell-spikes.log`). Results 2026-09-13:
+
+1. **UIA text from a hidden tab** ✅ — the first tab, hidden behind a second, answered
+   `GetVisibleRanges` with 9585 chars in 27 ms (first UIA call) and `DocumentRange` in
+   1.7 ms; `BoundingRectangle` still reports the last on-screen bounds. Dashboard cards
+   and background detection can read hidden tabs.
+2. **Re-parent a live surface** ✅ — moved within the window, to a **second window**, and
+   back: same HWND throughout, `GetParent` follows, session alive, an `echo` marker sent
+   after the move appears in the moved terminal. Layout switching and tear-off are safe.
+3. **Popup over the terminal** ❌ then ✅ — a WPF `Popup` took *WPF* keyboard focus but
+   **Win32 focus stayed on the terminal HWND**: typed keys would have reached the shell,
+   not the palette. WPF popups assume the owner window holds Win32 focus; here the
+   owner's native child holds it. An **owned, activated `Window`** works: Win32 focus =
+   the palette HWND, WPF focus = its TextBox, and closing it plus `Surface.Focus()`
+   returns focus to the terminal. Palette and switcher are owned windows, not popups.
+4. **Integrations reach the listener** ✅ — the Copilot hook shim (`cmd.exe /d /c` +
+   `curl.exe`, taken verbatim from the generated hook file, JSON on stdin) posted to
+   `/v1/copilot/{tab}/agentStop` from inside a tab using only the injected environment;
+   the **real OpenCode** with the installed plugin reported `session started → Working →
+   turn finished` for an `opencode run`, with the session id and title (§12.9).
+5. `TERM_PROGRAM` for Claude Code — deferred; lowest priority.
+6. **Small-tile PTY reflow** ✅ confirmed — a 400×300 margin shrank the grid from 133×71
+   to 1×39 and back. Cards use text, never live tiles.
+
+### 12.8 Phases
+
+- **P0 Foundation** ✅ 2026-09-13 — spikes 1–4; commands + keybindings + palette shell;
+  Tab model; detector v1 + bundled rules; endpoint + OpenCode plugin + Copilot hooks +
+  `integrations install/status`; rich tab item + `jumpToAttention` + status counts;
+  notification pipeline with all four sinks + Palantir recipe; labels persisted.
+- **P1 Views** — layouts + view switching; Herd sidebar **and** Dashboard cards;
+  `settings.jsonc` + hot reload; tab switcher; git branch/dirty per tab.
+- **P2 Depth** — prompt bar/broadcast; tab groups + drag reorder; session
+  persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
+  explain panel.
+- **P3 Reach** — Codex `notify`; native toast sink; tear-off windows.
+
+Each phase ends as §11 did: zero warnings, in-process verification where possible, a
+test-card section for what needs a hand, and this document updated.
+
+### 12.9 P0 — what was built, what was verified, what was learned
+
+**Where things live.** `OverShell.Core` (no WPF): `Commands/`, `Input/` (`KeyChord`
+mirrors WPF's `Key` names so a typo is caught at load), `Agents/` (rule sets, loader,
+state machine), `Search/`, `Notifications/`, `Settings/` (`AppSettings`, `PersistedState`),
+`Integrations/` (report protocol, endpoint, Copilot translator, installer), bundled
+`Resources/` (`keybindings.jsonc`, `settings.jsonc`, `agents/*.jsonc`, the OpenCode
+plugin). App: `TerminalTab.Agent.cs` gathers evidence; `Agents/` (`ProcessTree`,
+`ScreenReader`, `AgentServices`); `Chrome/PaletteWindow`; `Notifications/`
+(`NotificationPipeline`, `ToastHost`, `TaskbarBadge`); `MainWindow.Herd.cs` wires it.
+
+**Evidence flow per tab.** I/O thread: `TerminalStreamState.Observe` → signals queued.
+UI thread: one drain per burst → `OnOutput` / `OnBell` / `OnNotification` / `OnProgress`
+/ `OnPromptMark`; title changes → `OnTitle` + harness re-detection; the 500 ms heartbeat →
+`Tick`, a UIA screen snapshot when output has settled for 300 ms (0.4–30 ms, hidden tabs
+included), and a toolhelp process probe every 2.5 s when output changed or an
+integration is authoritative. Integration reports arrive from the listener thread and
+are marshalled to the tab by id.
+
+**Harness identity** is the most trustworthy clue available, in order: an integration's
+own `harness`, the launch command line, a known process image below the shell, the
+title. The process tree below a `pwsh` running OpenCode, as measured:
+`[opencode, cmd, cmd, cmd, conhost, dotnet, conhost, dotnet, conhost, node, dotnet…]` —
+OpenCode is `opencode.exe` on Windows (the npm shim is a `.ps1`), so the probe sees it
+directly; its MCP servers and LSPs are the rest.
+
+**Release rule.** Integrations have no exit event we can trust (`opencode run` simply
+ends; a TUI is quit), so an integration's authority lasts only while a process of its
+harness runs below the shell; two probes (5 s) without one hand the tab back to the
+detector — measured at +14.2 s for a run that finished at +9.5 s. An unseen `Done`
+survives the hand-over and clears to `Unknown` (a shell has no "idle") when viewed.
+
+**Done semantics, refined by a real run.** OpenCode emits `session.status idle` *and*
+`session.idle` for one turn; the second report used to clear the fresh `Done`. An Idle
+report while `Done` is unseen now only updates the explain trail.
+
+**Self-test** (`OVERSHELL_SELFTEST=1`, `Diagnostics/HerdSelfTest.cs`) — 30 checks, all
+passing, no input injected: commands run through the tab's own `SendText`, so OSC
+sequences, environment variables and loopback requests take the real path. It found
+three bugs before a human could: closing a tab raised an "Exited" notification (the exit
+lands on the dispatcher after `Dispose`); an external `Close()` on the palette re-entered
+from `Deactivated` while closing (`InvalidOperationException`); the summary fallback
+showed the shell prompt as the agent's "summary". `OVERSHELL_SELFTEST=opencode` runs the
+real harness (one small model call) — 8 checks, all passing.
+
+**Notifications.** The `overlay` sink is a non-activating owned window (`WS_EX_NOACTIVATE`)
+pinned to the terminal's top-right, so a toast never steals a keystroke; the taskbar sink
+uses WPF's `TaskbarItemInfo` (ITaskbarList3) for the badge and progress colour plus
+`FlashWindowEx`; `command` spawns without a shell, arguments templated. Palantir 2.0.1's
+flags were verified against `--help`; `--launch overshell://…` waits for the P2 protocol
+handler so a click does not open the "choose an app" dialog.

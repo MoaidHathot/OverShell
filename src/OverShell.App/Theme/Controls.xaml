@@ -6,7 +6,8 @@
 
     <Style x:Key="CaptionButton" TargetType="Button">
         <Setter Property="Width" Value="46" />
-        <Setter Property="Height" Value="{StaticResource Metrics.TitleBarHeight}" />
+        <!-- The title bar grew for two-line tabs; caption buttons keep their native size at the top. -->
+        <Setter Property="Height" Value="36" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Foreground" Value="{StaticResource Text.Secondary}" />
         <Setter Property="FontFamily" Value="{StaticResource Font.Icons}" />

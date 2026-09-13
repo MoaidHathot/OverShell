@@ -1,0 +1,44 @@
+// OpenCode — https://opencode.ai
+//
+// Exact state comes from the OverShell plugin (`OverShell integrations install opencode`).
+// Without it, the signals below still work. They match what the tui-plugins/tab-status
+// pattern emits: an OSC 0 title "OC | repo | session" prefixed with an icon only when a
+// state wants attention, and an OSC 9;4 progress bar whose (state, percent) pairs are
+// distinguishable at a glance.
+{
+  "id": "opencode",
+  "displayName": "OpenCode",
+  "glyph": "◈",
+  "detect": {
+    "commandline": ["(^|[\\\\/\\s\"'])opencode(\\.(exe|cmd|ps1))?(\\s|$|[\"'])"],
+    "title": ["^(\\S+\\s+)?OC \\|", "\\bopencode\\b"],
+    "process": ["opencode"]
+  },
+  "title": {
+    // Icons from tab-status.ts: ❓ question/permission, ❌ error, 🔔 finished while unseen.
+    "blocked": ["^❓"],
+    "error": ["^❌"],
+    "done": ["^🔔"]
+  },
+  // tab-status.ts encoding: idle (0,0) · busy (3,0) · question (1,50) · error (2,0) · unseen (4,100).
+  "progress": { "0": "Idle", "1": "Blocked", "2": "Error", "3": "Working", "4": "Done" },
+  "screen": {
+    "blocked": [
+      "Permission required",
+      "\\bAllow once\\b",
+      "\\bAllow always\\b",
+      "\\bAllow\\b[^\\n]{0,40}\\bDeny\\b",
+      "OpenCode is asking"
+    ],
+    "working": ["\\besc\\b[^\\n]{0,12}\\binterrupt\\b", "\\bworking\\b", "\\bThinking\\b"],
+    "idle": []
+  },
+  "notification": {
+    "blocked": ["approval", "permission", "question"],
+    "error": ["\\berror\\b"],
+    "done": ["Ready for input", "\\bcomplete", "\\bfinished\\b", "\\bidle\\b"]
+  },
+  "idleAfterMs": 1500,
+  "screenRows": 12,
+  "resumeCommand": "opencode --session {sessionId}"
+}

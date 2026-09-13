@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OverShell.Core</RootNamespace>
+    <!--
+      Everything here is pure logic — commands, key chords, the agent state machine,
+      detection rules, fuzzy search, notification policy, integration protocol. No WPF,
+      no Win32, so it is unit-tested in tests/OverShell.Tests without a window.
+    -->
+    <UseWPF>false</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OverShell.Config\OverShell.Config.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OverShell.Tests" />
+  </ItemGroup>
+
+</Project>

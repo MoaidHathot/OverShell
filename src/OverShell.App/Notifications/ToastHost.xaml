@@ -1,0 +1,78 @@
+<Window x:Class="OverShell.App.Notifications.ToastHost"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:notifications="clr-namespace:OverShell.App.Notifications"
+        Title="OverShell toasts"
+        Width="360"
+        SizeToContent="Height"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Focusable="False"
+        WindowStartupLocation="Manual"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+
+    <ItemsControl x:Name="Items" Margin="0,8,12,0">
+        <ItemsControl.ItemTemplate>
+            <DataTemplate DataType="{x:Type notifications:Toast}">
+                <Border Margin="0,0,0,8"
+                        Background="{StaticResource Surface.Raised}"
+                        BorderBrush="{StaticResource Surface.Border}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Cursor="Hand"
+                        MouseLeftButtonUp="Toast_Click">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.5" Color="Black" />
+                    </Border.Effect>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="4" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" Background="{Binding Accent}" CornerRadius="8,0,0,8" Margin="0" />
+
+                        <StackPanel Grid.Column="1" Margin="12,9,8,10">
+                            <TextBlock Text="{Binding Title}"
+                                       FontFamily="{StaticResource Font.Ui}"
+                                       FontSize="{StaticResource Font.Size.Body}"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource Text.Primary}"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="{Binding Message}"
+                                       Margin="0,2,0,0"
+                                       FontFamily="{StaticResource Font.Ui}"
+                                       FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Text.Secondary}"
+                                       TextWrapping="Wrap"
+                                       MaxHeight="48" />
+                            <TextBlock Text="{Binding Detail}"
+                                       Margin="0,3,0,0"
+                                       FontFamily="{StaticResource Font.Ui}"
+                                       FontSize="{StaticResource Font.Size.Detail}"
+                                       Foreground="{StaticResource Text.Disabled}"
+                                       TextTrimming="CharacterEllipsis"
+                                       Visibility="{Binding DetailVisibility}" />
+                        </StackPanel>
+
+                        <Button Grid.Column="2"
+                                Width="22" Height="22"
+                                Margin="0,6,6,0"
+                                VerticalAlignment="Top"
+                                Content="&#xE8BB;"
+                                FontSize="8"
+                                Style="{StaticResource ChromeIconButton}"
+                                Click="Dismiss_Click" />
+                    </Grid>
+                </Border>
+            </DataTemplate>
+        </ItemsControl.ItemTemplate>
+    </ItemsControl>
+</Window>

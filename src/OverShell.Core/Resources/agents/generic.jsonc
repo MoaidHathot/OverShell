@@ -1,0 +1,30 @@
+// Any agent OverShell does not know by name: a tab marked as an agent by the user or by an
+// integration whose harness id has no rule file. Only the prompts nearly every CLI agent
+// shares. Add a file named after the harness next to this one to teach OverShell more.
+{
+  "id": "generic",
+  "displayName": "Agent",
+  "glyph": "◆",
+  "detect": {},
+  "title": {},
+  "screen": {
+    "blocked": [
+      "\\(y/n\\)",
+      "\\[Y/n\\]",
+      "\\[y/N\\]",
+      "Do you want to (proceed|continue|allow)",
+      "\\bAllow\\b[^\\n]{0,40}\\bDeny\\b",
+      "don't ask again",
+      "Press Enter to (confirm|continue|approve)"
+    ],
+    "working": ["Esc to interrupt", "esc to cancel", "\\bThinking\\b"],
+    "idle": []
+  },
+  "notification": {
+    "blocked": ["permission", "approval", "approve", "question", "needs your"],
+    "error": ["\\berror\\b", "\\bfailed\\b"],
+    "done": ["\\bcomplete", "\\bfinished\\b", "\\bdone\\b", "waiting for your input"]
+  },
+  "idleAfterMs": 1500,
+  "screenRows": 12
+}

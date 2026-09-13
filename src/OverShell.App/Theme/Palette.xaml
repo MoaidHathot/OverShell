@@ -47,6 +47,22 @@
 
     <SolidColorBrush x:Key="Transparent" Color="Transparent" />
 
+    <!-- Agent states (§12.5). Amber for "needs you" and green for "done" are the two the eye
+         must separate at a glance in a strip of twelve tabs; working reuses the accent. -->
+    <Color x:Key="State.WorkingColor">#FF4C8DFF</Color>
+    <Color x:Key="State.BlockedColor">#FFF5A524</Color>
+    <Color x:Key="State.DoneColor">#FF3DD68C</Color>
+    <Color x:Key="State.ErrorColor">#FFE5484D</Color>
+    <Color x:Key="State.IdleColor">#FF6B7480</Color>
+    <Color x:Key="State.ExitedColor">#FF4A5058</Color>
+
+    <SolidColorBrush x:Key="State.Working" Color="{StaticResource State.WorkingColor}" />
+    <SolidColorBrush x:Key="State.Blocked" Color="{StaticResource State.BlockedColor}" />
+    <SolidColorBrush x:Key="State.Done" Color="{StaticResource State.DoneColor}" />
+    <SolidColorBrush x:Key="State.Error" Color="{StaticResource State.ErrorColor}" />
+    <SolidColorBrush x:Key="State.Idle" Color="{StaticResource State.IdleColor}" />
+    <SolidColorBrush x:Key="State.Exited" Color="{StaticResource State.ExitedColor}" />
+
     <!-- ========================== Typography =========================== -->
 
     <FontFamily x:Key="Font.Ui">Segoe UI Variable Text, Segoe UI</FontFamily>
@@ -55,11 +71,14 @@
 
     <sys:Double x:Key="Font.Size.Body">12.5</sys:Double>
     <sys:Double x:Key="Font.Size.Small">11</sys:Double>
+    <sys:Double x:Key="Font.Size.Detail">10.5</sys:Double>
     <sys:Double x:Key="Font.Size.Icon">11</sys:Double>
 
     <!-- ============================ Metrics =========================== -->
 
-    <sys:Double x:Key="Metrics.TitleBarHeight">40</sys:Double>
+    <!-- Tall enough for the two-line tab item (label / state · project). -->
+    <sys:Double x:Key="Metrics.TitleBarHeight">54</sys:Double>
+    <sys:Double x:Key="Metrics.TabHeight">46</sys:Double>
     <sys:Double x:Key="Metrics.StatusBarHeight">26</sys:Double>
     <CornerRadius x:Key="Metrics.TabCorner">6,6,0,0</CornerRadius>
 

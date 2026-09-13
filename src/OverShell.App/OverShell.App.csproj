@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OverShell.Config\OverShell.Config.csproj" />
+    <ProjectReference Include="..\OverShell.Core\OverShell.Core.csproj" />
   </ItemGroup>
 
 </Project>

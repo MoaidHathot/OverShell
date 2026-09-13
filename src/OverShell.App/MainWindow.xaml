@@ -90,16 +90,18 @@
 
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type local:TerminalTab}">
+                                    <!-- Rich tab item (§12.5): state dot with motion, harness glyph, two
+                                         lines (label / state · project), unread badge, progress bar. -->
                                     <Border x:Name="TabRoot"
-                                            MinWidth="132"
-                                            MaxWidth="228"
-                                            Height="32"
+                                            MinWidth="150"
+                                            MaxWidth="240"
+                                            Height="{StaticResource Metrics.TabHeight}"
                                             Margin="0,0,2,0"
                                             CornerRadius="{StaticResource Metrics.TabCorner}"
                                             Background="Transparent"
                                             MouseLeftButtonDown="Tab_MouseLeftButtonDown"
                                             MouseDown="Tab_MouseDown"
-                                            ToolTip="{Binding Profile.Name}">
+                                            ToolTip="{Binding Tooltip}">
                                         <Grid>
                                             <!-- active indicator -->
                                             <Border x:Name="ActiveBar"
@@ -117,21 +119,52 @@
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
 
-                                                <Border Grid.Column="0"
-                                                        Width="7" Height="7"
-                                                        CornerRadius="2"
-                                                        Margin="0,0,9,0"
-                                                        Background="{Binding Accent}"
-                                                        VerticalAlignment="Center" />
+                                                <!-- state dot: profile accent for a plain shell, state colour once known -->
+                                                <Grid Grid.Column="0" Width="14" Height="14" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                    <Border x:Name="BlockedRing"
+                                                            Width="14" Height="14"
+                                                            CornerRadius="7"
+                                                            BorderThickness="1.5"
+                                                            BorderBrush="{StaticResource State.Blocked}"
+                                                            Visibility="Collapsed" />
+                                                    <Border x:Name="StateDot"
+                                                            Width="8" Height="8"
+                                                            CornerRadius="4"
+                                                            Background="{Binding Accent}" />
+                                                </Grid>
 
-                                                <TextBlock x:Name="TabLabel"
-                                                           Grid.Column="1"
-                                                           Text="{Binding Title}"
-                                                           VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           FontFamily="{StaticResource Font.Ui}"
-                                                           FontSize="{StaticResource Font.Size.Body}"
-                                                           Foreground="{StaticResource Text.Secondary}" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock x:Name="TabGlyph"
+                                                                   Text="{Binding Glyph}"
+                                                                   Margin="0,0,5,0"
+                                                                   VerticalAlignment="Center"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource Text.Secondary}"
+                                                                   Visibility="Collapsed" />
+                                                        <TextBlock x:Name="TabLabel"
+                                                                   Text="{Binding Label}"
+                                                                   VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   FontFamily="{StaticResource Font.Ui}"
+                                                                   FontSize="{StaticResource Font.Size.Body}"
+                                                                   Foreground="{StaticResource Text.Secondary}" />
+                                                        <Border x:Name="UnreadBadge"
+                                                                Width="6" Height="6"
+                                                                Margin="6,0,0,0"
+                                                                CornerRadius="3"
+                                                                VerticalAlignment="Center"
+                                                                Background="{Binding StateBrush}"
+                                                                Visibility="Collapsed" />
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="TabDetail"
+                                                               Text="{Binding Detail}"
+                                                               Margin="0,1,0,0"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               FontFamily="{StaticResource Font.Ui}"
+                                                               FontSize="{StaticResource Font.Size.Detail}"
+                                                               Foreground="{StaticResource Text.Disabled}" />
+                                                </StackPanel>
 
                                                 <Button x:Name="TabClose"
                                                         Grid.Column="2"
@@ -143,6 +176,19 @@
                                                         Style="{StaticResource ChromeIconButton}"
                                                         Click="CloseTab_Click" />
                                             </Grid>
+
+                                            <!-- OSC 9;4 progress, when the program reports one -->
+                                            <ProgressBar x:Name="TabProgress"
+                                                         Height="2"
+                                                         Margin="10,0,10,1"
+                                                         VerticalAlignment="Bottom"
+                                                         Minimum="0" Maximum="1"
+                                                         Value="{Binding Progress, Mode=OneWay, TargetNullValue=0}"
+                                                         IsIndeterminate="{Binding ProgressIndeterminate, Mode=OneWay}"
+                                                         Foreground="{Binding StateBrush}"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         Visibility="Collapsed" />
                                         </Grid>
                                     </Border>
 
@@ -152,6 +198,7 @@
                                             <Setter TargetName="ActiveBar" Property="Visibility" Value="Visible" />
                                             <Setter TargetName="TabLabel" Property="Foreground" Value="{StaticResource Text.Primary}" />
                                             <Setter TargetName="TabLabel" Property="FontWeight" Value="SemiBold" />
+                                            <Setter TargetName="TabDetail" Property="Foreground" Value="{StaticResource Text.Secondary}" />
                                             <Setter TargetName="TabClose" Property="Opacity" Value="1" />
                                         </DataTrigger>
                                         <Trigger SourceName="TabRoot" Property="IsMouseOver" Value="True">
@@ -168,6 +215,54 @@
                                         <DataTrigger Binding="{Binding IsRunning}" Value="False">
                                             <Setter TargetName="TabLabel" Property="Foreground" Value="{StaticResource Text.Disabled}" />
                                             <Setter TargetName="TabLabel" Property="FontStyle" Value="Italic" />
+                                        </DataTrigger>
+
+                                        <!-- agent chrome -->
+                                        <DataTrigger Binding="{Binding IsAgent}" Value="True">
+                                            <Setter TargetName="TabGlyph" Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Working">
+                                            <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Working}" />
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard x:Name="WorkingPulse">
+                                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                        <DoubleAnimation Storyboard.TargetName="StateDot"
+                                                                         Storyboard.TargetProperty="Opacity"
+                                                                         From="1" To="0.35" Duration="0:0:0.9" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <StopStoryboard BeginStoryboardName="WorkingPulse" />
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Blocked">
+                                            <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Blocked}" />
+                                            <Setter TargetName="BlockedRing" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="TabDetail" Property="Foreground" Value="{StaticResource State.Blocked}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Done">
+                                            <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Done}" />
+                                            <Setter TargetName="TabDetail" Property="Foreground" Value="{StaticResource State.Done}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Error">
+                                            <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Error}" />
+                                            <Setter TargetName="TabDetail" Property="Foreground" Value="{StaticResource State.Error}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Idle">
+                                            <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Idle}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding State}" Value="Exited">
+                                            <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Exited}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Unread}" Value="True">
+                                            <Setter TargetName="UnreadBadge" Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ProgressIndeterminate}" Value="True">
+                                            <Setter TargetName="TabProgress" Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Progress, Converter={StaticResource IsNotNull}}" Value="True">
+                                            <Setter TargetName="TabProgress" Property="Visibility" Value="Visible" />
                                         </DataTrigger>
                                     </DataTemplate.Triggers>
                                 </DataTemplate>
@@ -244,6 +339,17 @@
                                FontFamily="{StaticResource Font.Ui}"
                                FontSize="{StaticResource Font.Size.Small}" />
 
+                    <!-- Transient message (command results, explain); takes the detail slot for a few seconds. -->
+                    <TextBlock x:Name="TxtMessage"
+                               Grid.Column="1"
+                               Margin="18,0"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource Text.Secondary}"
+                               FontFamily="{StaticResource Font.Ui}"
+                               FontSize="{StaticResource Font.Size.Small}"
+                               Visibility="Collapsed" />
+
                     <!-- Link under the pointer while Ctrl is held; takes the detail slot. -->
                     <StackPanel x:Name="LinkHintPanel"
                                 Grid.Column="1"
@@ -266,6 +372,15 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Herd counts: click jumps to the tab that needs you (tab.jumpToAttention). -->
+                        <TextBlock x:Name="TxtAttention"
+                                   Margin="0,0,18,0"
+                                   Cursor="Hand"
+                                   ToolTip="Jump to the tab that needs you  (Ctrl+Shift+J)"
+                                   Foreground="{StaticResource Text.Disabled}"
+                                   FontFamily="{StaticResource Font.Ui}"
+                                   FontSize="{StaticResource Font.Size.Small}"
+                                   MouseLeftButtonDown="Attention_Click" />
                         <TextBlock x:Name="TxtGrid"
                                    Foreground="{StaticResource Text.Disabled}"
                                    FontFamily="{StaticResource Font.Mono}"

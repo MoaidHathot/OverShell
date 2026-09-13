@@ -48,6 +48,7 @@ public sealed unsafe class ConPtySession : ITerminalSession
     private volatile bool _disposed;
     private int _exitSignalled;
     private int? _exitCode;
+    private volatile int _processId;
 
     public ConPtySession(SessionDescriptor descriptor)
     {
@@ -61,6 +62,8 @@ public sealed unsafe class ConPtySession : ITerminalSession
     public bool IsRunning => _started && !_exited;
 
     public int? ExitCode => _exitCode;
+
+    public int? ProcessId => _processId == 0 ? null : _processId;
 
     public event EventHandler? Started;
 
@@ -306,9 +309,22 @@ public sealed unsafe class ConPtySession : ITerminalSession
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), "UpdateProcThreadAttribute");
             }
 
+            // Explicit, empty standard handles. Without STARTF_USESTDHANDLES the console
+            // subsystem hands the child *our* standard handles whenever they are not console
+            // handles — and when OverShell is launched from a shell with redirected stdio
+            // (a pipeline, a tool, a CI runner) the tab's pwsh then writes its banner into
+            // that pipe and exits on stdin EOF, never touching the pseudoconsole. With the
+            // flag set and the handles null the child gets the pseudoconsole's own.
             var startup = new ConPtyNative.StartupInfoExW
             {
-                StartupInfo = { cb = (uint)sizeof(ConPtyNative.StartupInfoExW) },
+                StartupInfo =
+                {
+                    cb = (uint)sizeof(ConPtyNative.StartupInfoExW),
+                    dwFlags = ConPtyNative.StartfUseStdHandles,
+                    hStdInput = 0,
+                    hStdOutput = 0,
+                    hStdError = 0,
+                },
                 lpAttributeList = list,
             };
 
@@ -340,6 +356,7 @@ public sealed unsafe class ConPtySession : ITerminalSession
             }
 
             _ = ConPtyNative.CloseHandle(info.hThread);
+            _processId = (int)info.dwProcessId;
             return new SafeProcessHandle(info.hProcess, ownsHandle: true);
         }
         finally

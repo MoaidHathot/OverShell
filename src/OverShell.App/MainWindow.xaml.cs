@@ -65,10 +65,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _catalog = ProfileCatalog.Load();
 
+        // Settings, rules, persisted labels and the integration endpoint come first: the
+        // first tab's child process needs the endpoint's variables in its environment.
+        InitializeHerd();
+
         InitializeComponent();
         DataContext = this;
 
         _shortcuts = new ShortcutRouter(this);
+        RegisterCommands();
+        LoadKeybindings();
+        WireRouter();
 
         // Single terminal on launch — panes and extra tabs are opt-in.
         if (_catalog.DefaultProfile is { } profile)
@@ -82,8 +89,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         _statusTimer.Tick += (_, _) => UpdateStatus();
         _statusTimer.Start();
-
-        RegisterShortcuts();
 
         StateChanged += (_, _) => SyncMaximizeState();
         SourceInitialized += (_, _) =>
@@ -102,9 +107,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SizeChanged += (_, _) => ClearLinkHover();
         Deactivated += (_, _) => ClearLinkHover();
 
+        // "Viewed" means the active tab in a foreground window; Done clears only then.
+        Activated += (_, _) => UpdateViewed();
+        Deactivated += (_, _) => UpdateViewed();
+
         Loaded += (_, _) =>
         {
             SyncMaximizeState();
+            InitializeNotifications();
+            UpdateViewed();
             ActiveTab?.Surface.Focus();
         };
     }
@@ -116,7 +127,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public TerminalTab? ActiveTab
     {
         get => _activeTab;
-        private set
+        internal set
         {
             if (ReferenceEquals(_activeTab, value))
             {
@@ -139,6 +150,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             Raise();
+            UpdateViewed();
             UpdateStatus();
         }
     }
@@ -147,9 +159,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ------------------------------------------------------------ tab model
 
-    private TerminalTab AddTab(TerminalProfile profile, bool activate)
+    internal TerminalTab AddTab(TerminalProfile profile, bool activate)
     {
-        var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher);
+        var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher, _agents);
+        tab.UserLabel = _state.LabelFor(profile.Id, tab.WorkingDirectory);
 
         tab.PropertyChanged += (_, e) =>
         {
@@ -158,8 +171,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 Title = $"{tab.Title} — OverShell";
             }
         };
+        tab.AttentionRequested += OnAttention;
+        tab.StateChanged += (_, _) => RefreshAttention();
 
         Tabs.Add(tab);
+        _tabsById[tab.Id] = tab;
         TerminalHost.Children.Add(tab.View);
 
         if (activate)
@@ -170,12 +186,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (Tabs.Count == 1)
         {
             ScheduleLinkSelfProbe(tab);
+            Diagnostics.Spikes.Schedule(this, tab);
+            Diagnostics.HerdSelfTest.Schedule(this, tab);
         }
 
         return tab;
     }
 
-    private void CloseTab(TerminalTab tab)
+    internal void CloseTab(TerminalTab tab)
     {
         var index = Tabs.IndexOf(tab);
         if (index < 0)
@@ -188,6 +206,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         tab.Dispose();
 
         Tabs.RemoveAt(index);
+        _tabsById.Remove(tab.Id);
+        _notifications?.Viewed(tab.Id);
         TerminalHost.Children.Remove(tab.View);
 
         if (Tabs.Count == 0)
@@ -200,6 +220,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ActiveTab = Tabs[Math.Min(index, Tabs.Count - 1)];
         }
+
+        RefreshAttention();
     }
 
     private void ActivateRelative(int delta)
@@ -215,7 +237,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ------------------------------------------------------------- commands
 
-    private void RegisterShortcuts()
+    private void WireRouter()
     {
         var router = _shortcuts;
 
@@ -231,33 +253,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         router.ControlPressed = OnControlPressed;
         router.ControlReleased = OnControlReleased;
 
-        router.Add(Key.T, ModifierKeys.Control, () => NewTab(_catalog.DefaultProfile));
-        router.Add(Key.W, ModifierKeys.Control | ModifierKeys.Shift, () => { if (ActiveTab is { } t) CloseTab(t); });
-        router.Add(Key.Tab, ModifierKeys.Control, () => ActivateRelative(1));
-        router.Add(Key.Tab, ModifierKeys.Control | ModifierKeys.Shift, () => ActivateRelative(-1));
-        router.Add(Key.PageDown, ModifierKeys.Control, () => ActivateRelative(1));
-        router.Add(Key.PageUp, ModifierKeys.Control, () => ActivateRelative(-1));
-
-        // Explicit, unambiguous clipboard chords.
-        router.Add(Key.C, ModifierKeys.Control | ModifierKeys.Shift, () => { Copy(); return true; });
-        router.Add(Key.V, ModifierKeys.Control | ModifierKeys.Shift, () => { Paste(); return true; });
-
-        // Ctrl+C only copies when there is something selected; otherwise it must reach
-        // the shell as an interrupt, which is what a terminal user expects.
-        router.Add(Key.C, ModifierKeys.Control, Copy);
-        router.Add(Key.V, ModifierKeys.Control, () => { Paste(); return true; });
-
-        for (var i = 0; i < 9; i++)
-        {
-            var index = i;
-            router.Add(Key.D1 + i, ModifierKeys.Alt, () =>
-            {
-                if (index < Tabs.Count)
-                {
-                    ActiveTab = Tabs[index];
-                }
-            });
-        }
+        // Every chord goes through keybindings.jsonc → command; nothing is hard-coded here.
+        router.Chord = OnChord;
 
         // Classic console behaviour: right-click copies a selection, else pastes.
         router.RightClick = screenPoint =>
@@ -680,8 +677,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             _hoverLink = url;
             TxtLinkHint.Text = url ?? string.Empty;
-            LinkHintPanel.Visibility = url is null ? Visibility.Collapsed : Visibility.Visible;
-            TxtDetail.Visibility = url is null ? Visibility.Visible : Visibility.Collapsed;
+            UpdateDetailSlot();
         }
 
         UpdatePointer(tab);
@@ -891,7 +887,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         timer.Start();
     }
 
-    private static nint FindTerminalHwnd(DependencyObject root)
+    internal static nint FindTerminalHwnd(DependencyObject root)
     {
         if (root is HwndHost host)
         {
@@ -1038,6 +1034,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         _statusTimer.Stop();
         _shortcuts.Dispose();
+        _palette?.Close();
+        _notifications?.Dispose();
+        _endpoint?.Dispose();
 
         // Two passes on purpose: WPF unloads every HwndHost during shutdown and each one
         // generates focus traffic, so all tabs must stop accepting input before any of
@@ -1132,26 +1131,36 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WindowRoot.BorderThickness = maximized ? default : new Thickness(1);
     }
 
+    /// <summary>The window's one heartbeat, twice a second: status text, exit detection, agent timers, hover refresh.</summary>
     private void UpdateStatus()
     {
-        if (ActiveTab is not { } tab)
+        var now = DateTimeOffset.Now;
+
+        // Only a tab that actually started can have died. The PTY starts on a background
+        // thread, so a plain !IsRunning check would fire on every healthy new tab.
+        foreach (var tab in Tabs)
+        {
+            if (tab.HasStarted && !tab.IsRunning)
+            {
+                tab.NotifyExited();
+            }
+
+            tab.Heartbeat(now);
+        }
+
+        RefreshAttention();
+
+        if (ActiveTab is not { } active)
         {
             TxtGrid.Text = string.Empty;
             return;
         }
 
-        var (columns, rows) = tab.Grid;
+        var (columns, rows) = active.Grid;
         var tabCount = Tabs.Count == 1 ? string.Empty : $"   ·   {Tabs.Count} tabs";
         TxtGrid.Text = $"{columns}\u00d7{rows}{tabCount}";
 
-        // Only a tab that actually started can have died. The PTY starts on a background
-        // thread, so a plain !IsRunning check would fire on every healthy new tab.
-        if (tab.HasStarted && !tab.IsRunning)
-        {
-            tab.NotifyExited();
-        }
-
-        RefreshRestingHover(tab);
+        RefreshRestingHover(active);
     }
 
     private void Raise([CallerMemberName] string? property = null) =>

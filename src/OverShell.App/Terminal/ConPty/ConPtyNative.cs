@@ -21,6 +21,7 @@ internal static unsafe partial class ConPtyNative
 
     public const uint ExtendedStartupInfoPresent = 0x00080000;
     public const uint CreateUnicodeEnvironment = 0x00000400;
+    public const uint StartfUseStdHandles = 0x00000100;
     public const nuint ProcThreadAttributePseudoConsole = 0x00020016;
     public const uint StillActive = 259;
     public const uint WaitObject0 = 0;
