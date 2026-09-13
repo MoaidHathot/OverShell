@@ -5,6 +5,9 @@
 
 Last updated: 2026-09-14
 
+How to *use* it - configuration, keys, views, agents, integrations, notifications - is
+in [docs/GUIDE.md](docs/GUIDE.md). This document is about why it is built the way it is.
+
 ---
 
 ## 1. What it is
@@ -255,16 +258,37 @@ solution pins x64 so only that copy is shipped.
 | Variable | Values | Purpose |
 |---|---|---|
 | `OVERSHELL_BACKDROP` | `acrylic` (default), `mica`, `micaalt`, `none` | System backdrop behind the chrome |
-| `OVERSHELL_CONFIG_DIR` | a directory | Configuration root instead of `%APPDATA%\OverShell` (`settings.jsonc`, `keybindings.jsonc`, `agents\`) |
+| `OVERSHELL_CONFIG_DIR` | a directory | Configuration root override (see *Roots* below) |
 | `OVERSHELL_TRACE_KEYS` | `1` | Log every chord the router sees to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Log link hover/click resolution to `%TEMP%\overshell-links.log`, and run one UIA self-probe after the first tab is ready |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Log harness detection, state transitions with their evidence, endpoint traffic and notification dispatch to `%TEMP%\overshell-agents.log` |
 | `OVERSHELL_SPIKES` | `1` | Run the §12.7 spikes in-process, log to `%TEMP%\overshell-spikes.log` |
-| `OVERSHELL_STATE_DIR` | a directory | State root instead of `%LOCALAPPDATA%\OverShell` (`state.json`, `session.json`) |
+| `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
 | `OVERSHELL_SELFTEST` | `1`, `opencode`, `session1`/`session2` | Run the end-to-end self-test in-process (§12.9–12.11): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin; `session1` then `session2` check restore across a restart. Log: `%TEMP%\overshell-selftest.log` |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
 `OVERSHELL_TAB_ID` and `COPILOT_HOOK_ALLOW_LOCALHOST=1` (§12.4).
+
+### Roots
+
+Configuration (edited, worth syncing) and state (machine-local) live in two roots, each
+the first that applies — an explicit override, then the XDG variable plus `\overshell`,
+then the Windows default:
+
+| | Configuration | State |
+|---|---|---|
+| 1 | `OVERSHELL_CONFIG_DIR` | `OVERSHELL_STATE_DIR` |
+| 2 | `$XDG_CONFIG_HOME\overshell` | `$XDG_STATE_HOME\overshell` |
+| 3 | `%APPDATA%\OverShell` | `%LOCALAPPDATA%\OverShell` |
+
+XDG is honoured because people who keep dotfiles in one directory already point
+OpenCode, Neovim and git at it through `XDG_CONFIG_HOME`; OverShell should land there
+too without a second variable. A relative XDG value is ignored, as the specification
+says. `AppPaths.ResolveConfigRoot`/`ResolveStateRoot` are pure over an environment
+lookup (unit-tested); `OverShell settings path` prints the outcome and the variable
+that decided it. Only the two roots are created at start — the optional sub-folders
+(`agents\`, `layouts\`, `skins\`) appear when something is put in them, so a
+dotfiles repository is not littered with empty directories.
 
 ### Command line
 
@@ -274,6 +298,7 @@ OverShell integrations install   <opencode|copilot|claude|codex|all>
 OverShell integrations uninstall <opencode|copilot|claude|codex|all>
 OverShell integrations show      <claude|codex>   # the entries, for adding by hand
 OverShell protocol status|register|unregister
+OverShell settings path|init|open           # roots and files; starter files from the defaults
 OverShell overshell://focus/<tabId>         # handed to the running window (§12.11)
 ```
 

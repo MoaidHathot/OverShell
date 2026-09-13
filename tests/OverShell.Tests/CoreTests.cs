@@ -296,3 +296,81 @@ public class IntegrationProtocolTests
         Assert.Equal("s9", received[1].SessionId);
     }
 }
+
+public class AppPathsTests
+{
+    private static Func<string, string?> Env(params (string Name, string? Value)[] pairs) =>
+        name => pairs.FirstOrDefault(p => p.Name == name).Value;
+
+    [Fact]
+    public void Explicit_override_wins_over_everything()
+    {
+        var root = AppPaths.ResolveConfigRoot(Env(("OVERSHELL_CONFIG_DIR", @"W:\cfg\os"), ("XDG_CONFIG_HOME", @"P:\dotfiles")));
+        Assert.Equal(@"W:\cfg\os", root.Path);
+        Assert.Equal(PathSource.Override, root.Source);
+    }
+
+    [Fact]
+    public void Xdg_config_home_gets_an_overshell_folder_and_is_normalised()
+    {
+        var root = AppPaths.ResolveConfigRoot(Env(("XDG_CONFIG_HOME", "P:\\Github\\dotfiles\\configurations/../config/")));
+        Assert.Equal(@"P:\Github\dotfiles\config\overshell", root.Path);
+        Assert.Equal(PathSource.Xdg, root.Source);
+        Assert.Equal("XDG_CONFIG_HOME", root.Variable);
+    }
+
+    [Fact]
+    public void Relative_or_empty_xdg_values_fall_through_to_the_windows_default()
+    {
+        var relative = AppPaths.ResolveConfigRoot(Env(("XDG_CONFIG_HOME", "dotfiles/config")));
+        Assert.Equal(PathSource.Windows, relative.Source);
+        Assert.EndsWith(@"\OverShell", relative.Path);
+
+        var empty = AppPaths.ResolveConfigRoot(Env(("XDG_CONFIG_HOME", "   ")));
+        Assert.Equal(PathSource.Windows, empty.Source);
+
+        var none = AppPaths.ResolveStateRoot(Env());
+        Assert.Equal(PathSource.Windows, none.Source);
+        Assert.Equal("LOCALAPPDATA", none.Variable);
+    }
+
+    [Fact]
+    public void State_follows_xdg_state_home_independently_of_config()
+    {
+        var state = AppPaths.ResolveStateRoot(Env(("XDG_CONFIG_HOME", @"P:\dotfiles"), ("XDG_STATE_HOME", @"D:\state")));
+        Assert.Equal(@"D:\state\overshell", state.Path);
+        Assert.Equal(PathSource.Xdg, state.Source);
+
+        var config = AppPaths.ResolveConfigRoot(Env(("XDG_STATE_HOME", @"D:\state")));
+        Assert.Equal(PathSource.Windows, config.Source);
+    }
+}
+public class StarterFilesTests
+{
+    [Fact]
+    public void The_embedded_defaults_load_back_unchanged_as_user_files()
+    {
+        // `settings init` copies the defaults into the user's directory; merging a copy of the
+        // defaults over the defaults must be a no-op, and the copy must parse without problems.
+        var dir = Directory.CreateTempSubdirectory("overshell-init");
+        try
+        {
+            var settingsPath = Path.Combine(dir.FullName, "settings.jsonc");
+            File.WriteAllText(settingsPath, "// header\n" + EmbeddedResources.Read("settings.jsonc"));
+            var user = AppSettings.Load(settingsPath);
+            var defaults = AppSettings.LoadDefaults();
+            Assert.Empty(user.Problems);
+            Assert.Equal(Jsonc.Serialize(defaults), Jsonc.Serialize(user));
+
+            var keysPath = Path.Combine(dir.FullName, "keybindings.jsonc");
+            File.WriteAllText(keysPath, "// header\n" + EmbeddedResources.Read("keybindings.jsonc"));
+            var map = OverShell.Core.Input.KeybindingMap.Load(keysPath);
+            Assert.Empty(map.Problems);
+            Assert.Equal(OverShell.Core.Input.KeybindingMap.Load(null).Bindings.Count, map.Bindings.Count);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+}

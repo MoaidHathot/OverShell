@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
@@ -46,6 +46,12 @@ public partial class App : Application
         if (e.Args.Length > 0 && e.Args[0].Equals("protocol", StringComparison.OrdinalIgnoreCase))
         {
             Shutdown(RunProtocolCli(e.Args.Skip(1).ToArray()));
+            return;
+        }
+
+        if (e.Args.Length > 0 && e.Args[0].Equals("settings", StringComparison.OrdinalIgnoreCase))
+        {
+            Shutdown(RunSettingsCli(e.Args.Skip(1).ToArray()));
             return;
         }
 
@@ -241,6 +247,95 @@ public partial class App : Application
         {
             out_.Flush();
         }
+    }
+
+    /// <summary>
+    /// <c>settings path</c> — where configuration and state live and why · <c>settings init</c> —
+    /// write starter <c>settings.jsonc</c> / <c>keybindings.jsonc</c> from the built-in defaults
+    /// (never over an existing file) · <c>settings open</c> — Explorer on the configuration root.
+    /// </summary>
+    private static int RunSettingsCli(string[] args)
+    {
+        var out_ = OpenCliOutput();
+
+        try
+        {
+            switch (args.Length > 0 ? args[0].ToLowerInvariant() : "path")
+            {
+                case "path":
+                    out_.WriteLine();
+                    out_.WriteLine($"  configuration  {Core.AppPaths.ConfigRoot}");
+                    out_.WriteLine($"                 from {Describe(Core.AppPaths.Config)}");
+                    out_.WriteLine($"  state          {Core.AppPaths.StateRoot}");
+                    out_.WriteLine($"                 from {Describe(Core.AppPaths.State)}");
+                    out_.WriteLine();
+                    foreach (var (name, path) in new[]
+                    {
+                        ("settings.jsonc", Core.AppPaths.SettingsFile), ("keybindings.jsonc", Core.AppPaths.KeybindingsFile),
+                        ("snippets.jsonc", Core.AppPaths.SnippetsFile), ("agents\\", Core.AppPaths.AgentsDir),
+                        ("layouts\\", Core.AppPaths.LayoutsDir), ("skins\\", Core.AppPaths.SkinsDir),
+                        ("session.json", Core.AppPaths.SessionFile), ("state.json", Core.AppPaths.StateFile),
+                    })
+                    {
+                        var exists = path.EndsWith('\\') ? Directory.Exists(path) : File.Exists(path);
+                        out_.WriteLine($"  {name,-18} {(exists ? "present" : "absent ")}  {path}");
+                    }
+
+                    out_.WriteLine();
+                    out_.WriteLine("  Order: OVERSHELL_CONFIG_DIR, then $XDG_CONFIG_HOME\\overshell, then %APPDATA%\\OverShell");
+                    out_.WriteLine("         (state: OVERSHELL_STATE_DIR, $XDG_STATE_HOME\\overshell, %LOCALAPPDATA%\\OverShell).");
+                    return 0;
+
+                case "init":
+                    out_.WriteLine();
+                    Core.AppPaths.EnsureCreated();
+                    foreach (var (path, resource) in new[] { (Core.AppPaths.SettingsFile, "settings.jsonc"), (Core.AppPaths.KeybindingsFile, "keybindings.jsonc") })
+                    {
+                        if (File.Exists(path))
+                        {
+                            out_.WriteLine($"  kept     {path}");
+                            continue;
+                        }
+
+                        var header = $"// Written by `OverShell settings init` from the built-in defaults. Every value here equals the{Environment.NewLine}" +
+                                     $"// default, so this file changes nothing until you edit it; delete a line to fall back.{Environment.NewLine}";
+                        File.WriteAllText(path, header + Core.EmbeddedResources.Read(resource), new System.Text.UTF8Encoding(false));
+                        out_.WriteLine($"  written  {path}");
+                    }
+
+                    out_.WriteLine("  Saved changes apply live while OverShell runs.");
+                    return 0;
+
+                case "open":
+                    Core.AppPaths.EnsureCreated();
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Core.AppPaths.ConfigRoot) { UseShellExecute = true });
+                    return 0;
+
+                default:
+                    out_.WriteLine();
+                    out_.WriteLine("usage: OverShell settings path|init|open");
+                    return 2;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            out_.WriteLine();
+            out_.WriteLine($"error: {ex.Message}");
+            return 1;
+        }
+        finally
+        {
+            out_.Flush();
+        }
+
+        static string Describe(Core.ResolvedRoot root) => root.Source switch
+        {
+            Core.PathSource.Override => $"{root.Variable} (explicit override)",
+            Core.PathSource.Xdg => $"{root.Variable} + \\overshell",
+            _ => root.Variable == "APPDATA"
+                ? "%APPDATA%\\OverShell (default; set XDG_CONFIG_HOME or OVERSHELL_CONFIG_DIR to move it)"
+                : "%LOCALAPPDATA%\\OverShell (default; set XDG_STATE_HOME or OVERSHELL_STATE_DIR to move it)",
+        };
     }
 
     private static void Print(TextWriter out_, IntegrationStatus s) =>

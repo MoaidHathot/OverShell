@@ -163,7 +163,8 @@ public partial class MainWindow
         }
 
         c.Register("integrations.status", "Integrations: status", "Integrations", ShowIntegrationStatus, description: "Which harness integrations are installed, and the endpoint address");
-        c.Register("settings.open", "Open settings folder", "Settings", () => OpenFolder(AppPaths.ConfigRoot), description: AppPaths.ConfigRoot);
+        c.Register("settings.open", "Open settings folder", "Settings", () => OpenFolder(AppPaths.ConfigRoot), description: $"{AppPaths.ConfigRoot} (from {AppPaths.Config.Variable})");
+        c.Register("settings.init", "Create settings.jsonc and keybindings.jsonc from the defaults", "Settings", InitSettingsFiles, () => !System.IO.File.Exists(AppPaths.SettingsFile) || !System.IO.File.Exists(AppPaths.KeybindingsFile), "Fully commented starter files; existing files are kept");
 
         c.Register("tab.resume", "Resume this tab's agent session", "Agents", () =>
         {
@@ -409,6 +410,35 @@ public partial class MainWindow
         ShowStatusMessage($"{string.Join("  ·  ", parts)}  ·  endpoint {(_endpoint is { } ep ? ep.BaseUrl : "off")}");
     }
 
+    /// <summary>Writes the built-in defaults as the user's starting point; never over an existing file. Saved edits then reload live.</summary>
+    private void InitSettingsFiles()
+    {
+        var written = new List<string>();
+        try
+        {
+            AppPaths.EnsureCreated();
+            foreach (var (path, resource) in new[] { (AppPaths.SettingsFile, "settings.jsonc"), (AppPaths.KeybindingsFile, "keybindings.jsonc") })
+            {
+                if (System.IO.File.Exists(path))
+                {
+                    continue;
+                }
+
+                var header = "// Written by OverShell from the built-in defaults. Every value here equals the default, so this\n" +
+                             "// file changes nothing until you edit it; delete a line to fall back. Saved changes apply live.\n";
+                System.IO.File.WriteAllText(path, header + EmbeddedResources.Read(resource), new System.Text.UTF8Encoding(false));
+                written.Add(System.IO.Path.GetFileName(path));
+            }
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+        {
+            ShowStatusMessage($"Could not write settings: {e.Message}");
+            return;
+        }
+
+        ShowStatusMessage(written.Count == 0 ? $"Settings files already exist in {AppPaths.ConfigRoot}" : $"Wrote {string.Join(" and ", written)} to {AppPaths.ConfigRoot}");
+        OpenFolder(AppPaths.ConfigRoot);
+    }
     private static void OpenFolder(string path)
     {
         try

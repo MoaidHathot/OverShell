@@ -27,8 +27,8 @@ backdrop). x64 only.
 | Environment variable | Values | Purpose |
 |---|---|---|
 | `OVERSHELL_BACKDROP` | `acrylic` (default), `mica`, `micaalt`, `none` | Backdrop behind the chrome |
-| `OVERSHELL_CONFIG_DIR` | a directory | Configuration root instead of `%APPDATA%\OverShell` |
-| `OVERSHELL_STATE_DIR` | a directory | State root (labels, last session) instead of `%LOCALAPPDATA%\OverShell` |
+| `OVERSHELL_CONFIG_DIR` | a directory | Configuration root; see *Configuration* below |
+| `OVERSHELL_STATE_DIR` | a directory | State root (labels, last session) |
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
@@ -38,6 +38,23 @@ Crashes are always logged to `%TEMP%\overshell-crash.log`.
 
 To exercise the link handling and shortcuts by hand, run `tools\Show-LinkTestCard.ps1`
 inside a tab: it prints every case with what should happen.
+
+## Configuration
+
+Configuration lives in the first of `OVERSHELL_CONFIG_DIR`, `$XDG_CONFIG_HOME\overshell`,
+`%APPDATA%\OverShell` - so a dotfiles directory that other tools already share through
+`XDG_CONFIG_HOME` picks up OverShell too. Machine-local state (labels, the last
+session) goes to the first of `OVERSHELL_STATE_DIR`, `$XDG_STATE_HOME\overshell`,
+`%LOCALAPPDATA%\OverShell`.
+
+```powershell
+OverShell settings path    # which directories, chosen by which variable, and every file
+OverShell settings init    # a fully commented settings.jsonc + keybindings.jsonc to start from
+```
+
+All files are JSONC and reload live when saved: `settings.jsonc`, `keybindings.jsonc`,
+`snippets.jsonc`, `agents\*.jsonc`, `layouts\*.jsonc`, `skins\*.xaml`. Below,
+*the configuration directory* means that root.
 
 ## Agents
 
@@ -70,14 +87,14 @@ curl.exe -X POST "$env:OVERSHELL_ENDPOINT/v1/report?token=$env:OVERSHELL_TOKEN" 
   -d "{`"tab`":`"$env:OVERSHELL_TAB_ID`",`"source`":`"me`",`"state`":`"blocked`",`"message`":`"needs a decision`"}"
 ```
 
-Rules per harness live in `%APPDATA%\OverShell\agents\*.jsonc` (bundled defaults inside
+Rules per harness live in `agents\*.jsonc` in the configuration directory (bundled defaults inside
 the app; a file with the same name replaces one wholesale).
 
 ## Prompt bar, sessions, groups
 
 `Ctrl+Shift+Enter` opens a prompt bar under the terminal: type once and send to the
 active tab, to every agent, to the agents that need you, or to every tab (`Ctrl+Shift+B`
-opens it aimed at all agents). Snippets in `%APPDATA%\OverShell\snippets.jsonc` —
+opens it aimed at all agents). Snippets in `snippets.jsonc` —
 `[ { "name": "Explain", "text": "Explain what you just did." } ]` — appear on the bar and
 as `Snippet: …` commands.
 
@@ -112,7 +129,7 @@ A view is a **layout** plus what the middle shows. Layouts are small JSONC files
 the tabs go (`top`, `bottom`, `left`, `right`, `hidden`), how they look (`strip`, `list`,
 `rail`), whether the sidebar and status bar show. Eight presets ship (`top`, `bottom`,
 `left-rail`, `left-list`, `right-list`, `zen`, `herd`, `dashboard`); drop a same-named file
-into `%APPDATA%\OverShell\layouts\` to change one, or pick any preset for the current view
+into `layouts\` to change one, or pick any preset for the current view
 from the palette (`Layout: …`). Retune the views in `settings.jsonc`:
 
 ```jsonc
@@ -134,12 +151,12 @@ screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+
 Right-click a tab, a sidebar row or a card for rename / treat as agent or shell / explain /
 close.
 
-Everything is a command bound in `%APPDATA%\OverShell\keybindings.jsonc` (Windows
+Everything is a command bound in `keybindings.jsonc` (Windows
 Terminal's shape; `"command": "unbound"` removes a default).
 
 ## Notifications
 
-`%APPDATA%\OverShell\settings.jsonc` names the sinks: an in-window toast for background
+`settings.jsonc` names the sinks: an in-window toast for background
 tabs, a taskbar badge with the number of tabs needing you (amber while one is blocked),
 a system sound while the window is unfocused, a native Windows toast (`toast`, no
 external program; a click opens the tab), and any command - the shipped recipe sends
@@ -169,6 +186,11 @@ Not possible on the default terminal surface: transparency of the terminal body 
 11 for the surface abstraction that would allow a second, translucent one.
 
 ## Documentation
+
+**[docs/GUIDE.md](docs/GUIDE.md)** - the user guide: configuration and where it lives,
+every setting, keys and commands, views and layouts, agents and integrations,
+notifications, prompt bar, sessions, `overshell://`, skins, the command line,
+troubleshooting.
 
 **[DESIGN.md](DESIGN.md)** - what it is, why it is built this way, the architecture
 decision behind embedding Windows Terminal, the configuration pipeline, field notes on

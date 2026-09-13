@@ -147,5 +147,6 @@ Case 55 "In the tear-off, right-click pastes / copies a selection; Ctrl+click on
 Case 56 "The sidebar and the dashboard still show the detached tab; clicking it there raises its window; its state keeps updating; it is saved in the session (and comes back attached)."
 Case 57 "Set `"toast`": { `"enabled`": true } in settings.jsonc, let an agent finish in a background tab: a Windows toast appears (Action Center too); clicking it brings OverShell up on that tab."
 Case 58 "OverShell integrations install codex, then run codex here and finish a turn: the tab shows Codex, 'done' when unseen, the explain panel lists the thread and 'codex resume <thread>'; the tab still shows 'working' on the next turn (detector)."
+Case 59 "OverShell settings path: with XDG_CONFIG_HOME set, configuration resolves under it (…\overshell); settings init writes the two starter files there; editing settings.jsonc there changes the running window within two seconds."
 Say ""
 Say "Report: one line per number (ok / what you saw), plus %TEMP%\overshell-links.log, overshell-agents.log (OVERSHELL_TRACE_AGENTS=1) and overshell-crash.log if present."
