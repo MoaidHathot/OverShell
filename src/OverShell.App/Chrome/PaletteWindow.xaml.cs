@@ -85,6 +85,23 @@ public partial class PaletteWindow : Window
         return window;
     }
 
+    /// <summary>
+    /// A picker over a fixed list (recently closed tabs, saved sessions): the same window
+    /// with its own glyph and empty-list text; the text typed filters the list the way the
+    /// switcher does, through <paramref name="source"/>.
+    /// </summary>
+    public static PaletteWindow Picker(Window owner, string glyph, string emptyText, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source)
+    {
+        var window = new PaletteWindow(owner, source, accept: null) { _promptGlyph = glyph, _emptyText = emptyText };
+        window.Refresh();
+        window.Place();
+        window.Show();
+        return window;
+    }
+
+    private string? _promptGlyph;
+    private string? _emptyText;
+
     /// <summary>Opens a single-line prompt; Enter calls <paramref name="accept"/> with the text.</summary>
     public static PaletteWindow Prompt(Window owner, string prompt, string initial, Action<string> accept)
     {
@@ -127,9 +144,9 @@ public partial class PaletteWindow : Window
         var items = _source(query);
         List.ItemsSource = items;
         List.SelectedIndex = items.Count > 0 ? 0 : -1;
-        TxtEmpty.Text = query.CommandsMode ? "No matching command" : "No matching tab";
+        TxtEmpty.Text = _emptyText ?? (query.CommandsMode ? "No matching command" : "No matching tab");
         TxtEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        TxtPrompt.Text = query.CommandsMode ? "\uE756" : "\uE721"; // command prompt / search
+        TxtPrompt.Text = _promptGlyph ?? (query.CommandsMode ? "\uE756" : "\uE721"); // command prompt / search
 
         var preview = items.Any(i => i.Preview is not null);
         PreviewColumn.Width = preview ? new GridLength(PreviewWidth) : new GridLength(0);

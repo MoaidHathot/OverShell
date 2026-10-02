@@ -11,6 +11,7 @@
   // ---- tabs ----
   { "keys": "ctrl+t",              "command": "tab.new" },
   { "keys": "ctrl+shift+w",        "command": "tab.close" },
+  { "keys": "ctrl+shift+t",        "command": "tab.reopenClosed" },
   { "keys": "ctrl+tab",            "command": "tab.next" },
   { "keys": "ctrl+shift+tab",      "command": "tab.previous" },
   { "keys": "ctrl+pgdn",           "command": "tab.next" },

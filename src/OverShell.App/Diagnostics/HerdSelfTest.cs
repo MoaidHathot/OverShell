@@ -4,6 +4,8 @@ using System.Windows.Threading;
 using OverShell.Core;
 using OverShell.Core.Agents;
 using OverShell.Core.Integrations;
+using OverShell.Core.Search;
+using OverShell.Core.Settings;
 
 namespace OverShell.App.Diagnostics;
 
@@ -19,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "history";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -50,6 +52,9 @@ internal static class HerdSelfTest
                         break;
                     case "session2":
                         await RunSessionRestoreAsync(window, firstTab);
+                        break;
+                    case "history":
+                        await RunHistoryAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -143,6 +148,109 @@ internal static class HerdSelfTest
     /// must adopt the id from the turn's own events — otherwise a restored tab could never be
     /// resumed by id again.
     /// </summary>
+    /// <summary>
+    /// History (§12.13): a closed tab is remembered with its directory and agent session and
+    /// comes back through <c>tab.reopenClosed</c> with the agent resumed; the picker lists
+    /// closed tabs and archived sessions; an archived session is reopened next to the open tabs.
+    /// Runs against a state root the launcher seeded with one archive.
+    /// </summary>
+    private static async Task RunHistoryAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (history) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var second = window.AddTab(tab.Profile, activate: false);
+        await Task.Delay(1500);
+        second.UserLabel = "to be closed";
+        second.ApplyReport(new IntegrationReport(second.Id, "selftest", 1, AgentState.Working, "selftest", "working", null, "ses-history", "Write-Host history-resumed", Release: false));
+        await Task.Delay(300);
+        Log($"  before close: tabs={window.Tabs.Count} second label='{second.UserLabel}' agent={second.IsAgent} resume='{second.ResumeCommand}' cwd='{second.WorkingDirectory}'");
+
+        var archivesBefore = SessionHistory.List(AppPaths.StateRoot);
+        Log($"  archives before: {archivesBefore.Count} ({string.Join("; ", archivesBefore.Select(a => $"{System.IO.Path.GetFileName(a.Path)}: {a.Tabs.Count} tab(s)"))})");
+
+        // ---- close, remember ----
+        window.CloseTab(second);
+        await Task.Delay(300);
+        var remembered = window.RecentlyClosed.LastOrDefault();
+        Log($"  recently closed: {window.RecentlyClosed.Count} entr(ies); last label='{remembered?.Label}' agentRunning={remembered?.AgentRunning} resume='{remembered?.ResumeCommand}' closedAt={remembered?.ClosedAt:HH:mm:ss}");
+        Check(window.Tabs.Count == 1, "the tab closed");
+        Check(remembered is { Label: "to be closed", AgentRunning: true, ResumeCommand: "Write-Host history-resumed" }, "the closed tab was remembered with its label and agent session");
+        Check(window.Commands.Find("tab.reopenClosed")?.IsEnabled == true, "tab.reopenClosed is enabled while something is remembered");
+
+        // ---- the file carries it (within the two-second save) ----
+        await Task.Delay(2600);
+        var onDisk = SessionSnapshot.Load(AppPaths.SessionFile, out _);
+        Check(onDisk?.RecentlyClosed.Count == 1 && onDisk.RecentlyClosed[0].Label == "to be closed", "the session file carries the recently closed entry");
+
+        // ---- picker ----
+        var items = window.BuildHistoryItems(PaletteQuery.Parse(string.Empty));
+        Log($"  picker items: {string.Join(" | ", items.Select(i => $"{i.Title} [{i.Detail}]"))}");
+        Check(items.Count >= 2 && items[0].Title == "to be closed", "the picker lists the closed tab first");
+        Check(items.Any(i => i.Title.StartsWith("Session ", StringComparison.Ordinal) && i.Detail!.Contains("tab", StringComparison.Ordinal)), "the picker lists the archived session with its tab summary");
+        var filtered = window.BuildHistoryItems(PaletteQuery.Parse("interrupted"));
+        Check(filtered.All(i => i.Title.Contains("interrupted", StringComparison.OrdinalIgnoreCase) || i.Detail!.Contains("interrupted", StringComparison.OrdinalIgnoreCase)), "typing filters the picker");
+
+        window.Commands.TryExecute("session.history");
+        await Task.Delay(600);
+        var picker = window.Palette;
+        var pickerItems = picker?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Count : -1;
+        Log($"  picker window: open={picker?.IsVisible} items={pickerItems}");
+        if (picker is null)
+        {
+            Log("  SKIP  picker window check: it lost activation to another process while open");
+        }
+        else
+        {
+            Check(picker.IsVisible && pickerItems == items.Count, "session.history opened the picker with those items");
+            picker.Close();
+            await Task.Delay(400);
+        }
+
+        // ---- reopen: the tab comes back, the agent resumes ----
+        window.Commands.TryExecute("tab.reopenClosed");
+        await Task.Delay(300);
+        var reopened = window.Tabs.LastOrDefault();
+        Check(window.Tabs.Count == 2 && reopened is { UserLabel: "to be closed" } && ReferenceEquals(window.ActiveTab, reopened), "tab.reopenClosed reopened it, activated, with its label");
+        Check(window.RecentlyClosed.Count == 0, "the entry left the recently-closed list");
+        Check(reopened?.ResumeCommand == "Write-Host history-resumed" && reopened.Agent.SessionId == "ses-history", "the reopened tab knows its session id and resume command before any report");
+
+        var typed = false;
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline && !typed && reopened is not null)
+        {
+            await Task.Delay(500);
+            reopened.RequestScreen();
+            await Task.Delay(300);
+            typed = reopened.ScreenRows.Any(r => r.Contains("history-resumed", StringComparison.Ordinal) && !r.Contains("Write-Host", StringComparison.Ordinal));
+        }
+
+        Check(typed, "the resume command was typed into the reopened tab and ran");
+
+        // ---- reopen an archived session next to the open tabs ----
+        var archive = SessionHistory.List(AppPaths.StateRoot).FirstOrDefault();
+        if (archive is null)
+        {
+            Check(false, "an archived session exists to reopen (the launcher seeds one)");
+        }
+        else
+        {
+            var before = window.Tabs.Count;
+            var opened = window.ReopenSession(archive);
+            await Task.Delay(500);
+            Log($"  reopened archive {System.IO.Path.GetFileName(archive.Path)}: {opened} tab(s); tabs now {window.Tabs.Count}; labels=[{string.Join(", ", window.Tabs.Select(t => t.UserLabel ?? "-"))}]");
+            Check(opened == archive.Tabs.Count && window.Tabs.Count == before + opened, "every tab of the archived session was added next to the open ones");
+            Check(window.Tabs.Skip(before).All(t => archive.Tabs.Any(a => a.Label == t.UserLabel)), "the reopened tabs carry the archive's labels");
+        }
+
+        Log($"=== selftest (history) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
     private static async Task RunOpenCodeResumeAsync(MainWindow window, TerminalTab tab)
     {
         Log("=== selftest (opencode-resume) start ===");

@@ -139,6 +139,89 @@ public class SessionRestoreTests
     }
 }
 
+public class SessionHistoryTests
+{
+    private static SessionSnapshot Snapshot(DateTimeOffset at, SessionCloseReason? reason, params string[] dirs) => new()
+    {
+        SavedAt = at,
+        CloseReason = reason,
+        Tabs = dirs.Select(d => new SavedTab { ProfileId = "{p}", WorkingDirectory = d }).ToList(),
+    };
+
+    [Fact]
+    public void Archives_are_listed_newest_first_and_keep_their_close_reason()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-history");
+        try
+        {
+            var t0 = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero);
+            Assert.NotNull(SessionHistory.Archive(dir.FullName, Snapshot(t0, SessionCloseReason.Closed, "C:\\a"), out var e1));
+            Assert.Null(e1);
+            var interrupted = SessionHistory.Archive(dir.FullName, Snapshot(t0.AddMinutes(5), null, "C:\\b", "C:\\c"), out _);
+            Assert.NotNull(interrupted);
+            Assert.EndsWith("-interrupted.json", interrupted);
+
+            var list = SessionHistory.List(dir.FullName);
+            Assert.Equal(2, list.Count);
+            Assert.True(list[0].Interrupted);
+            Assert.Equal(2, list[0].Tabs.Count);
+            Assert.Equal(SessionCloseReason.Closed, list[1].CloseReason);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Empty_sessions_and_repeats_of_the_newest_archive_are_not_archived()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-history");
+        try
+        {
+            var t0 = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero);
+            Assert.Null(SessionHistory.Archive(dir.FullName, Snapshot(t0, SessionCloseReason.Closed), out _));
+            Assert.NotNull(SessionHistory.Archive(dir.FullName, Snapshot(t0, SessionCloseReason.Closed, "C:\\a"), out _));
+
+            // Same tabs a minute later (a restart that restored everything and closed again): nothing new.
+            Assert.Null(SessionHistory.Archive(dir.FullName, Snapshot(t0.AddMinutes(1), SessionCloseReason.Closed, "C:\\a"), out var error));
+            Assert.Null(error);
+            Assert.Single(SessionHistory.List(dir.FullName));
+
+            // A different tab set is new; two archives in the same second get distinct names.
+            Assert.NotNull(SessionHistory.Archive(dir.FullName, Snapshot(t0, SessionCloseReason.Closed, "C:\\b"), out _));
+            Assert.Equal(2, SessionHistory.List(dir.FullName).Count);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Only_the_newest_ten_are_kept()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-history");
+        try
+        {
+            var t0 = new DateTimeOffset(2026, 9, 14, 9, 0, 0, TimeSpan.Zero);
+            for (var i = 0; i < 13; i++)
+            {
+                Assert.NotNull(SessionHistory.Archive(dir.FullName, Snapshot(t0.AddMinutes(i), SessionCloseReason.Closed, $"C:\\{i}"), out _));
+            }
+
+            var list = SessionHistory.List(dir.FullName);
+            Assert.Equal(SessionHistory.Keep, list.Count);
+            Assert.Equal("C:\\12", list[0].Tabs[0].WorkingDirectory);
+            Assert.Equal("C:\\3", list[^1].Tabs[0].WorkingDirectory);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+}
+
 public class WindowPlacementTests
 {
     private static readonly Bounds Desktop = new(0, 0, 2560, 1440);

@@ -221,6 +221,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             Attach(tab);
         }
 
+        // Remembered while its directory and session id are still readable.
+        RememberClosed(tab);
+
         // Dispose first: it suppresses further input, so the focus and key messages
         // generated while the HwndHost is unloaded can't reach a closed pseudoconsole.
         tab.Dispose();

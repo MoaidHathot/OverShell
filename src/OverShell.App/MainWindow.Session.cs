@@ -4,9 +4,11 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
 using System.Windows.Interop;
+using OverShell.App.Chrome;
 using OverShell.Config;
 using OverShell.Core;
 using OverShell.Core.Integrations;
+using OverShell.Core.Search;
 using OverShell.Core.Settings;
 
 namespace OverShell.App;
@@ -70,7 +72,18 @@ public partial class MainWindow
         if (_previousSession is not null)
         {
             _recentlyClosed.AddRange(_previousSession.RecentlyClosed.TakeLast(SessionSnapshot.RecentlyClosedLimit));
+
+            // A session the last run never got to archive (it was killed) is archived now,
+            // before this run's first save overwrites the only copy.
+            if (_previousSession.Interrupted)
+            {
+                var archived = SessionHistory.Archive(AppPaths.StateRoot, _previousSession, out var archiveError);
+                _trace.Write($"session: interrupted session {(archived is null ? $"not archived ({archiveError ?? "nothing new"})" : $"archived to {archived}")}");
+            }
         }
+
+        _commands.Register("tab.reopenClosed", "Reopen closed tab", "Tabs", () => ReopenClosedTab(), () => _recentlyClosed.Count > 0, "The most recently closed tab, with its directory and agent session");
+        _commands.Register("session.history", "Session history", "Settings", OpenSessionHistory, description: "Recently closed tabs and earlier sessions, to bring back");
 
         if (_settings.Session.Restore && _settings.Session.RestoreWindows && !StartFresh)
         {
@@ -336,6 +349,11 @@ public partial class MainWindow
         {
             _lastSessionJson = json;
             _sessionClosed = reason is not null;
+            if (reason is not null)
+            {
+                var archived = SessionHistory.Archive(AppPaths.StateRoot, snapshot, out var archiveError);
+                _trace.Write($"session: {reason.ToString()!.ToLowerInvariant()}, {(archived is null ? $"not archived ({archiveError ?? "nothing new"})" : $"archived to {archived}")}");
+            }
         }
         else
         {
@@ -351,6 +369,145 @@ public partial class MainWindow
             _lastSessionSave = now;
             SaveSession();
         }
+    }
+
+    // ---------------------------------------------------------------- history
+
+    /// <summary>A tab the user is closing: remembered for <c>tab.reopenClosed</c> and the history picker. Called before the tab is disposed.</summary>
+    private void RememberClosed(TerminalTab tab)
+    {
+        // A shell that already exited has nothing to bring back but its directory - still
+        // worth a line; a tab that never started (bad command line) has not even that.
+        if (!tab.HasStarted)
+        {
+            return;
+        }
+
+        _recentlyClosed.Add(CaptureTab(tab, DateTimeOffset.Now));
+        if (_recentlyClosed.Count > SessionSnapshot.RecentlyClosedLimit)
+        {
+            _recentlyClosed.RemoveRange(0, _recentlyClosed.Count - SessionSnapshot.RecentlyClosedLimit);
+        }
+    }
+
+    /// <summary>Reopens the newest closed tab (or <paramref name="entry"/>), activated, resuming its agent the way a restore would.</summary>
+    internal TerminalTab? ReopenClosedTab(SavedTab? entry = null)
+    {
+        entry ??= _recentlyClosed.LastOrDefault();
+        if (entry is null)
+        {
+            return null;
+        }
+
+        _recentlyClosed.Remove(entry);
+        var tab = OpenSavedTab(entry, activate: true);
+        if (tab is null)
+        {
+            ShowStatusMessage("No launchable profile to reopen the tab with");
+            return null;
+        }
+
+        _trace.Write($"[{tab.Id}] reopened closed tab ({entry.Label ?? entry.Harness ?? entry.WorkingDirectory ?? "tab"}, closed {entry.ClosedAt:HH:mm:ss})");
+        return tab;
+    }
+
+    /// <summary>Adds every tab of an archived session next to the current ones, agents resumed the way a restore would.</summary>
+    internal int ReopenSession(ArchivedSession session)
+    {
+        var plans = SessionRestore.PlanAll(session.Tabs, -1, t => RestoreCommandLine(ProfileFor(t)), _agents.Rules, _settings.Session);
+        TerminalTab? first = null;
+        var opened = 0;
+        for (var i = 0; i < session.Tabs.Count; i++)
+        {
+            var tab = OpenSavedTab(session.Tabs[i], activate: false, plans[i]);
+            if (tab is not null)
+            {
+                first ??= tab;
+                opened++;
+            }
+        }
+
+        if (first is not null)
+        {
+            ActiveTab = first;
+        }
+
+        _trace.Write($"session: reopened {opened} tab(s) from {session.Path}");
+        ShowStatusMessage($"Reopened {opened} tab{(opened == 1 ? string.Empty : "s")} from the session saved {session.SavedAt.ToLocalTime():HH:mm}");
+        return opened;
+    }
+
+    /// <summary>The picker: recently closed tabs first (newest on top), then earlier sessions, newest first.</summary>
+    private void OpenSessionHistory()
+    {
+        if (_palette is { IsVisible: true })
+        {
+            _palette.Close();
+            return;
+        }
+
+        _palette = PaletteWindow.Picker(this, "\uE81C", "Nothing closed yet, no earlier sessions", BuildHistoryItems); // history glyph
+        _palette.Closed += (_, _) =>
+        {
+            _palette = null;
+            ActiveTab?.Surface.Focus();
+        };
+    }
+
+    /// <summary>What a saved tab is called in the picker: its label, else its harness, else its profile.</summary>
+    private string NameOf(SavedTab tab) =>
+        tab.Label ?? (tab.Harness is { } h ? _agents.Rules.Find(h)?.DisplayName ?? h : null)
+        ?? _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, tab.ProfileId, StringComparison.OrdinalIgnoreCase))?.Name
+        ?? "tab";
+
+    internal IReadOnlyList<PaletteItem> BuildHistoryItems(PaletteQuery query)
+    {
+        var items = new List<(int Score, int Order, PaletteItem Item)>();
+        var order = 0;
+
+        foreach (var entry in Enumerable.Reverse(_recentlyClosed))
+        {
+            var name = NameOf(entry);
+            var detail = $"closed {entry.ClosedAt?.ToLocalTime():HH:mm}{(entry.AgentRunning ? " · agent was running" : string.Empty)}{(entry.WorkingDirectory is null ? string.Empty : $"  ·  {entry.WorkingDirectory}")}";
+            var score = FuzzyMatcher.Score(query.Text, name, entry.WorkingDirectory ?? string.Empty, entry.Harness ?? string.Empty);
+            if (score is null)
+            {
+                continue;
+            }
+
+            var captured = entry;
+            items.Add((score.Value + 1000, order++, new PaletteItem
+            {
+                Title = name,
+                Detail = detail,
+                Glyph = "\uE8A7", // reopen (open-in-new)
+                Invoke = () => ReopenClosedTab(captured),
+            }));
+        }
+
+        foreach (var session in SessionHistory.List(AppPaths.StateRoot))
+        {
+            var when = session.SavedAt.ToLocalTime();
+            var how = session.Interrupted ? "interrupted" : session.CloseReason == SessionCloseReason.SessionEnding ? "Windows signed out" : "closed";
+            var title = $"Session {how} {when:ddd HH:mm}";
+            var detail = SessionSnapshot.Describe(session.Tabs, NameOf);
+            var score = FuzzyMatcher.Score(query.Text, title, detail, how);
+            if (score is null)
+            {
+                continue;
+            }
+
+            var captured = session;
+            items.Add((score.Value, order++, new PaletteItem
+            {
+                Title = title,
+                Detail = detail,
+                Glyph = session.Interrupted ? "\uE7BA" : "\uE81C", // warning / history
+                Invoke = () => ReopenSession(captured),
+            }));
+        }
+
+        return items.OrderByDescending(i => i.Score).ThenBy(i => i.Order).Select(i => i.Item).ToList();
     }
 
     // ----------------------------------------------------------- protocol
