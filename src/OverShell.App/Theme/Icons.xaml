@@ -1,0 +1,27 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ========================= Harness icons ========================= -->
+    <!-- One vector per harness (DESIGN.md 12.13), on a 16x16 grid, filled shapes only:
+         crisp at the 11 px the tab item draws them at, coloured by the theme brush of the
+         text next to them, and overridable by a skin (same key) or by a rule file
+         ("icon": "<path data>"). They replaced text glyphs (U+25C8 and friends), which
+         WPF's default font fallback rendered from Segoe UI Symbol with Display-mode
+         hinting at 11 px - a grey smudge rather than a shape. -->
+
+    <!-- OpenCode: a diamond inside a diamond outline. -->
+    <Geometry x:Key="Harness.Icon.opencode">M8,0 L16,8 L8,16 L0,8 Z M8,2.6 L2.6,8 L8,13.4 L13.4,8 Z M8,5.2 L10.8,8 L8,10.8 L5.2,8 Z</Geometry>
+
+    <!-- Copilot CLI: a four-pointed star. -->
+    <Geometry x:Key="Harness.Icon.copilot">M8,0 C8.6,4.4 11.6,7.4 16,8 C11.6,8.6 8.6,11.6 8,16 C7.4,11.6 4.4,8.6 0,8 C4.4,7.4 7.4,4.4 8,0 Z</Geometry>
+
+    <!-- Claude Code: an eight-spoke asterisk. -->
+    <Geometry x:Key="Harness.Icon.claude">M7,0 L9,0 L9,5.6 L13,1.6 L14.4,3 L10.4,7 L16,7 L16,9 L10.4,9 L14.4,13 L13,14.4 L9,10.4 L9,16 L7,16 L7,10.4 L3,14.4 L1.6,13 L5.6,9 L0,9 L0,7 L5.6,7 L1.6,3 L3,1.6 L7,5.6 Z</Geometry>
+
+    <!-- Codex: a ring with a dot. -->
+    <Geometry x:Key="Harness.Icon.codex">M8,0 A8,8 0 1 1 7.99,0 Z M8,2.2 A5.8,5.8 0 1 0 8.01,2.2 Z M8,5 A3,3 0 1 1 7.99,5 Z</Geometry>
+
+    <!-- Any other agent: a filled diamond. -->
+    <Geometry x:Key="Harness.Icon.generic">M8,0 L16,8 L8,16 L0,8 Z</Geometry>
+
+</ResourceDictionary>

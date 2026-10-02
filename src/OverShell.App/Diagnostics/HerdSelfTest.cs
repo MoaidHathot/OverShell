@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "history";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "history" or "icons";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -55,6 +55,9 @@ internal static class HerdSelfTest
                         break;
                     case "history":
                         await RunHistoryAsync(window, firstTab);
+                        break;
+                    case "icons":
+                        await RunIconsAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -148,6 +151,176 @@ internal static class HerdSelfTest
     /// must adopt the id from the turn's own events — otherwise a restored tab could never be
     /// resumed by id again.
     /// </summary>
+    /// <summary>
+    /// Harness icons (§12.13): one tab per bundled harness, made an agent by a report, then
+    /// the tab strip rendered at 1x and 3x. Each icon must resolve to a geometry, draw a
+    /// plausible number of pixels in its cell, and differ from the others - the text glyphs
+    /// they replaced rendered as near-identical smudges at 11 px.
+    /// </summary>
+    private static async Task RunIconsAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (icons) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var harnesses = new[] { "opencode", "copilot", "claude", "codex", "generic" };
+        var tabs = new List<TerminalTab> { tab };
+        foreach (var _ in harnesses.Skip(1))
+        {
+            tabs.Add(window.AddTab(tab.Profile, activate: false));
+        }
+
+        await Task.Delay(1200);
+        for (var i = 0; i < harnesses.Length; i++)
+        {
+            tabs[i].ApplyReport(new IntegrationReport(tabs[i].Id, harnesses[i], 1, AgentState.Idle, harnesses[i], "idle", null, null, null, Release: false));
+            tabs[i].UserLabel = harnesses[i];
+        }
+
+        await Task.Delay(600);
+        foreach (var t in tabs)
+        {
+            var geometry = t.IconGeometry;
+            var bounds = geometry?.Bounds ?? System.Windows.Rect.Empty;
+            Log($"  {t.Harness,-9} icon={(geometry is null ? "none" : $"geometry {bounds.Width:F0}x{bounds.Height:F0}")} textGlyph={t.ShowsTextGlyph} glyph='{t.Glyph}'");
+            Check(geometry is not null && !t.ShowsTextGlyph, $"{t.Harness}: a vector icon resolved from the theme");
+        }
+
+        // Draw each icon alone on the theme's chrome colour, at the tab item's 11 px and at 3x,
+        // and count the pixels that differ from the background - the shape's footprint.
+        var fill = (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("Text.Secondary");
+        var background = (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("Surface.Chrome");
+        var footprints = new Dictionary<string, int>();
+        var strip = new System.Windows.Controls.StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, Background = background };
+        foreach (var t in tabs)
+        {
+            var cell = new System.Windows.Controls.Border { Width = 24, Height = 24, Background = background };
+            var icon = new Chrome.HarnessIcon { Tab = t, Size = 11, Fill = fill, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = System.Windows.VerticalAlignment.Center };
+            cell.Child = icon;
+            strip.Children.Add(cell);
+            footprints[t.Harness!] = CountInk(icon, 11, 3);
+            Log($"  {t.Harness,-9} footprint at 3x: {footprints[t.Harness!]} px (11 px icon drawn at 33 px)");
+            Check(footprints[t.Harness!] is > 120 and < 1000, $"{t.Harness}: the icon draws a shape, not a dot or a blob");
+        }
+
+        Check(footprints.Values.Distinct().Count() == footprints.Count, "the five icons have distinct footprints");
+
+        strip.Measure(new System.Windows.Size(1000, 100));
+        strip.Arrange(new System.Windows.Rect(strip.DesiredSize));
+        strip.UpdateLayout();
+        SaveVisualScaled(strip, "overshell-selftest-icons-1x.png", 1);
+        SaveVisualScaled(strip, "overshell-selftest-icons-4x.png", 4);
+
+        // The real tab strip, with the five agent tabs, as the user sees it.
+        if (window.FindName("TitleBarSurface") is System.Windows.FrameworkElement titleBar)
+        {
+            SaveVisual(titleBar, "overshell-selftest-icons-tabstrip.png");
+        }
+
+        // tabs.showHarnessGlyph / tabs.twoLine were defined and never read (pre-P4): both must
+        // now take effect on the live items - here through the static the window sets on reload.
+        var hadIcon = tabs[0].ShowsHarnessIcon;
+        TerminalTab.TabSettings = new Core.Settings.TabSettings { ShowHarnessGlyph = false, TwoLine = false };
+        foreach (var t in tabs)
+        {
+            t.TabSettingsChanged();
+        }
+
+        await Task.Delay(300);
+        var iconElements = FindAll<Chrome.HarnessIcon>(window).Where(i => i.Tab is not null && tabs.Contains(i.Tab)).ToList();
+        var detailElements = FindAll<System.Windows.Controls.TextBlock>(window).Where(tb => tb.Name == "TabDetail").ToList();
+        Log($"  toggles off: ShowsHarnessIcon={tabs[0].ShowsHarnessIcon} (was {hadIcon}) icons visible={iconElements.Count(i => i.Visibility == System.Windows.Visibility.Visible)}/{iconElements.Count} detail lines visible={detailElements.Count(d => d.Visibility == System.Windows.Visibility.Visible)}/{detailElements.Count}");
+        Check(hadIcon && !tabs[0].ShowsHarnessIcon, "tabs.showHarnessGlyph=false hides the harness icon on agent tabs");
+        Check(iconElements.Count > 0 && iconElements.All(i => i.Visibility != System.Windows.Visibility.Visible), "every tab item's icon element collapsed");
+        Check(detailElements.Count > 0 && detailElements.All(d => d.Visibility != System.Windows.Visibility.Visible), "tabs.twoLine=false collapsed every tab item's detail line");
+        if (window.FindName("TitleBarSurface") is System.Windows.FrameworkElement titleBarOff)
+        {
+            SaveVisual(titleBarOff, "overshell-selftest-icons-tabstrip-toggles-off.png");
+        }
+
+        TerminalTab.TabSettings = new Core.Settings.TabSettings();
+        foreach (var t in tabs)
+        {
+            t.TabSettingsChanged();
+        }
+
+        await Task.Delay(200);
+        Check(iconElements.All(i => i.Visibility == System.Windows.Visibility.Visible) && detailElements.All(d => d.Visibility == System.Windows.Visibility.Visible), "both back on: icons and detail lines visible again");
+
+        foreach (var t in tabs.Skip(1))
+        {
+            window.CloseTab(t);
+        }
+
+        Log($"=== selftest (icons) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    private static IEnumerable<T> FindAll<T>(System.Windows.DependencyObject root) where T : System.Windows.DependencyObject
+    {
+        var count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var inner in FindAll<T>(child))
+            {
+                yield return inner;
+            }
+        }
+    }
+
+    /// <summary>Pixels of <paramref name="element"/> at <paramref name="scale"/> that are not fully transparent, after a layout at <paramref name="size"/>.</summary>
+    private static int CountInk(System.Windows.FrameworkElement element, double size, int scale)
+    {
+        element.Measure(new System.Windows.Size(size, size));
+        element.Arrange(new System.Windows.Rect(0, 0, size, size));
+        element.UpdateLayout();
+        var px = (int)Math.Ceiling(size * scale);
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(px, px, 96 * scale, 96 * scale, System.Windows.Media.PixelFormats.Pbgra32);
+        bitmap.Render(element);
+        var pixels = new byte[px * px * 4];
+        bitmap.CopyPixels(pixels, px * 4, 0);
+        var ink = 0;
+        for (var i = 3; i < pixels.Length; i += 4)
+        {
+            if (pixels[i] > 64)
+            {
+                ink++;
+            }
+        }
+
+        return ink;
+    }
+
+    private static void SaveVisualScaled(System.Windows.FrameworkElement element, string fileName, int scale)
+    {
+        try
+        {
+            var width = (int)Math.Ceiling(element.ActualWidth * scale);
+            var height = (int)Math.Ceiling(element.ActualHeight * scale);
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(width, height, 96 * scale, 96 * scale, System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(element);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
+            using var stream = System.IO.File.Create(path);
+            encoder.Save(stream);
+            Log($"  visual saved: {path} ({width}x{height})");
+        }
+        catch (Exception e)
+        {
+            Log($"  visual {fileName} failed: {e.GetType().Name}: {e.Message}");
+        }
+    }
+
     /// <summary>
     /// History (§12.13): a closed tab is remembered with its directory and agent session and
     /// comes back through <c>tab.reopenClosed</c> with the agent resumed; the picker lists

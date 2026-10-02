@@ -128,6 +128,13 @@ public sealed class AgentRuleSet
     /// <summary>One character for compact UI. Chosen from fonts a WPF chrome has: Segoe UI Symbol / emoji.</summary>
     public string Glyph { get; init; } = "◆";
 
+    /// <summary>
+    /// Optional vector icon as path-markup data on a 16x16 grid (<c>M8,0 L16,8 L8,16 L0,8 Z</c>).
+    /// The bundled harnesses have theirs in the application's theme; a user rule set may bring
+    /// its own here. Null means: the theme's icon for this id, else the generic one, else <see cref="Glyph"/>.
+    /// </summary>
+    public string? Icon { get; init; }
+
     public DetectRules Detect { get; init; } = new();
 
     /// <summary>Rules on the OSC 0/2 title — Claude Code's spinner glyphs, the OpenCode TUI plugin's icons.</summary>

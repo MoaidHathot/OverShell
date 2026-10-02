@@ -50,6 +50,7 @@ public partial class MainWindow
         AppPaths.EnsureCreated();
 
         _settings = AppSettings.Load(System.IO.File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
+        TerminalTab.TabSettings = _settings.Tabs;
         foreach (var problem in _settings.Problems)
         {
             _trace.Write($"settings: {problem}");

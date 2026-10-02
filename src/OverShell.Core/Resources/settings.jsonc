@@ -109,6 +109,8 @@
     }
   },
 
+  // Tab items: twoLine shows the state · project line under the label (strip and list);
+  // showHarnessGlyph shows the harness icon (OpenCode, Copilot, ...) on agent tabs.
   "tabs": {
     "twoLine": true,
     "showHarnessGlyph": true

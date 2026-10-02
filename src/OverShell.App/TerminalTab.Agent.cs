@@ -211,6 +211,61 @@ public sealed partial class TerminalTab
     /// <summary>One character for the harness, from its rule file; empty for shells.</summary>
     public string Glyph => IsAgent ? Agent.Rules.Glyph : string.Empty;
 
+    /// <summary>
+    /// The harness's vector icon (DESIGN.md §12.13): the rule file's own path data, else the
+    /// theme's <c>Harness.Icon.&lt;id&gt;</c>, else <c>Harness.Icon.generic</c>; null for a
+    /// shell, or when a rule's path data does not parse (the text glyph shows instead).
+    /// </summary>
+    public Geometry? IconGeometry
+    {
+        get
+        {
+            if (!IsAgent)
+            {
+                return null;
+            }
+
+            var rules = Agent.Rules;
+            if (!string.IsNullOrWhiteSpace(rules.Icon))
+            {
+                try
+                {
+                    return Geometry.Parse(rules.Icon);
+                }
+                catch (FormatException)
+                {
+                    _agents.Trace.Write($"[{Id}] rule '{rules.Id}' has unparsable icon path data; using the text glyph");
+                    return null;
+                }
+            }
+
+            return Application.Current?.TryFindResource($"Harness.Icon.{rules.Id}") as Geometry
+                   ?? Application.Current?.TryFindResource("Harness.Icon.generic") as Geometry;
+        }
+    }
+
+    /// <summary>True when the text glyph should show: an agent tab without a usable vector icon.</summary>
+    public bool ShowsTextGlyph => IsAgent && IconGeometry is null;
+
+    /// <summary>
+    /// What <c>settings.tabs</c> says about every tab item. Set by the window at start and on
+    /// reload; static because the items are data templates over tabs, not over the window.
+    /// </summary>
+    internal static Core.Settings.TabSettings TabSettings { get; set; } = new();
+
+    /// <summary>The harness mark shows on agent tabs unless <c>tabs.showHarnessGlyph</c> is off.</summary>
+    public bool ShowsHarnessIcon => IsAgent && TabSettings.ShowHarnessGlyph;
+
+    /// <summary>The second line (state · project) shows unless <c>tabs.twoLine</c> is off.</summary>
+    public bool ShowsDetail => TabSettings.TwoLine;
+
+    /// <summary>After <see cref="TabSettings"/> changed: the tab items re-read both.</summary>
+    internal void TabSettingsChanged()
+    {
+        Raise(nameof(ShowsHarnessIcon));
+        Raise(nameof(ShowsDetail));
+    }
+
     /// <summary>The state's colour from the theme, for dots and badges.</summary>
     public Brush StateBrush => (Brush)Application.Current.FindResource(State switch
     {
@@ -706,6 +761,9 @@ public sealed partial class TerminalTab
         Raise(nameof(Harness));
         Raise(nameof(IsAgent));
         Raise(nameof(Glyph));
+        Raise(nameof(IconGeometry));
+        Raise(nameof(ShowsTextGlyph));
+        Raise(nameof(ShowsHarnessIcon));
         RaiseAgentProperties();
     }
 

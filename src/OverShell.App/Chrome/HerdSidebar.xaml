@@ -77,7 +77,7 @@
                                                 </Grid>
                                                 <StackPanel Grid.Column="1">
                                                     <StackPanel Orientation="Horizontal">
-                                                        <TextBlock x:Name="Glyph" Text="{Binding Glyph}" Margin="0,0,5,0" FontSize="11" Foreground="{StaticResource Text.Secondary}" Visibility="Collapsed" />
+                                                        <chrome:HarnessIcon x:Name="Glyph" Tab="{Binding}" Size="11" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                                                         <TextBlock x:Name="Label" Text="{Binding Label}" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Primary}" />
                                                         <Border x:Name="UnreadBadge" Width="6" Height="6" Margin="6,0,0,0" CornerRadius="3" VerticalAlignment="Center" Background="{Binding StateBrush}" Visibility="Collapsed" />
                                                     </StackPanel>
@@ -99,7 +99,7 @@
                                             <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Row" Property="Background" Value="{StaticResource Surface.Hover}" />
                                             </Trigger>
-                                            <DataTrigger Binding="{Binding IsAgent}" Value="True">
+                                            <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                                                 <Setter TargetName="Glyph" Property="Visibility" Value="Visible" />
                                             </DataTrigger>
                                             <DataTrigger Binding="{Binding State}" Value="Blocked">

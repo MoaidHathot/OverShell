@@ -457,6 +457,11 @@ public partial class MainWindow
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
             _agents.Detection = _settings.Detection;
+            TerminalTab.TabSettings = _settings.Tabs;
+            foreach (var tab in Tabs)
+            {
+                tab.TabSettingsChanged();
+            }
 
             _notifications?.Dispose();
             _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications);

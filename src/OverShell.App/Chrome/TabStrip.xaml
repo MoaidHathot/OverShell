@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
              xmlns:local="clr-namespace:OverShell.App"
+             xmlns:chrome="clr-namespace:OverShell.App.Chrome"
              Focusable="False"
              shell:WindowChrome.IsHitTestVisibleInChrome="True">
 
@@ -97,7 +98,7 @@
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="TabGlyph" Text="{Binding Glyph}" Margin="0,0,5,0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource Text.Secondary}" Visibility="Collapsed" />
+                                <chrome:HarnessIcon x:Name="TabGlyph" Tab="{Binding}" Size="11" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                                 <TextBlock x:Name="TabLabel" Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
                                 <Border x:Name="UnreadBadge" Width="6" Height="6" Margin="6,0,0,0" CornerRadius="3" VerticalAlignment="Center" Background="{Binding StateBrush}" Visibility="Collapsed" />
                             </StackPanel>
@@ -134,8 +135,11 @@
                     <Setter TargetName="TabLabel" Property="Foreground" Value="{StaticResource Text.Disabled}" />
                     <Setter TargetName="TabLabel" Property="FontStyle" Value="Italic" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding IsAgent}" Value="True">
+                <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                     <Setter TargetName="TabGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ShowsDetail}" Value="False">
+                    <Setter TargetName="TabDetail" Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding State}" Value="Working">
                     <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Working}" />
@@ -205,7 +209,7 @@
                         </Grid>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="TabGlyph" Text="{Binding Glyph}" Margin="0,0,5,0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource Text.Secondary}" Visibility="Collapsed" />
+                                <chrome:HarnessIcon x:Name="TabGlyph" Tab="{Binding}" Size="11" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                                 <TextBlock x:Name="TabLabel" Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
                                 <Border x:Name="UnreadBadge" Width="6" Height="6" Margin="6,0,0,0" CornerRadius="3" VerticalAlignment="Center" Background="{Binding StateBrush}" Visibility="Collapsed" />
                             </StackPanel>
@@ -236,8 +240,11 @@
                     <Setter TargetName="TabLabel" Property="Foreground" Value="{StaticResource Text.Disabled}" />
                     <Setter TargetName="TabLabel" Property="FontStyle" Value="Italic" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding IsAgent}" Value="True">
+                <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                     <Setter TargetName="TabGlyph" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ShowsDetail}" Value="False">
+                    <Setter TargetName="TabDetail" Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding State}" Value="Working">
                     <Setter TargetName="StateDot" Property="Background" Value="{StaticResource State.Working}" />
@@ -299,7 +306,7 @@
                         <Border x:Name="BlockedRing" Width="16" Height="16" CornerRadius="8" BorderThickness="1.5" BorderBrush="{StaticResource State.Blocked}" Visibility="Collapsed" />
                         <Border x:Name="StateDot" Width="10" Height="10" CornerRadius="5" Background="{Binding Accent}" />
                     </Grid>
-                    <TextBlock x:Name="TabGlyph" Text="{Binding Glyph}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,3" FontSize="10" Foreground="{StaticResource Text.Secondary}" Visibility="Collapsed" />
+                    <chrome:HarnessIcon x:Name="TabGlyph" Tab="{Binding}" Size="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,3" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                     <Border x:Name="UnreadBadge" Width="6" Height="6" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,5,5,0" CornerRadius="3" Background="{Binding StateBrush}" Visibility="Collapsed" />
                 </Grid>
             </Border>
@@ -311,7 +318,7 @@
                 <Trigger SourceName="TabRoot" Property="IsMouseOver" Value="True">
                     <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource Surface.Hover}" />
                 </Trigger>
-                <DataTrigger Binding="{Binding IsAgent}" Value="True">
+                <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                     <Setter TargetName="TabGlyph" Property="Visibility" Value="Visible" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding State}" Value="Working">
