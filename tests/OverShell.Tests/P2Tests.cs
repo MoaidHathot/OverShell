@@ -513,3 +513,125 @@ public class CodexIntegrationTests
         }
     }
 }
+
+public class ShellIntegrationTests
+{
+    [Fact]
+    public void Appends_the_prompt_block_to_both_profiles_and_removes_it_cleanly()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-shell");
+        var previous = Environment.GetEnvironmentVariable("OVERSHELL_PROFILE_ROOT");
+        try
+        {
+            Environment.SetEnvironmentVariable("OVERSHELL_PROFILE_ROOT", dir.FullName);
+            var pwsh = Path.Combine(dir.FullName, "PowerShell", "Microsoft.PowerShell_profile.ps1");
+            var winps = Path.Combine(dir.FullName, "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1");
+
+            // An existing profile with its own prompt, CRLF, no trailing newline.
+            Directory.CreateDirectory(Path.GetDirectoryName(pwsh)!);
+            File.WriteAllText(pwsh, "Import-Module posh-git\r\nfunction prompt { \"mine> \" }");
+
+            var before = IntegrationInstaller.Status("shell");
+            Assert.False(before.Installed);
+
+            var status = IntegrationInstaller.Install("shell");
+            Assert.True(status.Installed);
+            Assert.True(status.Current);
+            Assert.Contains("2 profile(s)", status.Note);
+
+            var text = File.ReadAllText(pwsh);
+            Assert.StartsWith("Import-Module posh-git\r\nfunction prompt { \"mine> \" }\r\n\r\n# OverShell integration v1", text);
+            Assert.EndsWith("# /OverShell integration\r\n", text);
+            Assert.DoesNotContain("\n\n\n", text.Replace("\r\n", "\n"));
+            Assert.Contains("9;9", text);
+
+            // The Windows PowerShell profile did not exist: created with just the block, LF.
+            var created = File.ReadAllText(winps);
+            Assert.StartsWith("# OverShell integration v1", created);
+            Assert.DoesNotContain("\r\n", created);
+
+            // Re-install refreshes in place: one block, not two.
+            IntegrationInstaller.Install("shell");
+            Assert.Single(System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(pwsh), "# OverShell integration v1"));
+
+            // Uninstall leaves the user's file as it was (plus the newline it lacked).
+            var removed = IntegrationInstaller.Uninstall("shell");
+            Assert.False(removed.Installed);
+            Assert.Equal("Import-Module posh-git\r\nfunction prompt { \"mine> \" }\r\n", File.ReadAllText(pwsh));
+            Assert.Equal(string.Empty, File.ReadAllText(winps));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OVERSHELL_PROFILE_ROOT", previous);
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void An_edited_block_reports_outdated_not_current()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-shell");
+        var previous = Environment.GetEnvironmentVariable("OVERSHELL_PROFILE_ROOT");
+        try
+        {
+            Environment.SetEnvironmentVariable("OVERSHELL_PROFILE_ROOT", dir.FullName);
+            IntegrationInstaller.Install("shell");
+            var pwsh = Path.Combine(dir.FullName, "PowerShell", "Microsoft.PowerShell_profile.ps1");
+            File.WriteAllText(pwsh, File.ReadAllText(pwsh).Replace("9;9", "7"));
+
+            var status = IntegrationInstaller.Status("shell");
+            Assert.True(status.Installed);
+            Assert.False(status.Current);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("OVERSHELL_PROFILE_ROOT", previous);
+            dir.Delete(recursive: true);
+        }
+    }
+}
+
+public class CwdTargetTests
+{
+    [Fact]
+    public void The_deepest_shell_wins_and_powershell_is_read_from_the_prompt()
+    {
+        var pwshRoot = ShellCwdTarget.Pick(100, "pwsh", []);
+        Assert.Equal((100u, "pwsh", CwdSource.Prompt), pwshRoot);
+
+        var nestedCmd = ShellCwdTarget.Pick(100, "pwsh", [(101, "cmd"), (102, "conhost")]);
+        Assert.Equal((101u, "cmd", CwdSource.Process), nestedCmd);
+
+        // Breadth-first: a shell deeper in the tree comes later and wins over its parent shell.
+        var deeper = ShellCwdTarget.Pick(100, "cmd", [(101, "bash"), (102, "node"), (103, "pwsh")]);
+        Assert.Equal((103u, "pwsh", CwdSource.Prompt), deeper);
+
+        // An agent profile: the agent process itself is asked.
+        var agent = ShellCwdTarget.Pick(200, "opencode", [(201, "node")]);
+        Assert.Equal((200u, "opencode", CwdSource.Process), agent);
+    }
+
+    [Theory]
+    [InlineData("PS C:\\Users\\me> ", "C:\\Users\\me")]
+    [InlineData("PS C:\\Users\\me>", "C:\\Users\\me")]
+    [InlineData("PS C:\\> ", "C:\\")]
+    [InlineData("PS C:\\Users\\me>> ", "C:\\Users\\me")]
+    [InlineData("PS C:\\Users\\me> git status", "C:\\Users\\me")]
+    [InlineData("PS \\\\server\\share\\dir> ", "\\\\server\\share\\dir")]
+    [InlineData("PS HKLM:\\SOFTWARE> ", null)]
+    [InlineData("PS Microsoft.PowerShell.Core\\FileSystem::\\\\x\\y> ", null)]
+    [InlineData("C:\\Users\\me>", null)]
+    [InlineData("some output", null)]
+    public void The_default_prompt_line_yields_its_path(string row, string? expected) =>
+        Assert.Equal(expected, PromptPath.FromScreen([row]));
+
+    [Fact]
+    public void Only_the_last_non_empty_row_counts()
+    {
+        Assert.Equal("C:\\b", PromptPath.FromScreen(["PS C:\\a> cd b", "PS C:\\b> ", "", ""]));
+
+        // Output below the prompt means a command is running: the prompt above is stale.
+        Assert.Null(PromptPath.FromScreen(["PS C:\\a> dir", "  Directory: C:\\a", "file.txt"]));
+        Assert.Null(PromptPath.FromScreen([]));
+    }
+}

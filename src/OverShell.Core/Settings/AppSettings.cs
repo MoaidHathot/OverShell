@@ -16,6 +16,13 @@ public sealed class DetectionSettings
 
     /// <summary>Treat every tab as an agent tab, even with no harness detected. Off: shells stay shells.</summary>
     public bool TreatUnknownAsAgent { get; init; }
+
+    /// <summary>
+    /// Learn a tab's working directory from the shell process itself (its PEB) when the shell
+    /// does not announce it with OSC 7 / 9;9 - every couple of seconds after output, every
+    /// ten seconds otherwise. A shell that does announce it is believed instead.
+    /// </summary>
+    public bool CwdFromProcess { get; init; } = true;
 }
 
 public sealed class NotificationSettings

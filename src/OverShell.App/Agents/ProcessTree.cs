@@ -45,12 +45,18 @@ internal static partial class ProcessTree
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool CloseHandle(nint handle);
 
+    /// <summary>One process below the shell: its id and image name without extension.</summary>
+    public readonly record struct Entry(uint Pid, string Image);
+
     /// <summary>
     /// Image names (without extension, as they appear) of every process below
     /// <paramref name="rootPid"/>, nearest first. Empty when the root has no children or
     /// the snapshot failed. Safe to call from any thread.
     /// </summary>
-    public static IReadOnlyList<string> Descendants(int rootPid)
+    public static IReadOnlyList<string> Descendants(int rootPid) => DescendantEntries(rootPid).Select(e => e.Image).ToList();
+
+    /// <summary>Same walk, with the process ids - for whoever needs to ask a process something (its directory).</summary>
+    public static IReadOnlyList<Entry> DescendantEntries(int rootPid)
     {
         var snapshot = CreateToolhelp32Snapshot(Th32CsSnapProcess, 0);
         if (snapshot == 0 || snapshot == -1)
@@ -81,7 +87,7 @@ internal static partial class ProcessTree
 
             // Breadth-first so the shell's direct child comes before its grandchildren; a
             // visited set guards against pid reuse producing a cycle in a stale snapshot.
-            var result = new List<string>();
+            var result = new List<Entry>();
             var queue = new Queue<uint>();
             var visited = new HashSet<uint> { (uint)rootPid };
             queue.Enqueue((uint)rootPid);
@@ -102,7 +108,7 @@ internal static partial class ProcessTree
                     }
 
                     var name = image.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? image[..^4] : image;
-                    result.Add(name);
+                    result.Add(new Entry(childPid, name));
                     queue.Enqueue(childPid);
                 }
             }

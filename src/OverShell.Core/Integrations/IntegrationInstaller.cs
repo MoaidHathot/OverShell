@@ -26,7 +26,7 @@ public static class IntegrationInstaller
     /// <summary>Every hook command we write contains this, which is how uninstall finds its own entries.</summary>
     public const string CommandMarker = "OVERSHELL_ENDPOINT";
 
-    public static IReadOnlyList<string> Ids => ["opencode", "copilot", "claude", "codex"];
+    public static IReadOnlyList<string> Ids => ["opencode", "copilot", "claude", "codex", "shell"];
 
     // ------------------------------------------------------------------ paths
 
@@ -81,6 +81,29 @@ public static class IntegrationInstaller
     public static string OpenCodePluginContent() => EmbeddedResources.Read("integrations/opencode-overshell.ts");
 
     public static string CodexScriptContent() => EmbeddedResources.Read("integrations/codex-overshell-notify.ps1");
+
+    /// <summary>The prompt wrapper appended to the PowerShell profiles by <c>integrations install shell</c>.</summary>
+    public static string ShellPromptContent() => EmbeddedResources.Read("integrations/shell-overshell-prompt.ps1");
+
+    /// <summary>
+    /// The per-host profiles of PowerShell 7 and Windows PowerShell (<c>$PROFILE</c>, i.e.
+    /// CurrentUserCurrentHost) under the user's Documents folder - wherever that is redirected
+    /// to. The per-host file rather than <c>profile.ps1</c> because it runs last: a prompt the
+    /// user defines in it must be wrapped, not overwritten.
+    /// </summary>
+    public static IReadOnlyList<string> ShellProfilePaths()
+    {
+        // OVERSHELL_PROFILE_ROOT stands in for the Documents folder - the tests' sandbox, and
+        // a way out for a Documents folder PowerShell is not actually reading from.
+        var documents = Environment.GetEnvironmentVariable("OVERSHELL_PROFILE_ROOT") is { Length: > 0 } root
+            ? Path.GetFullPath(root)
+            : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        return
+        [
+            Path.Combine(documents, "PowerShell", "Microsoft.PowerShell_profile.ps1"),
+            Path.Combine(documents, "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1"),
+        ];
+    }
 
     /// <summary>
     /// The <c>notify</c> line for <c>config.toml</c>. Codex spawns the program directly
@@ -152,6 +175,7 @@ public static class IntegrationInstaller
         "copilot" => Describe(id, CopilotHookPath(), CopilotHookContent(), "copilot"),
         "claude" => ClaudeStatus(),
         "codex" => CodexStatus(),
+        "shell" => ShellStatus(),
         _ => throw new ArgumentException($"Unknown integration '{id}'. Known: {string.Join(", ", Ids)}."),
     };
 
@@ -169,6 +193,8 @@ public static class IntegrationInstaller
                 return ClaudeInstall(remove: false);
             case "codex":
                 return CodexInstall(remove: false);
+            case "shell":
+                return ShellInstall(remove: false);
             default:
                 throw new ArgumentException($"Unknown integration '{id}'. Known: {string.Join(", ", Ids)}.");
         }
@@ -184,6 +210,11 @@ public static class IntegrationInstaller
         if (id.Equals("codex", StringComparison.OrdinalIgnoreCase))
         {
             return CodexInstall(remove: true);
+        }
+
+        if (id.Equals("shell", StringComparison.OrdinalIgnoreCase))
+        {
+            return ShellInstall(remove: true);
         }
 
         var status = Status(id);
@@ -476,6 +507,89 @@ public static class IntegrationInstaller
         }
 
         return CodexStatus();
+    }
+
+    // ------------------------------------------------------------------ shell (PowerShell prompt)
+
+    private const string ShellBeginMarker = "# " + Marker + " - written by `OverShell integrations install shell`; safe to delete this block.";
+    private const string ShellEndMarker = "# /OverShell integration";
+
+    private static IntegrationStatus ShellStatus()
+    {
+        var paths = ShellProfilePaths();
+        var found = OnPath("pwsh") || OnPath("powershell");
+        var installedIn = new List<string>();
+        var current = true;
+        foreach (var path in paths)
+        {
+            var block = ShellBlockIn(SafeRead(path));
+            if (block is null)
+            {
+                continue;
+            }
+
+            installedIn.Add(path);
+            current &= Normalize(block) == Normalize(ShellPromptContent());
+        }
+
+        var note = installedIn.Count == 0
+            ? "appends a prompt wrapper to the PowerShell 7 and Windows PowerShell profiles; the shell then announces its directory (OSC 9;9) after every command"
+            : $"in {installedIn.Count} profile(s): {string.Join("; ", installedIn)}";
+        return new IntegrationStatus("shell", paths[0], installedIn.Count > 0, installedIn.Count > 0 && current, found, note);
+    }
+
+    /// <summary>The text between our markers in <paramref name="profile"/>, markers included; null when absent.</summary>
+    private static string? ShellBlockIn(string? profile)
+    {
+        if (profile is null)
+        {
+            return null;
+        }
+
+        var begin = profile.IndexOf(ShellBeginMarker, StringComparison.Ordinal);
+        if (begin < 0)
+        {
+            return null;
+        }
+
+        var end = profile.IndexOf(ShellEndMarker, begin, StringComparison.Ordinal);
+        return end < 0 ? profile[begin..] : profile[begin..(end + ShellEndMarker.Length)];
+    }
+
+    /// <summary>
+    /// Appends (or removes) the marked block at the end of each PowerShell profile, creating
+    /// the file when there is none. At the end, so a prompt the profile defines is what gets
+    /// wrapped. Everything else in the file is left byte for byte.
+    /// </summary>
+    private static IntegrationStatus ShellInstall(bool remove)
+    {
+        foreach (var path in ShellProfilePaths())
+        {
+            var text = File.Exists(path) ? SafeRead(path) ?? string.Empty : string.Empty;
+            var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+
+            if (ShellBlockIn(text) is { } existing)
+            {
+                var at = text.IndexOf(existing, StringComparison.Ordinal);
+                text = text.Remove(at, existing.Length).TrimEnd('\r', '\n');
+            }
+
+            if (remove)
+            {
+                if (File.Exists(path))
+                {
+                    WriteFile(path, text.Length == 0 ? string.Empty : text + newline);
+                }
+
+                continue;
+            }
+
+            var block = ShellPromptContent().ReplaceLineEndings(newline).TrimEnd('\r', '\n');
+            text = text.TrimEnd('\r', '\n');
+            WriteFile(path, (text.Length == 0 ? string.Empty : text + newline + newline) + block + newline);
+        }
+
+        return ShellStatus();
     }
 
     /// <summary>A top-level <c>notify</c> assignment that is not ours.</summary>

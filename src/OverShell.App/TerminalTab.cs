@@ -418,6 +418,10 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         if (cwdChanged)
         {
             _workingDirectory = cwd;
+
+            // The shell told us itself: from here on the process probe defers to it (the
+            // sequence is exact and immediate; the probe is a guess every few seconds).
+            _cwdFromShell = true;
         }
 
         _dispatcher.BeginInvoke(() =>
@@ -435,17 +439,47 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
             if (cwdChanged)
             {
-                Raise(nameof(WorkingDirectory));
-                Raise(nameof(Project));
-                Raise(nameof(ProjectAndBranch));
-                Raise(nameof(Detail));
-                Raise(nameof(SidebarDetail));
-                Raise(nameof(Tooltip));
+                RaiseWorkingDirectoryChanged();
             }
 
             Raise(nameof(StatusDetail));
         });
     }
+
+    /// <summary>Everything that shows the directory re-reads it. UI thread.</summary>
+    private void RaiseWorkingDirectoryChanged()
+    {
+        Raise(nameof(WorkingDirectory));
+        Raise(nameof(Project));
+        Raise(nameof(ProjectAndBranch));
+        Raise(nameof(Detail));
+        Raise(nameof(SidebarDetail));
+        Raise(nameof(Tooltip));
+        Raise(nameof(StatusDetail));
+    }
+
+    /// <summary>True once the shell has announced its directory itself (OSC 7 / 9;9); the probe then defers to it for the shell's own process.</summary>
+    internal bool AnnouncesDirectory => _cwdFromShell;
+
+    /// <summary>
+    /// The process probe found the tab's shell somewhere else (§12.14). UI thread. Accepted
+    /// unless the root shell announces its directory itself (exact and immediate) and the
+    /// reading is about that same shell; a nested shell that does not announce
+    /// (<c>cmd</c> inside an announcing <c>pwsh</c>) is still followed by the probe.
+    /// </summary>
+    internal void ApplyProbedWorkingDirectory(string cwd, string via, bool aboutRootShell)
+    {
+        if (_disposed || (_cwdFromShell && aboutRootShell) || string.IsNullOrWhiteSpace(cwd) || string.Equals(cwd, _workingDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _workingDirectory = cwd;
+        _agents.Trace.Write($"[{Id}] cwd: {cwd} via {via}");
+        RaiseWorkingDirectoryChanged();
+    }
+
+    private bool _cwdFromShell;
 
     /// <summary>
     /// Shells habitually set the title to their own executable path, which makes a

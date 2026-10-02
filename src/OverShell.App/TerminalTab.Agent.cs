@@ -47,6 +47,10 @@ public sealed partial class TerminalTab
     private readonly List<AgentTransition> _history = [];
     private int _integrationMissingProbes;
     private IReadOnlyList<string> _lastImages = [];
+    private long _cwdProbeVersion = -1;
+    private DateTimeOffset _lastCwdProbeAt;
+    private bool _cwdProbeBusy;
+    private bool _cwdProbeDenied;
 
     /// <summary>Short stable id for this run: what integrations address and what the endpoint lists.</summary>
     public string Id { get; } = Guid.NewGuid().ToString("N")[..8];
@@ -475,6 +479,101 @@ public sealed partial class TerminalTab
         {
             _ = ProbeProcessesAsync(pid, version, now);
         }
+
+        // The directory, from the shell process itself, when the shell never says (§12.14):
+        // two seconds after output (a `cd` prints a prompt), ten seconds otherwise.
+        if (_agents.Detection.CwdFromProcess && !_cwdProbeBusy && !_cwdProbeDenied && IsRunning && Session.ProcessId is { } shellPid)
+        {
+            var interval = version != _cwdProbeVersion ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(10);
+            if (now - _lastCwdProbeAt >= interval)
+            {
+                _ = ProbeCwdAsync(shellPid, version, now);
+            }
+        }
+    }
+
+    private async Task ProbeCwdAsync(int pid, long version, DateTimeOffset now)
+    {
+        _cwdProbeBusy = true;
+        _cwdProbeVersion = version;
+        _lastCwdProbeAt = now;
+        try
+        {
+            var rootImage = RootImageName();
+            var target = await Task.Run(() =>
+            {
+                var entries = ProcessTree.DescendantEntries(pid);
+                return ShellCwdTarget.Pick((uint)pid, rootImage, entries.Select(e => (e.Pid, e.Image)).ToList());
+            });
+
+            if (_disposed)
+            {
+                return;
+            }
+
+            // The root shell announces its own directory: nothing to probe for it. (A nested
+            // shell below it is another matter - it is probed as long as it is the deepest.)
+            var aboutRoot = target.Pid == (uint)pid;
+            if (aboutRoot && _cwdFromShell)
+            {
+                return;
+            }
+
+            string? cwd;
+            string via;
+            if (target.Source == CwdSource.Prompt)
+            {
+                // PowerShell: the process directory never moves; the prompt line on screen does.
+                var rows = await _agents.Screen.ReadRowsAsync(TerminalHwnd);
+                if (_disposed || rows is null)
+                {
+                    return;
+                }
+
+                cwd = PromptPath.FromScreen(rows);
+                via = $"prompt line of {target.Image} ({target.Pid})";
+                if (cwd is not null && !Directory.Exists(cwd))
+                {
+                    // A prompt-looking row naming a directory that is not there is not a prompt.
+                    return;
+                }
+            }
+            else
+            {
+                cwd = await Task.Run(() => ProcessCwd.Read(target.Pid));
+                via = $"process {target.Image} ({target.Pid})";
+                if (_disposed)
+                {
+                    return;
+                }
+
+                if (cwd is null && aboutRoot)
+                {
+                    // The root shell could not be read: elevated, or gone. No point asking again
+                    // every two seconds; a shell that announces itself still works.
+                    _cwdProbeDenied = true;
+                    _agents.Trace.Write($"[{Id}] cwd: cannot read the shell process's directory (elevated?); giving up on the probe for this tab");
+                    return;
+                }
+            }
+
+            if (cwd is not null)
+            {
+                ApplyProbedWorkingDirectory(cwd, via, aboutRoot);
+            }
+        }
+        finally
+        {
+            _cwdProbeBusy = false;
+        }
+    }
+
+    /// <summary>The shell's image name from the launch command line (<c>pwsh</c> from <c>"C:\…\pwsh.exe" -NoLogo</c>).</summary>
+    private string RootImageName()
+    {
+        var program = Core.Settings.SessionRestore.FirstToken(Session.Descriptor.CommandLine).Trim('"');
+        var name = Path.GetFileNameWithoutExtension(program);
+        return name.Length == 0 ? "shell" : name;
     }
 
     /// <summary>A hook or plugin spoke about this tab. Called on the UI thread.</summary>

@@ -223,8 +223,8 @@ public partial class App : Application
                 default:
                     out_.WriteLine();
                     out_.WriteLine("usage: OverShell integrations status");
-                    out_.WriteLine("       OverShell integrations install   <opencode|copilot|claude|codex|all>");
-                    out_.WriteLine("       OverShell integrations uninstall <opencode|copilot|claude|codex|all>");
+                    out_.WriteLine("       OverShell integrations install   <opencode|copilot|claude|codex|shell|all>");
+                    out_.WriteLine("       OverShell integrations uninstall <opencode|copilot|claude|codex|shell|all>");
                     out_.WriteLine("       OverShell integrations show      <claude|codex>");
                     return 2;
             }
@@ -398,8 +398,8 @@ public partial class App : Application
         out_.WriteLine("  OverShell overshell://focus/<tabId>         focus a tab in the running window (also view/<id>, new?profile=&cwd=)");
         out_.WriteLine("  OverShell settings path|init|open           configuration and state roots; starter files from the defaults");
         out_.WriteLine("  OverShell integrations status");
-        out_.WriteLine("  OverShell integrations install   <opencode|copilot|claude|codex|all>");
-        out_.WriteLine("  OverShell integrations uninstall <opencode|copilot|claude|codex|all>");
+        out_.WriteLine("  OverShell integrations install   <opencode|copilot|claude|codex|shell|all>");
+        out_.WriteLine("  OverShell integrations uninstall <opencode|copilot|claude|codex|shell|all>");
         out_.WriteLine("  OverShell integrations show      <claude|codex>");
         out_.WriteLine("  OverShell protocol status|register|unregister");
         out_.WriteLine("  OverShell version");

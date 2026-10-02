@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -64,6 +64,9 @@ internal static class HerdSelfTest
                         break;
                     case "polish":
                         await RunPolishAsync(window, firstTab);
+                        break;
+                    case "cwd":
+                        await RunCwdAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -284,6 +287,117 @@ internal static class HerdSelfTest
     /// must adopt the id from the turn's own events — otherwise a restored tab could never be
     /// resumed by id again.
     /// </summary>
+    /// <summary>
+    /// The working directory from the process (§12.14). Part A runs in a <c>pwsh -NoProfile</c>
+    /// tab - a shell that announces nothing - so the probe alone is measured: a cd is followed
+    /// within seconds (PowerShell from its prompt line, since its process directory never
+    /// moves), a nested cmd's directory wins (PEB), leaving it goes back. Part B is the default
+    /// profile: when the machine has the shell integration installed, the shell announces its
+    /// directory (OSC 9;9) and the probe must defer to it for the shell itself while still
+    /// following a nested, silent cmd.
+    /// </summary>
+    private static async Task RunCwdAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (cwd) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        static async Task<bool> WaitForCwdAsync(TerminalTab tab, string expected, int seconds)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(seconds);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (string.Equals(tab.WorkingDirectory?.TrimEnd('\\'), expected.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                await Task.Delay(250);
+            }
+
+            return false;
+        }
+
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var system = Environment.SystemDirectory;
+        var temp = System.IO.Path.GetTempPath().TrimEnd('\\');
+
+        // ---- A: a shell that never announces ----
+        var bare = window.AddTab(first.Profile with { CommandLine = "pwsh.exe -NoLogo -NoProfile", StartingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) }, activate: true);
+        await WaitForPromptAsync(bare);
+        Log($"  A start: cwd='{bare.WorkingDirectory}' announces={bare.AnnouncesDirectory}");
+
+        var sw = Stopwatch.StartNew();
+        bare.SendText($"cd '{windows}'\r");
+        var followed = await WaitForCwdAsync(bare, windows, 8);
+        Log($"  A after cd {windows}: cwd='{bare.WorkingDirectory}' in {sw.Elapsed.TotalSeconds:F1}s announces={bare.AnnouncesDirectory}");
+        Check(!bare.AnnouncesDirectory, "A: -NoProfile pwsh announced nothing (the probe alone is at work)");
+        Check(followed, "A: a cd with no shell integration was picked up (PowerShell: from its prompt line)");
+        Check(sw.Elapsed < TimeSpan.FromSeconds(4), "A: …within four seconds");
+
+        await WaitForPromptAsync(bare);
+        bare.SendText($"cmd /k cd /d \"{system}\"\r");
+        followed = await WaitForCwdAsync(bare, system, 8);
+        Log($"  A nested cmd in {system}: cwd='{bare.WorkingDirectory}'");
+        Check(followed, "A: a nested cmd's directory took over (deepest shell, from its process)");
+
+        bare.SendText("exit\r");
+        followed = await WaitForCwdAsync(bare, windows, 12);
+        Log($"  A nested cmd exited: cwd='{bare.WorkingDirectory}'");
+        Check(followed, "A: leaving the nested shell goes back to the outer shell's directory");
+
+        await WaitForPromptAsync(bare);
+        bare.SendText("$e=[char]27; $a=[char]7; cd $env:TEMP; Write-Host \"${e}]9;9;$env:TEMP${a}\"\r");
+        followed = await WaitForCwdAsync(bare, temp, 4);
+        Log($"  A OSC 9;9 {temp}: cwd='{bare.WorkingDirectory}' announces={bare.AnnouncesDirectory}");
+        Check(followed && bare.AnnouncesDirectory, "A: an OSC 9;9 announcement set the directory and marked the shell as announcing");
+
+        await WaitForPromptAsync(bare);
+        bare.SendText($"cd '{windows}'\r");
+        await Task.Delay(5000);
+        Log($"  A silent cd after an announcement: cwd='{bare.WorkingDirectory}'");
+        Check(string.Equals(bare.WorkingDirectory?.TrimEnd('\\'), temp, StringComparison.OrdinalIgnoreCase), "A: once the shell has announced, the probe defers to it for the shell's own directory");
+
+        var trace = System.IO.File.Exists(TraceLog.Agents.Path) ? System.IO.File.ReadAllText(TraceLog.Agents.Path) : string.Empty;
+        Check(trace.Contains($"[{bare.Id}] cwd: {windows} via prompt line of pwsh", StringComparison.OrdinalIgnoreCase) && trace.Contains($"[{bare.Id}] cwd: {system} via process cmd", StringComparison.OrdinalIgnoreCase), "A: the trace names the source of each directory (prompt line / process)");
+        window.CloseTab(bare);
+
+        // ---- B: the default profile, with whatever the machine has ----
+        await WaitForPromptAsync(first);
+        first.SendText($"cd '{windows}'\r");
+        await WaitForCwdAsync(first, windows, 8);
+        Log($"  B default profile: cwd='{first.WorkingDirectory}' announces={first.AnnouncesDirectory} (shell integration {(first.AnnouncesDirectory ? "installed" : "not installed")})");
+        Check(string.Equals(first.WorkingDirectory?.TrimEnd('\\'), windows, StringComparison.OrdinalIgnoreCase), "B: the default profile's cd was followed, by announcement or by probe");
+
+        if (first.AnnouncesDirectory)
+        {
+            await WaitForPromptAsync(first);
+            first.SendText($"cmd /k cd /d \"{system}\"\r");
+            followed = await WaitForCwdAsync(first, system, 8);
+            Log($"  B nested cmd under an announcing shell: cwd='{first.WorkingDirectory}'");
+            Check(followed, "B: a silent nested cmd is still followed by the probe while the announcing shell is quiet");
+            first.SendText("exit\r");
+            followed = await WaitForCwdAsync(first, windows, 12);
+            Check(followed, "B: back to the announcing shell's directory when the nested shell exits");
+        }
+        else
+        {
+            Log("  SKIP  B: nested-cmd-under-announcing-shell (install the shell integration to exercise it)");
+        }
+
+        // What a restore would use: the directory the tab is in now, not where its shell started.
+        window.SaveSession(force: true);
+        var saved = SessionSnapshot.Load(AppPaths.SessionFile, out _);
+        var savedCwd = saved?.Tabs.FirstOrDefault()?.WorkingDirectory;
+        Log($"  session file: cwd='{savedCwd}'");
+        Check(string.Equals(savedCwd?.TrimEnd('\\'), windows, StringComparison.OrdinalIgnoreCase), "the session file carries the followed directory, so a restore reopens there");
+
+        Log($"=== selftest (cwd) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
     /// <summary>Waits until the shell has printed a prompt and gone quiet for a second (at most 20 s).</summary>
     private static async Task WaitForPromptAsync(TerminalTab tab)
     {
@@ -302,7 +416,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// P5 batch 1 (§12.14): duplicate tab, the detached mark as an icon, state icons stripped    /// from displayed titles, and the status note reaching a layout without a status bar.
+    /// P5 batch 1 ($112.14): duplicate tab, the detached mark as an icon, state icons stripped
+    /// from displayed titles, and the status note reaching a layout without a status bar.
     /// </summary>
     private static async Task RunPolishAsync(MainWindow window, TerminalTab tab)
     {

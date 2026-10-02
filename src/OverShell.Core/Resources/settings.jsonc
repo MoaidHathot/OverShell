@@ -19,11 +19,15 @@
     "zen":       { "layout": "zen",       "content": "terminal",  "title": "Zen" }
   },
 
+  // cwdFromProcess reads the shell's current directory from the process itself when the
+  // shell does not announce it (OSC 7 / 9;9), so `cd` is followed without any prompt setup;
+  // `OverShell integrations install shell` adds the announcement for an instant, exact path.
   "detection": {
     "snapshotDebounceMs": 300,
     "snapshotMinIntervalMs": 300,
     "processProbeIntervalMs": 2500,
-    "treatUnknownAsAgent": false
+    "treatUnknownAsAgent": false,
+    "cwdFromProcess": true
   },
 
   // Branch comes from .git/HEAD (free). The dirty marker runs `git status` per repository
