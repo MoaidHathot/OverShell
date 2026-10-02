@@ -46,12 +46,14 @@
   // profile whose program is the agent is relaunched with those arguments; a shell gets
   // them typed once it is quiet. restartWithWindows asks Windows to start OverShell again
   // after a restart or sign-out (never after a crash); it is off because starting by
-  // itself is a choice.
+  // itself is a choice. confirmCloseWithAgents asks before closing the window while agents
+  // are working or waiting (never on sign-out).
   "session": {
     "restore": true,
     "resumeAgents": true,
     "resumeWithoutId": true,
     "restoreWindows": true,
+    "confirmCloseWithAgents": true,
     "restartWithWindows": false
   },
 

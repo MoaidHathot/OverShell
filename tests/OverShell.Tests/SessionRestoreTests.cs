@@ -271,3 +271,51 @@ public class WindowPlacementTests
         Assert.Null(WindowPlacement.Clamp(new SavedWindow { Left = double.NaN, Top = 0, Width = 800, Height = 600 }, Desktop, 520, 320));
     }
 }
+
+public class RestorePolicyTests
+{
+    private static readonly DateTimeOffset T0 = new(2026, 10, 3, 9, 0, 0, TimeSpan.Zero);
+
+    private static SessionSnapshot Live(bool interrupted, int livedSeconds, bool stamped = true) => new()
+    {
+        StartedAt = stamped ? T0 : null,
+        SavedAt = T0.AddSeconds(livedSeconds),
+        CloseReason = interrupted ? null : SessionCloseReason.Closed,
+        Tabs = [new SavedTab { ProfileId = "{p}" }],
+    };
+
+    private static ArchivedSession Archive(bool interrupted, int livedSeconds, bool stamped = true) =>
+        new("x.json", T0.AddSeconds(livedSeconds), stamped ? T0 : null, interrupted, interrupted ? null : SessionCloseReason.Closed, [new SavedTab()]);
+
+    [Fact]
+    public void Two_early_interrupted_runs_in_a_row_hold_the_restore()
+    {
+        Assert.True(RestorePolicy.ShouldHold(Live(interrupted: true, 20), [Archive(interrupted: true, 15)]));
+        Assert.True(RestorePolicy.ShouldHold(Live(interrupted: true, 59), [Archive(interrupted: true, 59), Archive(interrupted: false, 3000)]));
+    }
+
+    [Fact]
+    public void One_early_death_a_long_life_or_a_clean_close_do_not()
+    {
+        // One strike only: the previous run before it closed cleanly.
+        Assert.False(RestorePolicy.ShouldHold(Live(interrupted: true, 20), [Archive(interrupted: false, 20)]));
+        Assert.False(RestorePolicy.ShouldHold(Live(interrupted: true, 20), []));
+
+        // The last run lived long enough: a crash after an hour of work is not a loop.
+        Assert.False(RestorePolicy.ShouldHold(Live(interrupted: true, 3600), [Archive(interrupted: true, 10)]));
+
+        // The run before it lived long enough.
+        Assert.False(RestorePolicy.ShouldHold(Live(interrupted: true, 20), [Archive(interrupted: true, 600)]));
+
+        // Clean close, nothing to hold.
+        Assert.False(RestorePolicy.ShouldHold(Live(interrupted: false, 20), [Archive(interrupted: true, 10)]));
+        Assert.False(RestorePolicy.ShouldHold(null, [Archive(interrupted: true, 10)]));
+    }
+
+    [Fact]
+    public void Files_without_a_start_stamp_never_count_as_early_deaths()
+    {
+        Assert.False(RestorePolicy.ShouldHold(Live(interrupted: true, 20, stamped: false), [Archive(interrupted: true, 10)]));
+        Assert.False(RestorePolicy.ShouldHold(Live(interrupted: true, 20), [Archive(interrupted: true, 10, stamped: false)]));
+    }
+}

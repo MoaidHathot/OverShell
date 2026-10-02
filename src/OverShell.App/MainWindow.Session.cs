@@ -36,6 +36,8 @@ public partial class MainWindow
     private SessionSnapshot? _previousSession;
     private readonly List<SavedTab> _recentlyClosed = [];
     private readonly List<(TerminalTab Tab, SavedWindow? Window)> _pendingDetach = [];
+    private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
+    private bool _restoreHeld;
 
     /// <summary>Set by the command line (<c>--fresh</c>) before the window is built: skip the restore once.</summary>
     internal static bool StartFresh { get; set; }
@@ -153,6 +155,12 @@ public partial class MainWindow
     /// <summary>The status-bar note about how the previous run ended, when that is worth a word.</summary>
     private void AnnounceRestore()
     {
+        if (_restoreHeld)
+        {
+            ShowStatusMessage("OverShell closed unexpectedly twice right after starting; the session was not restored - Session history brings it back");
+            return;
+        }
+
         if (!_restoredSession || _previousSession is not { } saved)
         {
             return;
@@ -232,6 +240,14 @@ public partial class MainWindow
         if (StartFresh)
         {
             _trace.Write("session: --fresh, the saved session is not restored (it stays in the history)");
+        }
+        else if (_settings.Session.Restore && _previousSession is { Tabs.Count: > 0 } && RestorePolicy.ShouldHold(_previousSession, SessionHistory.List(AppPaths.StateRoot)))
+        {
+            // Two runs in a row died within a minute of starting with this session: whatever
+            // is in it may be what brings the program down. Start plain; the session is in
+            // the history (the interrupted file was archived at InitializeSession).
+            _restoreHeld = true;
+            _trace.Write($"session: the last {RestorePolicy.Strikes} runs ended within {RestorePolicy.EarlyDeath.TotalSeconds:F0} s of starting, interrupted; not restoring (held, in the history)");
         }
         else if (_settings.Session.Restore && _previousSession is { Tabs.Count: > 0 } saved)
         {
@@ -324,6 +340,15 @@ public partial class MainWindow
             tab.ScheduleResume(plan.Command!);
         }
 
+        var when = (savedTab.ClosedAt ?? _previousSession?.SavedAt)?.ToLocalTime().ToString("HH:mm") ?? "earlier";
+        var how = plan.Mode switch
+        {
+            ResumeMode.Relaunch => $"relaunched `{plan.Command}` ({plan.Reason})",
+            ResumeMode.Typed => $"typed `{plan.Command}` ({plan.Reason})",
+            _ when savedTab.AgentRunning => $"agent not resumed ({plan.Reason})",
+            _ => "directory only",
+        };
+        tab.RestoreNote = $"restored from {when} · {how}";
         if (savedTab.AgentRunning)
         {
             _trace.Write($"[{tab.Id}] restore: {savedTab.Harness ?? "agent"} {plan.Mode.ToString().ToLowerInvariant()} - {plan.Reason}{(plan.Command is null ? string.Empty : $": {plan.Command}")}");
@@ -371,6 +396,7 @@ public partial class MainWindow
     private SessionSnapshot BuildSessionSnapshot(SessionCloseReason? reason) => new()
     {
         SavedAt = DateTimeOffset.Now,
+        StartedAt = _startedAt,
         CloseReason = reason,
         View = _viewId,
         ActiveIndex = Math.Max(0, Tabs.IndexOf(FocusedTab() ?? ActiveTab!)),
@@ -438,8 +464,74 @@ public partial class MainWindow
         }
     }
 
-    // ---------------------------------------------------------------- history
+    // ---------------------------------------------------------------- closing
 
+    private bool _closeConfirmed;
+    private bool _sessionEnding;
+
+    /// <summary>Self-tests close the window programmatically with agents mid-report; they opt out of the question except where they test it.</summary>
+    internal static bool AutoConfirmClose { get; set; }
+
+    /// <summary>Windows is signing out or restarting: no question, the save already happened (App.SessionEnding).</summary>
+    internal void NoteSessionEnding() => _sessionEnding = true;
+
+    /// <summary>Closes without the question - the answer "close anyway", or a caller that has asked already.</summary>
+    internal void CloseWithoutAsking()
+    {
+        _closeConfirmed = true;
+        Close();
+    }
+
+    /// <summary>
+    /// Asks before closing while agents are mid-work (DESIGN.md §12.14). Returns true when
+    /// the close should go on now; false when the question is on screen (the close is
+    /// cancelled and re-issued by the answer) or the user chose to stay.
+    /// </summary>
+    internal bool ConfirmClose()
+    {
+        if (_closeConfirmed || _sessionEnding || AutoConfirmClose || !_settings.Session.ConfirmCloseWithAgents)
+        {
+            return true;
+        }
+
+        var busy = Tabs.Where(t => t.IsAgent && t.State is Core.Agents.AgentState.Working or Core.Agents.AgentState.Blocked).ToList();
+        if (busy.Count == 0)
+        {
+            return true;
+        }
+
+        var working = busy.Count(t => t.State == Core.Agents.AgentState.Working);
+        var waiting = busy.Count - working;
+        var what = string.Join(" and ", new[]
+        {
+            working > 0 ? $"{working} agent{(working == 1 ? string.Empty : "s")} working" : null,
+            waiting > 0 ? $"{waiting} waiting for you" : null,
+        }.Where(s => s is not null));
+
+        _palette?.Close();
+        _palette = PaletteWindow.Ask(this, "\uE7BA", "Close OverShell?",
+        [
+            new PaletteItem
+            {
+                Title = $"Close anyway - {what}",
+                Detail = "They resume at the next start: " + string.Join(", ", busy.Select(t => t.Label)),
+                Glyph = "\uE8BB",
+                Invoke = CloseWithoutAsking,
+            },
+            new PaletteItem
+            {
+                Title = "Keep OverShell open",
+                Detail = "Esc does the same",
+                Glyph = "\uE72E",
+                Invoke = () => { },
+            },
+        ]);
+        _palette.Closed += (_, _) => { _palette = null; ActiveTab?.Surface.Focus(); };
+        _trace.Write($"close: asked first - {what}");
+        return false;
+    }
+
+    // ---------------------------------------------------------------- history
     /// <summary>A tab the user is closing: remembered for <c>tab.reopenClosed</c> and the history picker. Called before the tab is disposed.</summary>
     private void RememberClosed(TerminalTab tab)
     {

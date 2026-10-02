@@ -94,6 +94,11 @@ public sealed class SessionSettings
     public bool RestoreWindows { get; init; } = true;
 
     /// <summary>
+    /// Closing the window while agents are working or waiting asks first (they resume at the
+    /// next start, but a mid-turn kill is rarely what Alt+F4 meant). Never on sign-out.
+    /// </summary>
+    public bool ConfirmCloseWithAgents { get; init; } = true;
+    /// <summary>
     /// Ask Windows to start OverShell again after a restart or sign-out, when the Windows
     /// setting "Automatically save my restartable apps and restart them when I sign back in"
     /// is on. Never after a crash. Off by default: starting by itself is a choice.

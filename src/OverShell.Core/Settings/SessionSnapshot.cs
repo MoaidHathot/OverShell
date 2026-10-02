@@ -78,6 +78,9 @@ public sealed class SessionSnapshot
 
     public DateTimeOffset SavedAt { get; init; }
 
+    /// <summary>When the run that wrote the file started - with <see cref="SavedAt"/>, how long it lived (the crash-loop guard, §12.14).</summary>
+    public DateTimeOffset? StartedAt { get; init; }
+
     /// <summary>
     /// Null while the window is running; set by the save the window makes as it closes.
     /// A version-2 file without it was left behind by a run that was killed — a crash, the
@@ -155,6 +158,7 @@ public sealed class SessionSnapshot
     {
         var node = System.Text.Json.JsonSerializer.SerializeToNode(this, Jsonc.SerializerOptions)!.AsObject();
         node.Remove("savedAt");
+        node.Remove("startedAt");
         node.Remove("closeReason");
         return node.ToJsonString();
     }

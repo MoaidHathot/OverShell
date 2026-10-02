@@ -3,7 +3,7 @@ using System.Globalization;
 namespace OverShell.Core.Settings;
 
 /// <summary>One archived session file, as listed for the history picker.</summary>
-public sealed record ArchivedSession(string Path, DateTimeOffset SavedAt, bool Interrupted, SessionCloseReason? CloseReason, IReadOnlyList<SavedTab> Tabs);
+public sealed record ArchivedSession(string Path, DateTimeOffset SavedAt, DateTimeOffset? StartedAt, bool Interrupted, SessionCloseReason? CloseReason, IReadOnlyList<SavedTab> Tabs);
 
 /// <summary>
 /// Earlier sessions, kept under <c>sessions\</c> in the state root the way a browser keeps
@@ -83,7 +83,7 @@ public static class SessionHistory
         {
             if (SessionSnapshot.Load(file, out _) is { } snapshot)
             {
-                result.Add(new ArchivedSession(file, snapshot.SavedAt, snapshot.Interrupted, snapshot.CloseReason, snapshot.Tabs));
+                result.Add(new ArchivedSession(file, snapshot.SavedAt, snapshot.StartedAt, snapshot.Interrupted, snapshot.CloseReason, snapshot.Tabs));
             }
         }
 

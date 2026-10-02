@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -32,6 +32,10 @@ internal static class HerdSelfTest
         {
             return;
         }
+
+        // The runs end by closing the window from outside with agents mid-report; the close
+        // question (§12.14) is for people, and has its own mode below.
+        MainWindow.AutoConfirmClose = true;
 
         var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(3000) };
         timer.Tick += async (_, _) =>
@@ -67,6 +71,9 @@ internal static class HerdSelfTest
                         break;
                     case "cwd":
                         await RunCwdAsync(window, firstTab);
+                        break;
+                    case "resilience":
+                        await RunResilienceAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -288,8 +295,87 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// The working directory from the process (§12.14). Part A runs in a <c>pwsh -NoProfile</c>
-    /// tab - a shell that announces nothing - so the probe alone is measured: a cd is followed
+    /// P5 batch 3 (§12.14): the close question while agents work, the restore note on a
+    /// restored tab, and the crash-loop guard. The launcher seeds the state root with a live
+    /// file and archives that look like two early deaths, so the start must hold the restore.
+    /// </summary>
+    private static async Task RunResilienceAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (resilience) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        // ---- crash-loop guard: this start was seeded with two early interrupted runs ----
+        var previous = window.PreviousSession;
+        var archives = SessionHistory.List(AppPaths.StateRoot);
+        Log($"  start: restored={window.RestoredSession} tabs={window.Tabs.Count} previous.started={previous?.StartedAt:HH:mm:ss} saved={previous?.SavedAt:HH:mm:ss} interrupted={previous?.Interrupted} archives={archives.Count} ({string.Join(", ", archives.Select(a => $"{(a.Interrupted ? "interrupted" : "closed")} {(a.SavedAt - (a.StartedAt ?? a.SavedAt)).TotalSeconds:F0}s"))})");
+        Check(!window.RestoredSession && window.Tabs.Count == 1, "two early interrupted runs: the session was not restored (one default tab)");
+        Check(archives.Any(a => a.Interrupted && a.Tabs.Count == 3), "…but the held session was archived first, so Session history brings it back");
+        await Task.Delay(1500);
+        var note = ((System.Windows.Controls.TextBlock)window.FindName("TxtMessage")!).Text;
+        Log($"  status: '{note}'");
+        Check(note.Contains("closed unexpectedly twice", StringComparison.Ordinal), "the status bar says why nothing was restored");
+
+        // ---- restore note: reopen the held session from history, every tab says how it came back ----
+        var held = archives.First(a => a.Interrupted && a.Tabs.Count == 3);
+        var opened = window.ReopenSession(held);
+        await Task.Delay(800);
+        var notes = window.Tabs.Skip(1).Select(t => t.RestoreNote ?? "-").ToList();
+        Log($"  reopened {opened}: notes = {string.Join(" | ", notes)}");
+        Check(opened == 3 && notes.All(n => n.StartsWith("restored from ", StringComparison.Ordinal)), "every reopened tab carries a restore note");
+        Check(notes.Any(n => n.Contains("typed `Write-Host resilience-resumed`", StringComparison.Ordinal)), "…the agent tab's note names the resume command and why");
+        Check(notes.Any(n => n.Contains("directory only", StringComparison.Ordinal)), "…a plain shell's note says 'directory only'");
+        Check(window.Tabs.Skip(1).Any(t => t.Tooltip.Contains("restored from", StringComparison.Ordinal)), "the note is in the tab tooltip");
+
+        // ---- close question: an agent is Working, the close must ask ----
+        var agentTab = window.Tabs.First(t => t.RestoreNote?.Contains("resilience-resumed", StringComparison.Ordinal) == true);
+        await Task.Delay(3500); // the resume command types and runs
+        agentTab.ApplyReport(new IntegrationReport(agentTab.Id, "selftest", 5, AgentState.Working, "selftest", "working", null, "ses-r", "Write-Host resilience-resumed", Release: false));
+        await Task.Delay(300);
+        MainWindow.AutoConfirmClose = false;
+        window.Close();
+        await Task.Delay(700);
+        var picker = window.Palette;
+        var items = picker?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Cast<Chrome.PaletteItem>().ToList() : [];
+        Log($"  close with {window.Tabs.Count(t => t.IsAgent && t.State == AgentState.Working)} working: window alive={window.IsLoaded} picker={picker?.IsVisible} items=[{string.Join(" | ", items.Select(i => i.Title))}]");
+        Check(window.IsLoaded, "Close() with a working agent did not close the window");
+        Check(picker is { IsVisible: true } && items.Count == 2 && items[0].Title.StartsWith("Close anyway - 1 agent working", StringComparison.Ordinal), "a question with 'Close anyway - 1 agent working' and 'Keep OverShell open' is on screen");
+        if (picker is not null && items.Count == 2)
+        {
+            if (picker.Content is System.Windows.FrameworkElement root)
+            {
+                SaveVisual(root, "overshell-selftest-close-question.png");
+            }
+
+            items[1].Invoke();
+            picker.Close();
+            await Task.Delay(400);
+            Check(window.IsLoaded, "'Keep OverShell open' kept it open");
+
+            // Ask again and take the other answer: the window closes (the launcher sees a clean exit).
+            window.Close();
+            await Task.Delay(700);
+            var again = window.Palette?.FindName("List") is System.Windows.Controls.ListBox list2 ? list2.Items.Cast<Chrome.PaletteItem>().ToList() : [];
+            Check(again.Count == 2, "asking again shows the question again");
+            Log($"=== selftest (resilience) result: {(pass && again.Count == 2 ? "ALL PASS" : "FAILED")} (closing through 'Close anyway') ===");
+            if (again.Count == 2)
+            {
+                again[0].Invoke();
+            }
+
+            return;
+        }
+
+        MainWindow.AutoConfirmClose = true;
+        Log($"=== selftest (resilience) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// The working directory from the process (§12.14). Part A runs in a <c>pwsh -NoProfile</c>    /// tab - a shell that announces nothing - so the probe alone is measured: a cd is followed
     /// within seconds (PowerShell from its prompt line, since its process directory never
     /// moves), a nested cmd's directory wins (PEB), leaving it goes back. Part B is the default
     /// profile: when the machine has the shell integration installed, the shell announces its

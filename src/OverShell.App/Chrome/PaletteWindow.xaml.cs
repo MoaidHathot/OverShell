@@ -39,6 +39,12 @@ public sealed class PaletteItem
 
     public Visibility GlyphVisibility => Dot is null && !string.IsNullOrEmpty(Glyph) ? Visibility.Visible : Visibility.Collapsed;
 
+    /// <summary>
+    /// The icon font for a Fluent glyph (the Private Use Area, U+E000-F8FF), the UI font for
+    /// anything else - a PUA code point in the UI font is an empty box.
+    /// </summary>
+    public FontFamily GlyphFont => (FontFamily)Application.Current.FindResource(
+        !string.IsNullOrEmpty(Glyph) && Glyph[0] >= '\uE000' && Glyph[0] <= '\uF8FF' ? "Font.Icons" : "Font.Ui");
     public Visibility DetailVisibility => string.IsNullOrEmpty(Detail) ? Visibility.Collapsed : Visibility.Visible;
 }
 
@@ -99,6 +105,27 @@ public partial class PaletteWindow : Window
         return window;
     }
 
+    /// <summary>
+    /// A question with a few answers: the question stands where the search text would be,
+    /// read-only; arrows and Enter choose, Esc or clicking away is the first answer that
+    /// changes nothing (the caller puts the safe answer last and treats "closed" as it).
+    /// </summary>
+    public static PaletteWindow Ask(Window owner, string glyph, string question, IReadOnlyList<PaletteItem> answers)
+    {
+        var window = new PaletteWindow(owner, _ => answers, accept: null) { _promptGlyph = glyph, _emptyText = string.Empty };
+        window.Input.Text = question;
+        window.Input.IsReadOnly = true;
+        window.Input.CaretBrush = Brushes.Transparent;
+        window.Input.Cursor = System.Windows.Input.Cursors.Arrow;
+        window._fixedQuery = true;
+        window.Refresh();
+        window.Place();
+        window.Show();
+        return window;
+    }
+
+    private bool _fixedQuery;
+
     private string? _promptGlyph;
     private string? _emptyText;
 
@@ -140,7 +167,7 @@ public partial class PaletteWindow : Window
             return;
         }
 
-        var query = PaletteQuery.Parse(Input.Text);
+        var query = _fixedQuery ? PaletteQuery.Parse(string.Empty) : PaletteQuery.Parse(Input.Text);
         var items = _source(query);
         List.ItemsSource = items;
         List.SelectedIndex = items.Count > 0 ? 0 : -1;

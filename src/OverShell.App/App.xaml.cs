@@ -112,7 +112,11 @@ public partial class App : Application
         // Sign-out or restart: WPF answers WM_QUERYENDSESSION by *scheduling* Shutdown, and
         // Windows may end the process before that reaches OnClosed. Save here, synchronously,
         // so the file says "sessionEnding" rather than looking like a crash at the next start.
-        SessionEnding += (_, _) => window.SaveSession(force: true, reason: Core.Settings.SessionCloseReason.SessionEnding);
+        SessionEnding += (_, _) =>
+        {
+            window.NoteSessionEnding();
+            window.SaveSession(force: true, reason: Core.Settings.SessionCloseReason.SessionEnding);
+        };
 
         _instance.Trace += line => Diagnostics.TraceLog.Agents.Write(line);
         _instance.ArgumentsReceived += args => Dispatcher.BeginInvoke(() => window.HandleArguments(args));

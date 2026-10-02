@@ -1050,8 +1050,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    protected override void OnClosed(EventArgs e)
+    protected override void OnClosing(CancelEventArgs e)
     {
+        base.OnClosing(e);
+        if (!e.Cancel && !ConfirmClose())
+        {
+            e.Cancel = true;
+        }
+    }
+
+    protected override void OnClosed(EventArgs e)    {
         _statusTimer.Stop();
         _reloadTimer?.Stop();
         _configWatcher?.Dispose();

@@ -117,6 +117,7 @@
                                     Visibility="{Binding DotVisibility}" />
                             <TextBlock Grid.Column="0"
                                        Text="{Binding Glyph}"
+                                       FontFamily="{Binding GlyphFont}"
                                        HorizontalAlignment="Left"
                                        VerticalAlignment="Center"
                                        FontSize="12"

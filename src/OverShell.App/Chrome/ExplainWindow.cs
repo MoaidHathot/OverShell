@@ -112,6 +112,11 @@ public sealed class ExplainWindow : Window
         }
 
         sb.AppendLine($"where      {tab.ProjectAndBranch}   {tab.WorkingDirectory}");
+        if (tab.RestoreNote is not null)
+        {
+            sb.AppendLine($"restored   {tab.RestoreNote[(tab.RestoreNote.IndexOf(' ') + 1)..]}");
+        }
+
         if (tab.LastProcessImages.Count > 0)
         {
             sb.AppendLine($"processes  {string.Join(", ", tab.LastProcessImages)}");

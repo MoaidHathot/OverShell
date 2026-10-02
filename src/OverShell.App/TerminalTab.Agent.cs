@@ -123,6 +123,20 @@ public sealed partial class TerminalTab
     /// <summary>The command that resumes this tab's agent session, filled in from the last report; null when unknown.</summary>
     public string? ResumeCommand { get; private set; }
 
+    /// <summary>How this tab came back from a saved session, for the explain panel and the tooltip; null for a tab opened by hand.</summary>
+    internal string? RestoreNote
+    {
+        get => _restoreNote;
+        set
+        {
+            _restoreNote = value;
+            Raise();
+            Raise(nameof(Tooltip));
+        }
+    }
+
+    private string? _restoreNote;
+
     /// <summary>The last state changes, oldest first, for the explain panel.</summary>
     public IReadOnlyList<AgentTransition> History => _history;
 
@@ -300,6 +314,11 @@ public sealed partial class TerminalTab
             else if (State != AgentState.Unknown)
             {
                 lines.Add($"{StateText} — {Agent.Explain}");
+            }
+
+            if (_restoreNote is not null)
+            {
+                lines.Add(_restoreNote);
             }
 
             return string.Join('\n', lines);
