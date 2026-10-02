@@ -3,7 +3,7 @@
 > **OverShell** = *Overseer Shell*. A Windows terminal **shell** (chrome, tabs, layout)
 > wrapped around the real Windows Terminal rendering engine.
 
-Last updated: 2026-09-14
+Last updated: 2026-10-03
 
 How to *use* it - configuration, keys, views, agents, integrations, notifications - is
 in [docs/GUIDE.md](docs/GUIDE.md). This document is about why it is built the way it is.
@@ -264,7 +264,8 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_TRACE_AGENTS` | `1` | Log harness detection, state transitions with their evidence, endpoint traffic and notification dispatch to `%TEMP%\overshell-agents.log` |
 | `OVERSHELL_SPIKES` | `1` | Run the §12.7 spikes in-process, log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `session1`/`session2` | Run the end-to-end self-test in-process (§12.9–12.11): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin; `session1` then `session2` check restore across a restart. Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons` | Run the end-to-end self-test in-process (§12.9–12.13): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons. Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
 `OVERSHELL_TAB_ID` and `COPILOT_HOOK_ALLOW_LOCALHOST=1` (§12.4).
@@ -294,6 +295,7 @@ dotfiles repository is not littered with empty directories.
 
 ```
 OverShell                                   # the window; a second start hands over and exits
+OverShell --fresh                           # the window without the last session (it stays in the history, §12.13)
 OverShell overshell://focus/<tabId>         # handed to the running window (§12.11)
 OverShell integrations status
 OverShell integrations install   <opencode|copilot|claude|codex|all>
@@ -785,6 +787,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Herd overseer P2 — depth** (§12.11) | **Session restore**: `session.json` written on close and every 30 s, tabs (profile, directory, label, group), view and layout overrides reopened at start, an agent that was running gets its **resume command typed** once the shell is quiet (`opencode --session <id>` etc., from the integration's report or the rule file). **`overshell://`** registered per user (HKCU) at start; a second instance hands its URL to the running one over a named pipe and exits, granting it the foreground — so a Palantir toast click (`--launch overshell://focus/{tab.id}`, now in the shipped recipe) lands on its tab. **Prompt bar** (`Ctrl+Shift+Enter`): send to the active tab, every agent, the agents needing you, or every tab; history; **snippets** from `snippets.jsonc` as commands and a menu. **Tab groups** (`tab.moveToGroup`, headers in strip and list) and **drag reorder** (live move as the pointer crosses neighbours; crossing a group joins it). **Explain panel** (`Ctrl+Shift+E`): harness, authority, session, processes, transitions. **XAML skins** (`skins\<name>.xaml`, `settings.skin`) with live recolour. **Claude Code hooks** merged into `~/.claude/settings.json` under a marker (refused, not rewritten, when the file has comments), `/v1/claude/{tab}/{event}`. 138 unit tests; 75 in-process checks + a restart pair; ConPTY-safe throughout |
 | **Herd overseer P3 — reach** (§12.12) | **Codex CLI `notify`**: `integrations install codex` writes a PowerShell shim next to `config.toml` and a marked `notify` line among its top-level keys (a `notify` of the user's is never replaced); the payload becomes an **advisory** report — the turn's end, the thread id for `codex resume`, the last message as summary — without taking authority, since Codex never says `working`. **Native toast sink** (`type: toast`): WinRT over hand-written COM, no CsWinRT (the output stays at 2 MB); AUMID under HKCU; click → `overshell://focus/<tab>`; verified by reading the shell's notification history back with Windows PowerShell. **Tear-off windows** (`Ctrl+Shift+D` / `Ctrl+Shift+A`): the live surface moves into a window of its own and back — same HWND, session alive — while the tab stays in the collection for detection, sidebar, dashboard, notifications and the session file; chords, right-click and link hover follow the window they happen in. 145 unit tests; 84 in-process checks + restart pair + OpenCode e2e |
 | **Distribution** (13) | Three channels from one tag: **winget** `MoaidHathot.OverShell` (framework-dependent zip as a portable, alias `overshell`, `Microsoft.DotNet.DesktopRuntime.10` as a dependency), the **.NET tool** `OverShell` (`dotnet tool install -g OverShell`, `dnx OverShell`; the window detaches from the wrapper), and the **GitHub Release** with both zips (self-contained too), the tool package and `SHA256SUMS.txt`. `build/Release.ps1` builds everything in two phases with a signing catalogue in between; `release.yml` signs the four OverShell assemblies in every layout with Azure Artifact Signing over OIDC, publishes, pushes to nuget.org and opens the winget-pkgs pull request. Verified locally: pack, install from the repacked package, shim and `dnx` return at once, `overshell://` handoff through the shim, self-contained zip with no shared runtime, `winget validate`. Not yet exercised: a signed run and the first winget review |
+| **Herd overseer P4 — resilience and history** (§12.13) | The session file is written every two seconds and says how the run ended; a start after a crash or power cut restores everything and says so; the main window and tear-offs come back where they were (clamped to the desktop that exists now); a restored agent resumes by id, or by the harness's "most recent session" form when no id is known, relaunched when the profile's program is the agent; **history**: closed tabs reopen (`Ctrl+Shift+T`), earlier sessions are archived and a picker (`session.history`) brings a tab or a whole session back; opt-in restart with Windows; vector harness icons. 169 unit tests; 85 + 16 + 16 + 17 + 5 in-process checks, OpenCode resume e2e |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -886,6 +889,8 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | A link whose text is not uniformly coloured is underlined in the scheme foreground | The colour attribute reports "mixed" for the range | Split by colour run if it ever matters |
 | x64 only | Native control not published AnyCPU | No |
 | `CI.Microsoft.Terminal.Wpf` is an unsigned CI-feed package | [microsoft/terminal#15404](https://github.com/microsoft/terminal/issues/15404) | Vendor it if it disappears |
+| Restored window placement can be a few pixels off on a mixed-DPI desktop | Placement is saved and clamped in the primary monitor's DIPs; a window on a monitor with another scale is converted by WPF at show time (§12.13) | Cosmetic; the window is always on a visible monitor |
+| A tiling window manager re-tiles restored windows | It moves every new window; OverShell asked for the saved rectangle (traced at `SourceInitialized`) and the manager overrode it | Expected with such a manager; nothing to do |
 
 ---
 
@@ -1387,6 +1392,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **P4 Resilience & history** ✅ 2026-10-03 — two-second session saves with a close reason; crash/sign-out aware restore; window placement; resume by id or by "most recent"; recently closed tabs + archived sessions + picker; restart with Windows (opt-in); vector harness icons.
 
 Each phase ends as §11 did: zero warnings, in-process verification where possible, a
 test-card section for what needs a hand, and this document updated.
@@ -1670,6 +1676,133 @@ Verified: same terminal HWND before, during and after; `Write-Host` in the detac
 appeared on its UIA screen; attach restored the host parent and the active tab, tear-off
 count 0. Known gap: the link underline (owned by the main window) may sit behind a
 tear-off in front of it.
+
+### 12.13 P4 — resilience and history: what comes back after a crash, and from before
+
+**The question.** Browsers survive a power cut: at the next start the tabs are there, and
+the ones you closed on purpose are a menu away. P2 had a session file written on close and
+every thirty seconds; a crash lost up to half a minute, the next start could not tell a
+crash from a clean close, nothing came back where it had been, and a tab closed by
+mistake was gone. P4 makes the session file the thing a browser's is.
+
+**The file says how the run ended.** `SessionSnapshot` v2 carries `closeReason` —
+`closed` from `OnClosed`, `sessionEnding` from `Application.SessionEnding` — and nothing
+while running, so a file read at start *without* one was left by a run that was killed.
+Version-1 files never said, so an upgrade does not report a crash. The save cadence is
+**two seconds**: the comparable content (everything but the timestamp and the close
+reason) is serialised and compared, and the write happens only on change — a `cd`, a new
+tab, a label, a learned session id — so the file is cheap to keep current and a crash
+loses two seconds at most. After the closing save nothing is written again, or a late
+heartbeat would turn "closed" back into "running". Sign-out matters separately: WPF
+answers `WM_QUERYENDSESSION` by raising `SessionEnding` and *scheduling* `Shutdown()`,
+and Windows may end the process before that reaches `OnClosed` — so the handler saves
+synchronously. Verified by sending the message to the hidden window WPF listens on (the
+Application's parking HWND — the system broadcasts to every top-level window; sending it
+to `MainWindow` raises nothing, which the first version of the test learned the hard way).
+
+**What the next start does.** Restores, as always, and says in the status bar how the
+last run ended when that is worth a word: *Restored 3 tabs from an interrupted session
+(saved 10:21)* or *…after Windows signed out or restarted*. `--fresh` skips the restore
+once; the session is not lost (below). The main window goes back to its placement, and so
+does every tear-off — the P3 limitation "tear-offs come back attached" is gone. Placement
+is DIPs plus a maximized flag (a minimized window remembers its last visible state), and
+`WindowPlacement.Clamp` (Core, pure) keeps at least a caption's worth on the desktop
+that exists *now*: a window saved on a monitor that is gone moves to the desktop corner,
+one larger than a shrunken desktop shrinks. Tear-offs are re-created after the first
+layout (a surface moves between windows only once its HWND exists, §12.12), at
+`ApplicationIdle` rather than `Background` priority — the view's own focus request is
+posted at `Input`, and it would otherwise pull activation back to the main window after a
+restored tear-off had been brought forward.
+
+**Which tab was in use.** Detaching the active tab moves `ActiveTab` to its neighbour (the
+main window must show something), so a save that recorded `ActiveTab` made a restart come
+back looking at the wrong tab when the user had been working in the tear-off. The save now
+records the tab the user was last *looking at* — the tear-off's when a tear-off was the
+OverShell window activated last — and a restore whose active tab is detached brings that
+tear-off forward. Twice: a native child HWND revealing itself in the main window takes
+activation back about 60 ms later, so once more after the reveal. Found by the extended
+`session2` self-test; the three-way chase (`Activate()` returning true, the main window
+re-activating, the trace of both) is in the commit.
+
+**Getting the agent back.** `SessionRestore.Plan` (Core, pure, unit-tested) decides per
+tab. The command is the saved one, else the rule's `resumeCommand` pattern with the saved
+id, else — new — the rule's `resumeLastCommand`: the harness's own "most recent session"
+form (`opencode --continue`, `copilot --continue`, `claude --continue`, `codex resume
+--last`), used only when `session.resumeWithoutId` allows it (on by default). Then the
+*profile* decides how: a **shell** profile gets the command typed once the shell has
+printed and gone quiet (the abandon limit is now 45 s, for the shell that starts right
+after a sign-in behind a dozen other start-ups); a profile whose **program is the agent**
+(`…\opencode.exe`) is relaunched with the resume arguments appended — typing
+`opencode --session …` into a running OpenCode lands in its prompt box as text, which is
+what the P2 code would have done; a profile that **wraps** the agent in a shell command
+(`pwsh -NoExit -Command opencode`) gets neither, only its directory, because neither way
+is safe. `PlanAll` adds one rule a single-tab plan cannot: the "most recent" form is used
+**once per harness per restore**, the active tab first — OpenCode's `--continue`, tried
+from an empty directory, reopened the latest session of another project (the tool's notion
+is machine-wide), so two id-less OpenCode tabs would both have landed in the same session.
+A restored tab is seeded with the saved session id and resume command, so `tab.resume`
+and the next session file work before the integration has spoken again.
+
+**The plugin had a hole.** A resumed OpenCode session (`--continue`, `--session <id>` —
+exactly what OverShell types after a restart) never fires `session.created`, the one
+event the P0 plugin learned its id from, so a restored tab could never be resumed *by id*
+again. The plugin now adopts the id from the first `session.updated` / `session.status`
+/ `session.idle` that names a session it did not see born as a child. The
+`opencode-resume` self-test proves it: a first `opencode run` creates a session; a second
+OpenCode *process*, `opencode run --session <that id>`, reports the same id (7/7).
+
+**History, the way a browser has it.** A tab the user closes is remembered — profile,
+directory, label, group, harness, session id, resume command, when — in `recentlyClosed`
+(the newest twenty, carried across restarts in the session file); `tab.reopenClosed`
+(`Ctrl+Shift+T`) brings the newest back, activated, agent resumed through the planner.
+Every clean close archives the session under `state\sessions\<stamp>.json`, and a start
+that finds the live file interrupted archives it *first*, as `<stamp>-interrupted.json`,
+so a session lost to a crash is never overwritten by the run that follows before the user
+could bring it back; the newest ten are kept, an archive identical to the newest is
+skipped. `session.history` opens a picker — recently closed tabs first (*closed 00:06 ·
+agent was running · C:\…*), then earlier sessions (*Session interrupted Fri 22:06 — 2 tabs
+· OpenCode ×2*); a tab reopens, a session adds all of its tabs next to the open ones.
+`PaletteWindow.Picker` is the same owned window (§12.7 spike 3) with its own glyph and
+empty text.
+
+**Restart with Windows — opt-in.** `session.restartWithWindows` (default **off**)
+registers through `RegisterApplicationRestart` with `RESTART_NO_CRASH | NO_HANG |
+NO_PATCH`: Windows starts OverShell again after a restart or sign-out when "Automatically
+save my restartable apps and restart them when I sign back in" is on — never after a
+crash, so a crashing build cannot loop (Windows also refuses to restart a process that
+ran under a minute). Toggled live on settings reload; read back with
+`GetApplicationRestartSettings` for the trace (`'--restarted-by-windows' flags=0x7`).
+Off because starting by itself is a choice the user makes, not the program.
+
+**Icons.** The harness mark on tab items, sidebar rows and dashboard cards was a text
+glyph (U+25C8 and friends) in a `TextBlock` with no font of its own: WPF's fallback drew
+it from Segoe UI Symbol with Display-mode hinting at 11 px — a grey smudge, which is what
+the user reported. It is now a filled vector per harness (`Theme/Icons.xaml`, 16×16 grid:
+diamond-in-diamond, four-point star, eight-spoke asterisk, ring and dot, diamond), drawn
+by one `HarnessIcon` control in all five places with the brush of the text beside it, so
+skins recolour it by the same key; a user rule file can bring its own with `"icon":
+"<path data>"`, a rule without one falls back to the text glyph in Segoe UI Symbol. On the
+way, `settings.tabs.showHarnessGlyph` and `tabs.twoLine` turned out to be defined,
+documented and never read; both now apply to every tab item.
+
+**Verified** (all in-process, no synthetic input): 169 unit tests (snapshot v2 round trip
+and v1 compatibility, interrupted detection, comparable JSON, planner — eight cases
+including the once-per-harness rule, command-line tokenising, placement clamp, archive
+order and retention). `session1`/`session2` 16/16 across a real restart: label, group,
+the detached active tab recorded and brought forward, placement saved and re-applied
+(read back from the trace — a tiling window manager on the reference machine moves every
+window, so the test checks what was asked for, not where the window ended up), resume
+typed and run, session seeded, archive written. `sessionend` 5/5. `history` 16/16.
+`icons` 17/17 with PNGs of the icons alone and of the live strip. `opencode-resume` 7/7
+and the standard OpenCode e2e 7/7 with the updated plugin. Live: OpenCode and Copilot
+each resumed with `--continue` after a restore (typed 2.0 s / 1.5 s after the prompt,
+both detected by the process probe); an OpenCode profile relaunched as
+`"…\opencode.exe" --continue`; a kill followed by a start showed the interrupted note;
+`--fresh` opened one tab; `restartWithWindows` registered and unregistered on hot reload.
+The 85-check self-test still 85/85. Not exercised: a real sign-out or reboot (the
+`WM_QUERYENDSESSION` path is), Claude Code and Codex (`--continue` / `resume --last` are
+from their documentation).
+
 ---
 
 ## 13. Distribution

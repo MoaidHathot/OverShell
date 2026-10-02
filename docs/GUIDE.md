@@ -18,7 +18,7 @@ Contents
 8. [Harness integrations](#8-harness-integrations)
 9. [Notifications](#9-notifications)
 10. [The prompt bar and snippets](#10-the-prompt-bar-and-snippets)
-11. [Sessions: restore and resume](#11-sessions-restore-and-resume)
+11. [Sessions: restore, resume and history](#11-sessions-restore-resume-and-history)
 12. [`overshell://` and toast clicks](#12-overshell-and-toast-clicks)
 13. [Skins](#13-skins)
 14. [Command line](#14-command-line)
@@ -131,15 +131,18 @@ init` gives you the full default file, commented, as a starting point.
   },
 
   "session": {
-    "restore": true,                 // reopen last run's tabs and view
-    "resumeAgents": true             // type the resume command into a tab whose agent was mid-session
+    "restore": true,                 // reopen last run's tabs, view and windows - also after a crash
+    "resumeAgents": true,            // bring a tab's agent back: by session id when one is known
+    "resumeWithoutId": true,         // ...else the tool's "most recent session" form (opencode --continue)
+    "restoreWindows": true,          // main window and tear-offs back where they were
+    "restartWithWindows": false      // ask Windows to start OverShell again after a restart or sign-out
   },
 
   "protocol": { "register": true },  // overshell:// for this user (HKCU), so toast clicks find their tab
 
   "notifications": { "sinks": { /* see §9 */ } },
 
-  "tabs": { "twoLine": true, "showHarnessGlyph": true }
+  "tabs": { "twoLine": true, "showHarnessGlyph": true }   // the state · project line; the harness icon on agent tabs
 }
 ```
 
@@ -153,6 +156,7 @@ categories and ids; the bound chord is shown on the right). The defaults:
 |---|---|---|
 | `Ctrl+T` | `tab.new` | New tab, default profile |
 | `Ctrl+Shift+W` | `tab.close` | Close tab |
+| `Ctrl+Shift+T` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | `tab.next` / `tab.previous` | Cycle |
 | `Ctrl+PgDn` / `Ctrl+PgUp` | same | Cycle |
 | `Alt+1` … `Alt+9` | `tab.switchTo.N` | Jump to the Nth visible tab |
@@ -222,7 +226,7 @@ An unread badge marks a state you have not seen; a thin bar shows OSC 9;4 progre
   restarts, the scrollback stays, keys and clicks work there, and the tab keeps its place
   in the sidebar, the dashboard and notifications (`⧉` in its detail). `Ctrl+Shift+A` in
   either window, or closing the tear-off, brings it back. Chords pressed in a tear-off act
-  on its tab. Tear-offs come back attached after a restart.
+  on its tab. After a restart a tear-off comes back as a tear-off, where it was.
 - **Explain** (`Ctrl+Shift+E`): state, why, who decided (detector or which integration),
   harness, session id, resume command, processes below the shell, the last transitions.
 
@@ -293,7 +297,7 @@ wholesale by yours. Shape:
 
 ```jsonc
 {
-  "id": "myagent", "displayName": "My Agent", "glyph": "◆",
+  "id": "myagent", "displayName": "My Agent", "icon": "M8,0 L16,8 L8,16 L0,8 Z", "glyph": "◆",
   "detect": { "commandline": ["\\bmyagent\\b"], "title": ["My Agent"], "process": ["myagent"] },
   "title":  { "working": ["^⠋|^⠙"], "idle": ["^✳"] },
   "screen": { "blocked": ["Do you want to proceed", "\\(y/n\\)"], "working": ["Esc to interrupt"], "idle": ["\\? for shortcuts"] },
@@ -390,17 +394,59 @@ as one block (bracketed paste where the program asked for it) followed by Enter.
 ]
 ```
 
-## 11. Sessions: restore and resume
+## 11. Sessions: restore, resume and history
 
-Closing OverShell saves the open tabs (profile, directory, label, group), the active
-tab, the view and any layout overrides to `session.json` in the state root (also every
-30 s while running). The next start reopens them. A tab whose agent was **still running**
-gets its resume command typed once the shell is ready — `opencode --session <id>`,
-`copilot --resume=<id>`, `claude --resume <id>`, `codex resume <id>` — from the
-integration's report or the rule file's `resumeCommand`. `tab.resume` types it again any
-time; `session.save` writes the file now. `"session": { "restore": false }` or
-`"resumeAgents": false` turn either off.
+OverShell keeps `session.json` in the state root current while it runs — every two
+seconds, whenever something changed: the open tabs (profile, directory, label, group),
+the active tab, the view and layout overrides, where the main window and every tear-off
+sit, and for each tab whose agent is running its harness, session id and resume command.
+Closing the window writes it one last time with how the run ended.
 
+**After a restart** everything comes back: the tabs in their directories, the windows
+where they were (on the monitors you still have — a window saved on a screen that is gone
+moves to the desktop corner), the tear-offs as tear-offs, the tab you were looking at in
+front.
+
+**After a crash or a power cut** the same happens, and the status bar says *Restored N
+tabs from an interrupted session (saved HH:mm)* — the file never got its closing note, so
+OverShell knows. After a Windows sign-out or restart it says that instead. Start with
+`OverShell --fresh` to skip the restore once; the session is not lost, it is in the
+history below.
+
+**Agents come back too.** A tab whose agent was running gets it resumed:
+
+- by **session id** when one is known — `opencode --session <id>`, `copilot --resume=<id>`,
+  `claude --resume <id>`, `codex resume <id>` — from the integration's report;
+- else, when `resumeWithoutId` is on (default), by the tool's own **most recent session**
+  form — `opencode --continue`, `copilot --continue`, `claude --continue`,
+  `codex resume --last`. "Most recent" is the tool's notion, usually machine-wide, so
+  OverShell uses it for at most one tab per harness per restore (the one you were
+  looking at); the others of that harness come back with their directory only.
+
+*How* depends on the profile: a shell profile gets the command typed once the shell has
+shown its prompt and gone quiet; a profile whose program *is* the agent (`opencode.exe`
+as the command line) is relaunched with the resume arguments appended; a profile that
+wraps the agent in a shell command (`pwsh -NoExit -Command opencode`) gets neither — only
+its directory, because neither way is safe. `tab.resume` types the known command again
+any time; `session.save` writes the file now. Install the harness's integration
+([8](#8-harness-integrations)) and the id is always known: OpenCode's plugin learns it
+even for a session that was itself resumed.
+
+**History.** A tab you close is remembered — directory, label, group, agent session —
+and `Ctrl+Shift+T` (`tab.reopenClosed`) brings the most recent one back, agent resumed.
+Every clean close archives the whole session under `sessions\` in the state root (and a
+start after a crash archives the interrupted one first, so nothing overwrites it); the
+newest ten are kept. `session.history` (palette) lists recently closed tabs, then earlier
+sessions — *Session interrupted Fri 22:06 — 2 tabs · OpenCode ×2* — choose a tab to
+reopen it, a session to add all of its tabs next to the open ones.
+
+**Restart with Windows.** With `"session": { "restartWithWindows": true }` OverShell asks
+Windows to start it again after a restart or sign-out, when the Windows setting
+*Automatically save my restartable apps and restart them when I sign back in* is on.
+Never after a crash. Off by default.
+
+`"session": { "restore": false }`, `"resumeAgents": false`, `"resumeWithoutId": false`
+or `"restoreWindows": false` turn each part off.
 ## 12. `overshell://` and toast clicks
 
 At start OverShell registers `overshell://` for your user (HKCU, no elevation; `"protocol":
@@ -434,6 +480,7 @@ metrics at the next start. Skins are your own files and are trusted like configu
 
 ```
 OverShell                                   # the window (a second start hands over and exits)
+OverShell --fresh                           # the window without the last session (kept in the history)
 OverShell overshell://focus/<tabId>         # same, with a request for the running window
 OverShell settings path|init|open
 OverShell integrations status
@@ -458,7 +505,7 @@ a .NET tool the command is `overshell`; the wrapper returns at once for the wind
 | `OVERSHELL_TRACE_AGENTS=1` | `%TEMP%\overshell-agents.log`: detection, every state change with its reason, endpoint traffic, notifications, reloads |
 | `OVERSHELL_TRACE_KEYS=1` | `%TEMP%\overshell-keys.log`: every chord seen |
 | `OVERSHELL_TRACE_LINKS=1` | `%TEMP%\overshell-links.log`: link hover and click resolution |
-| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` runs it against the real OpenCode; `session1`/`session2` check restore across a restart. `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` / `opencode-resume` run it against the real OpenCode; `session1`/`session2` check restore across a restart, `sessionend` a sign-out, `history` the history, `icons` the icons. `%TEMP%\overshell-selftest.log` |
 
 Crashes always go to `%TEMP%\overshell-crash.log`. `tools\Show-LinkTestCard.ps1` prints
 the manual test card for everything a human should confirm.

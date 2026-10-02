@@ -43,11 +43,11 @@ backdrop). x64 only.
 |---|---|---|
 | `OVERSHELL_BACKDROP` | `acrylic` (default), `mica`, `micaalt`, `none` | Backdrop behind the chrome |
 | `OVERSHELL_CONFIG_DIR` | a directory | Configuration root; see *Configuration* below |
-| `OVERSHELL_STATE_DIR` | a directory | State root (labels, last session) |
+| `OVERSHELL_STATE_DIR` | a directory | State root (labels, the session, `sessions\` history) |
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `session1`/`session2` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
 
@@ -113,10 +113,16 @@ opens it aimed at all agents). Snippets in `snippets.jsonc` —
 `[ { "name": "Explain", "text": "Explain what you just did." } ]` — appear on the bar and
 as `Snippet: …` commands.
 
-Closing OverShell saves the open tabs (profile, directory, label, group), the view and
-the layout; the next start reopens them, and a tab whose agent was mid-session gets its
-resume command typed (`opencode --session <id>`, `copilot --resume=<id>`) once the shell
-is ready. `Ctrl+Shift+G` puts a tab in a named group (headers in the strip and the list);
+The session - tabs (profile, directory, label, group), view, layout, where every window
+sits - is saved every two seconds, so a crash or a power cut loses seconds, not the
+session: the next start brings everything back, says so when the last run was
+interrupted, and resumes each agent that was running - by session id when the
+integration reported one (`opencode --session <id>`, `copilot --resume=<id>`), else
+with the tool's "most recent session" form (`opencode --continue`); a profile whose
+program is the agent is relaunched with those arguments, a shell gets them typed.
+`Ctrl+Shift+T` reopens the tab you just closed, agent included; `session.history` lists
+recently closed tabs and the last ten sessions to bring back. `OverShell --fresh` starts
+without restoring. `Ctrl+Shift+G` puts a tab in a named group (headers in the strip and the list);
 drag a tab along the strip to reorder it, or use `Alt+Shift+←/→`. `Ctrl+Shift+E` opens
 the explain panel — why a tab is in its state, with the transition history.
 `Ctrl+Shift+D` detaches a tab into a window of its own (the terminal moves; nothing
@@ -189,9 +195,11 @@ one in its own colour where the renderer would, Ctrl+click opens it), bracketed 
 the agent layer (detection, two-line tabs with state, palette, endpoint, OpenCode plugin,
 Copilot, Claude Code and Codex hooks, notifications incl. native toasts), the views
 (layouts, Herd sidebar, Dashboard cards, Zen, live configuration reload, git branch per
-tab), and the depth features (prompt bar and broadcast, session restore with agent
+tab), the depth features (prompt bar and broadcast, session restore with agent
 resume, `overshell://` toast clicks, tab groups and drag reorder, explain panel, skins,
-tear-off windows).
+tear-off windows), and resilience (two-second session saves, restore after a crash with
+window placement and tear-offs, agent resume with or without a session id, recently
+closed tabs and session history, opt-in restart with Windows).
 
 Not yet confirmed by a human: see the test card (`tools\Show-LinkTestCard.ps1`) and
 [DESIGN.md 8](DESIGN.md#8-status).
