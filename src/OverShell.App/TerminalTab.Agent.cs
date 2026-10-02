@@ -135,6 +135,21 @@ public sealed partial class TerminalTab
         _resumeScheduledAt = DateTimeOffset.Now;
     }
 
+    /// <summary>
+    /// What the saved session knew about this tab's agent, carried over so a restart
+    /// before the integration speaks again does not lose the way back (`tab.resume`, the
+    /// next session file). A later report overrides both.
+    /// </summary>
+    internal void SeedResume(string? sessionId, string? resumeCommand)
+    {
+        Agent.SeedSession(sessionId);
+        if (ResumeCommand is null && !string.IsNullOrWhiteSpace(resumeCommand))
+        {
+            ResumeCommand = resumeCommand;
+            Raise(nameof(ResumeCommand));
+        }
+    }
+
     /// <summary>Runs the known resume command now, in this tab. False when there is none.</summary>
     internal bool Resume()
     {
@@ -358,7 +373,9 @@ public sealed partial class TerminalTab
         {
             // The shell has printed its prompt (first output happened) and has been quiet for a
             // second: typing now lands on the prompt, not into a banner mid-print. If the shell
-            // never says anything, give up rather than type into the void.
+            // never says anything, give up rather than type into the void - after 45 s, because
+            // the shell that matters most here is the one starting right after a sign-in, when
+            // profiles load slowly behind a dozen other start-ups.
             var lastOutputTicks = Volatile.Read(ref _lastOutputTicks);
             var quiet = lastOutputTicks != 0 && now - new DateTimeOffset(lastOutputTicks, TimeSpan.Zero) >= TimeSpan.FromSeconds(1);
             var waited = now - _resumeScheduledAt;
@@ -368,7 +385,7 @@ public sealed partial class TerminalTab
                 SendText(resume + "\r");
                 _agents.Trace.Write($"[{Id}] resumed after {waited.TotalSeconds:F1}s: {resume}");
             }
-            else if (waited > TimeSpan.FromSeconds(20) || (HasStarted && !IsRunning))
+            else if (waited > TimeSpan.FromSeconds(45) || (HasStarted && !IsRunning))
             {
                 _pendingResume = null;
                 _agents.Trace.Write($"[{Id}] resume abandoned: shell not ready in time");

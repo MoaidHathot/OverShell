@@ -36,5 +36,7 @@
   "summary": "^[✻✽✶✳✢·]\\s+(.+)$",
   "idleAfterMs": 1500,
   "screenRows": 12,
-  "resumeCommand": "claude --resume {sessionId}"
+  "resumeCommand": "claude --resume {sessionId}",
+  // Without a session id (no integration installed): the tool's own "most recent session" form.
+  "resumeLastCommand": "claude --continue"
 }

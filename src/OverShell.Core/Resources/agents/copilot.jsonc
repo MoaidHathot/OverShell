@@ -32,5 +32,7 @@
   },
   "idleAfterMs": 1500,
   "screenRows": 12,
-  "resumeCommand": "copilot --resume={sessionId}"
+  "resumeCommand": "copilot --resume={sessionId}",
+  // Without a session id (no integration installed): the tool's own "most recent session" form.
+  "resumeLastCommand": "copilot --continue"
 }

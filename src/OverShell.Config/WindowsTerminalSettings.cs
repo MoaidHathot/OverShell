@@ -32,6 +32,14 @@ public sealed class WindowsTerminalSettings
     /// <summary>Candidate settings.json locations, most preferred first.</summary>
     public static IEnumerable<string> CandidatePaths()
     {
+        // An explicit file first: a portable Windows Terminal keeps its settings elsewhere,
+        // and the self-tests need profiles the machine does not have (an agent profile).
+        var explicitPath = Environment.GetEnvironmentVariable("OVERSHELL_WT_SETTINGS");
+        if (!string.IsNullOrWhiteSpace(explicitPath))
+        {
+            yield return explicitPath.Trim();
+        }
+
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
         yield return System.IO.Path.Combine(

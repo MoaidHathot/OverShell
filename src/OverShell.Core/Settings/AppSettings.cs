@@ -73,8 +73,25 @@ public sealed class SessionSettings
     /// <summary>Reopen the tabs (profile, directory, label, group) and the view that were open when the window closed.</summary>
     public bool Restore { get; init; } = true;
 
-    /// <summary>For a restored tab whose agent left a session id, type its resume command once the shell is ready.</summary>
+    /// <summary>For a restored tab whose agent was running, bring the agent back: its session by id when one is known.</summary>
     public bool ResumeAgents { get; init; } = true;
+
+    /// <summary>
+    /// When no session id is known (no integration installed), resume the harness's most
+    /// recent session instead (<c>opencode --continue</c>). The tool decides what "most
+    /// recent" means, usually per directory.
+    /// </summary>
+    public bool ResumeWithoutId { get; init; } = true;
+
+    /// <summary>Put the main window and the tear-off windows back where they were.</summary>
+    public bool RestoreWindows { get; init; } = true;
+
+    /// <summary>
+    /// Ask Windows to start OverShell again after a restart or sign-out, when the Windows
+    /// setting "Automatically save my restartable apps and restart them when I sign back in"
+    /// is on. Never after a crash. Off by default: starting by itself is a choice.
+    /// </summary>
+    public bool RestartWithWindows { get; init; }
 }
 
 /// <summary>The <c>overshell://</c> URL protocol.</summary>

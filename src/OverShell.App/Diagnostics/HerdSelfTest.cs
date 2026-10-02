@@ -19,7 +19,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "session1" or "session2";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -41,6 +41,9 @@ internal static class HerdSelfTest
                 {
                     case "opencode":
                         await RunOpenCodeAsync(window, firstTab);
+                        break;
+                    case "opencode-resume":
+                        await RunOpenCodeResumeAsync(window, firstTab);
                         break;
                     case "session1":
                         await RunSessionSaveAsync(window, firstTab);
@@ -133,6 +136,77 @@ internal static class HerdSelfTest
     /// OverShell plugin reporting over loopback. Records when the process probe and the
     /// plugin each recognised the agent, and every state the tab went through.
     /// </summary>
+    /// <summary>
+    /// The resume path end to end (§12.13): a first <c>opencode run</c> creates a session the
+    /// plugin reports through <c>session.created</c>; a second <c>opencode run --session
+    /// &lt;that id&gt;</c> is a new OpenCode process that never sees that event, so its plugin
+    /// must adopt the id from the turn's own events — otherwise a restored tab could never be
+    /// resumed by id again.
+    /// </summary>
+    private static async Task RunOpenCodeResumeAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (opencode-resume) start ===");
+        var started = Stopwatch.GetTimestamp();
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        async Task<(string? SessionId, string? Source, bool Released)> RunTurnAsync(string command)
+        {
+            tab.SendText(command + "\r");
+            string? sessionId = null, source = null;
+            var sawWorking = false;
+            var deadline = DateTime.UtcNow.AddSeconds(90);
+            while (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(1000);
+                sessionId ??= tab.Agent.SessionId;
+                source ??= tab.Agent.AuthoritySource;
+                sawWorking |= tab.State == AgentState.Working;
+                if (source is not null && sessionId is not null && sawWorking && tab.State is AgentState.Done or AgentState.Idle)
+                {
+                    break;
+                }
+            }
+
+            Log($"  +{Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s turn done: state={tab.State} source={source ?? "-"} session={sessionId ?? "-"} working-seen={sawWorking}");
+
+            // The process probe notices opencode.exe is gone and releases the plugin, which clears the id.
+            var releaseDeadline = DateTime.UtcNow.AddSeconds(16);
+            var released = false;
+            while (DateTime.UtcNow < releaseDeadline && !released)
+            {
+                await Task.Delay(500);
+                released = tab.Agent.Authority == AgentAuthority.Detector && tab.Harness is null;
+            }
+
+            return (sessionId, source, released);
+        }
+
+        var first = await RunTurnAsync("opencode run \"Reply with exactly the word pong and nothing else.\"");
+        Check(first.Source == "opencode" && first.SessionId is not null, $"first run: the plugin reported a session id ({first.SessionId ?? "-"})");
+        Check(first.Released, "first run: the plugin was released once opencode.exe was gone");
+        Check(tab.Agent.SessionId is null, "after release the tab holds no session id");
+
+        if (first.SessionId is null)
+        {
+            Log("=== selftest (opencode-resume) result: FAILED (no session to resume) ===");
+            return;
+        }
+
+        var second = await RunTurnAsync($"opencode run --session {first.SessionId} \"Reply with exactly the word pong again.\"");
+        Check(second.Source == "opencode", "resumed run: the plugin reported again");
+        Check(second.SessionId == first.SessionId, $"resumed run: the plugin adopted the resumed session's id without a session.created event ({second.SessionId ?? "-"})");
+        Check(tab.ResumeCommand == $"opencode --session {first.SessionId}", $"the tab's resume command names that session: {tab.ResumeCommand ?? "-"}");
+
+        var rows = await new Agents.ScreenReader().ReadRowsAsync(MainWindow.FindTerminalHwnd(tab.View));
+        Log($"  screen tail: {string.Join(" ⏎ ", (rows ?? []).TakeLast(6))}");
+        Log($"=== selftest (opencode-resume) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
     private static async Task RunOpenCodeAsync(MainWindow window, TerminalTab tab)
     {
         Log("=== selftest (opencode) start ===");

@@ -44,6 +44,16 @@ export const OverShellPlugin: Plugin = async ({ directory }) => {
   // Sub-agent sessions are noise for the tab's state.
   const foreign = (props: { sessionID?: string }) => Boolean(props.sessionID && children.has(props.sessionID))
 
+  // A resumed session (`opencode --continue`, `--session <id>` - what OverShell types after a
+  // restart) never fires session.created, so the id is taken from the first event that names
+  // a session we did not see born as a child. Without this a restored tab could never be
+  // resumed by id again.
+  const adopt = (id: string | undefined): boolean => {
+    if (!id || sessionId || children.has(id)) return false
+    sessionId = id
+    return true
+  }
+
   return {
     event: async ({ event }) => {
       const type = event.type as string
@@ -70,10 +80,12 @@ export const OverShellPlugin: Plugin = async ({ directory }) => {
           const info = props.info as { id: string; parentID?: string; title?: string } | undefined
           if (!info || info.parentID || (sessionId && info.id !== sessionId)) return
           if (info.title && !/^(New session|Child session) - /.test(info.title)) title = info.title
+          if (adopt(info.id)) report("idle", { message: "session resumed" })
           return
         }
         case "session.status": {
           if (foreign(props as { sessionID?: string })) return
+          adopt(props.sessionID as string | undefined)
           const status = props.status as { type?: string } | undefined
           if (status?.type === "busy") report("working")
           else if (status?.type === "idle") report("idle", { message: "turn finished" })
@@ -82,6 +94,7 @@ export const OverShellPlugin: Plugin = async ({ directory }) => {
         case "session.idle":
         case "session.compacted":
           if (foreign(props as { sessionID?: string })) return
+          adopt(props.sessionID as string | undefined)
           report("idle", { message: "turn finished" })
           return
         case "session.error":

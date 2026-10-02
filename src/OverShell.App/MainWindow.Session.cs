@@ -76,32 +76,10 @@ public partial class MainWindow
 
         if (_settings.Session.Restore && _previousSession is { Tabs.Count: > 0 } saved)
         {
-            foreach (var savedTab in saved.Tabs)
+            var plans = SessionRestore.PlanAll(saved.Tabs, saved.ActiveIndex, t => RestoreCommandLine(ProfileFor(t)), _agents.Rules, _settings.Session);
+            for (var i = 0; i < saved.Tabs.Count; i++)
             {
-                var profile = _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, savedTab.ProfileId, StringComparison.OrdinalIgnoreCase))
-                              ?? _catalog.DefaultProfile;
-                if (profile is null || !profile.IsLaunchable)
-                {
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(savedTab.WorkingDirectory) && Directory.Exists(savedTab.WorkingDirectory))
-                {
-                    profile = profile with { StartingDirectory = savedTab.WorkingDirectory };
-                }
-
-                var tab = AddTab(profile, activate: false);
-                if (!string.IsNullOrWhiteSpace(savedTab.Label))
-                {
-                    tab.UserLabel = savedTab.Label;
-                }
-
-                tab.Group = savedTab.Group;
-
-                if (_settings.Session.ResumeAgents && savedTab.AgentRunning && !string.IsNullOrWhiteSpace(savedTab.ResumeCommand))
-                {
-                    tab.ScheduleResume(savedTab.ResumeCommand);
-                }
+                OpenSavedTab(saved.Tabs[i], activate: false, plans[i]);
             }
 
             if (Tabs.Count > 0)
@@ -128,6 +106,67 @@ public partial class MainWindow
         }
 
         return view;
+    }
+
+    /// <summary>The saved tab's profile, else the default; null when nothing launchable exists.</summary>
+    private TerminalProfile? ProfileFor(SavedTab savedTab)
+    {
+        var profile = _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, savedTab.ProfileId, StringComparison.OrdinalIgnoreCase))
+                      ?? _catalog.DefaultProfile;
+        return profile is { IsLaunchable: true } ? profile : null;
+    }
+
+    /// <summary>The command line the planner judges: expanded, as the tab would launch it.</summary>
+    private static string? RestoreCommandLine(TerminalProfile? profile) =>
+        profile?.CommandLine is { } commandLine ? Environment.ExpandEnvironmentVariables(commandLine) : null;
+
+    /// <summary>
+    /// Reopens one remembered tab: its profile (the default when the profile is gone), its
+    /// directory when it still exists, its label and group, and — when an agent was
+    /// running — the agent, the way <see cref="SessionRestore.Plan"/> says is safe for the
+    /// profile: relaunched with resume arguments when the program is the agent, typed into
+    /// the shell otherwise. Null when no launchable profile exists at all.
+    /// </summary>
+    internal TerminalTab? OpenSavedTab(SavedTab savedTab, bool activate, ResumePlan? plan = null)
+    {
+        var profile = ProfileFor(savedTab);
+        if (profile is null)
+        {
+            return null;
+        }
+
+        plan ??= SessionRestore.Plan(savedTab, RestoreCommandLine(profile), _agents.Rules, _settings.Session);
+
+        if (!string.IsNullOrWhiteSpace(savedTab.WorkingDirectory) && Directory.Exists(savedTab.WorkingDirectory))
+        {
+            profile = profile with { StartingDirectory = savedTab.WorkingDirectory };
+        }
+
+        if (plan.Mode == ResumeMode.Relaunch)
+        {
+            profile = profile with { CommandLine = plan.Command };
+        }
+
+        var tab = AddTab(profile, activate);
+        if (!string.IsNullOrWhiteSpace(savedTab.Label))
+        {
+            tab.UserLabel = savedTab.Label;
+        }
+
+        tab.Group = savedTab.Group;
+        tab.SeedResume(savedTab.SessionId, savedTab.ResumeCommand ?? (plan.Mode == ResumeMode.Typed ? plan.Command : null));
+
+        if (plan.Mode == ResumeMode.Typed)
+        {
+            tab.ScheduleResume(plan.Command!);
+        }
+
+        if (savedTab.AgentRunning)
+        {
+            _trace.Write($"[{tab.Id}] restore: {savedTab.Harness ?? "agent"} {plan.Mode.ToString().ToLowerInvariant()} - {plan.Reason}{(plan.Command is null ? string.Empty : $": {plan.Command}")}");
+        }
+
+        return tab;
     }
 
     /// <summary>One tab as the session file remembers it.</summary>

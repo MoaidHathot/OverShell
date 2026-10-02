@@ -159,6 +159,14 @@ public sealed class AgentRuleSet
     /// <summary>Command that resumes a session by id, with <c>{sessionId}</c> — filled by integrations.</summary>
     public string? ResumeCommand { get; init; }
 
+    /// <summary>
+    /// Command that resumes the harness's most recent session when no id is known
+    /// (<c>opencode --continue</c>). Used at restore only when <c>session.resumeWithoutId</c>
+    /// allows it: "most recent" is the tool's notion, usually per directory, so two tabs of
+    /// one harness in one directory may both land on the same session.
+    /// </summary>
+    public string? ResumeLastCommand { get; init; }
+
     [JsonIgnore]
     internal Regex? SummaryRegex => _summary ??= Compile(Summary);
 

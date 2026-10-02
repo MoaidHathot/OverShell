@@ -40,5 +40,7 @@
   },
   "idleAfterMs": 1500,
   "screenRows": 12,
-  "resumeCommand": "opencode --session {sessionId}"
+  "resumeCommand": "opencode --session {sessionId}",
+  // Without a session id (no integration installed): the tool's own "most recent session" form.
+  "resumeLastCommand": "opencode --continue"
 }

@@ -84,6 +84,18 @@ public sealed class AgentStateMachine
     /// <summary>Session identity an integration reported, for resume.</summary>
     public string? SessionId { get; private set; }
 
+    /// <summary>
+    /// A session id carried over from the saved session, so a restored tab can be resumed
+    /// again before its integration has spoken. Never overrides one that was reported.
+    /// </summary>
+    public void SeedSession(string? sessionId)
+    {
+        if (SessionId is null && !string.IsNullOrWhiteSpace(sessionId))
+        {
+            SessionId = sessionId;
+        }
+    }
+
     public DateTimeOffset? LastActivity { get; private set; }
 
     public bool IsAgent => _isAgent;

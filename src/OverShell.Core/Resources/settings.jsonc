@@ -34,12 +34,21 @@
     "statusIntervalMs": 10000
   },
 
-  // What comes back after a restart: the tabs (profile, directory, label, group) and the
-  // view; for a tab whose agent left a session id, its resume command is typed once the
-  // shell is ready (e.g. `opencode --session <id>`).
+  // What comes back after a restart - and after a crash or a power cut, since the file is
+  // written every two seconds: the tabs (profile, directory, label, group), the view, the
+  // windows' placement. A tab whose agent was running gets the agent back: by session id
+  // when one is known (`opencode --session <id>`, from the integration), else the tool's
+  // "most recent session" form (`opencode --continue`) when resumeWithoutId allows it. A
+  // profile whose program is the agent is relaunched with those arguments; a shell gets
+  // them typed once it is quiet. restartWithWindows asks Windows to start OverShell again
+  // after a restart or sign-out (never after a crash); it is off because starting by
+  // itself is a choice.
   "session": {
     "restore": true,
-    "resumeAgents": true
+    "resumeAgents": true,
+    "resumeWithoutId": true,
+    "restoreWindows": true,
+    "restartWithWindows": false
   },
 
   // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked
