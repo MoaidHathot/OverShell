@@ -2,16 +2,19 @@
 //
 // Copy the entries you want to change into %APPDATA%\OverShell\keybindings.jsonc — only
 // what you list there is changed. To remove a default, bind its keys to "unbound":
-//   { "keys": "ctrl+t", "command": "unbound" }
+//   { "keys": "ctrl+shift+t", "command": "unbound" }
 //
 // Key names follow Windows Terminal: ctrl, shift, alt, win; letters, digits, f1..f24,
 // tab, esc, enter, space, backspace, del, ins, home, end, pgup, pgdn, up/down/left/right,
 // plus, minus, comma, period, slash, backslash, semicolon, quote, backtick, [ and ].
 [
   // ---- tabs ----
-  { "keys": "ctrl+t",              "command": "tab.new" },
+  // The chords follow Windows Terminal where it has one (new, duplicate, close, find); Ctrl+T
+  // is left to the shell (PSReadLine swaps characters on it).
+  { "keys": "ctrl+shift+t",        "command": "tab.new" },
   { "keys": "ctrl+shift+w",        "command": "tab.close" },
-  { "keys": "ctrl+shift+t",        "command": "tab.reopenClosed" },
+  { "keys": "ctrl+shift+d",        "command": "tab.duplicate" },
+  { "keys": "ctrl+shift+z",        "command": "tab.reopenClosed" },
   { "keys": "ctrl+tab",            "command": "tab.next" },
   { "keys": "ctrl+shift+tab",      "command": "tab.previous" },
   { "keys": "ctrl+pgdn",           "command": "tab.next" },
@@ -31,7 +34,7 @@
   { "keys": "alt+shift+left",      "command": "tab.moveLeft" },
   { "keys": "alt+shift+right",     "command": "tab.moveRight" },
   { "keys": "ctrl+shift+e",        "command": "tab.explain" },
-  { "keys": "ctrl+shift+d",        "command": "tab.detach" },
+  { "keys": "ctrl+shift+x",        "command": "tab.detach" },
   { "keys": "ctrl+shift+a",        "command": "tab.attach" },
   { "keys": "ctrl+shift+space",    "command": "palette.tabs" },
 

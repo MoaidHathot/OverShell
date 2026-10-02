@@ -176,6 +176,7 @@ public partial class MainWindow
 
         // Commands act on the active tab, so the menu first makes this one active.
         Add("Rename…", HintFor("tab.rename"), () => { ActiveTab = tab; _commands.TryExecute("tab.rename"); });
+        Add("Duplicate tab", HintFor("tab.duplicate"), () => DuplicateTab(tab));
         Add(tab.IsAgent ? "Treat as a shell" : "Treat as an agent", null, () => { if (tab.IsAgent) tab.MarkAsShell(); else tab.MarkAsAgent(); });
         Add("Explain state", HintFor("tab.explain"), () => { ActiveTab = tab; _commands.TryExecute("tab.explain"); });
         Add("Move to group…", HintFor("tab.moveToGroup"), () => { ActiveTab = tab; _commands.TryExecute("tab.moveToGroup"); });

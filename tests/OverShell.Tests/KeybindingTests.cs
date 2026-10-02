@@ -67,7 +67,12 @@ public class KeybindingMapTests
         var map = KeybindingMap.Load(null);
         Assert.Empty(map.Problems);
 
-        Assert.Equal("tab.new", Resolve(map, "ctrl+t"));
+        // Windows Terminal's chords where it has one; Ctrl+T is left to the shell.
+        Assert.Null(Resolve(map, "ctrl+t"));
+        Assert.Equal("tab.new", Resolve(map, "ctrl+shift+t"));
+        Assert.Equal("tab.duplicate", Resolve(map, "ctrl+shift+d"));
+        Assert.Equal("tab.reopenClosed", Resolve(map, "ctrl+shift+z"));
+        Assert.Equal("tab.detach", Resolve(map, "ctrl+shift+x"));
         Assert.Equal("tab.close", Resolve(map, "ctrl+shift+w"));
         Assert.Equal("tab.next", Resolve(map, "ctrl+tab"));
         Assert.Equal("tab.previous", Resolve(map, "ctrl+shift+tab"));
@@ -89,7 +94,7 @@ public class KeybindingMapTests
             File.WriteAllText(file, """
                 // user overrides
                 [
-                  { "keys": "ctrl+t", "command": "unbound" },
+                  { "keys": "ctrl+shift+t", "command": "unbound" },
                   { "keys": "ctrl+n", "command": "tab.new" },
                   { "keys": "ctrl+shift+j", "command": "view.herd" },
                   { "keys": "bogus", "command": "tab.new" },
@@ -98,7 +103,7 @@ public class KeybindingMapTests
 
             var map = KeybindingMap.Load(file);
 
-            Assert.Null(Resolve(map, "ctrl+t"));
+            Assert.Null(Resolve(map, "ctrl+shift+t"));
             Assert.Equal("tab.new", Resolve(map, "ctrl+n"));
             Assert.Equal("view.herd", Resolve(map, "ctrl+shift+j"));
             Assert.Contains(map.Problems, p => p.Contains("bogus"));

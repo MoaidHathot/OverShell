@@ -6,6 +6,9 @@
     <RootNamespace>OverShell.App</RootNamespace>
     <AssemblyName>OverShell</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- build/Make-Icon.ps1 renders Assets/OverShell.ico from the palette; the copy next to the
+         exe is what the shell shows for toasts (AppUserModelId IconUri wants a file). -->
+    <ApplicationIcon>Assets\OverShell.ico</ApplicationIcon>
     <!-- LibraryImport with raw pointers in the ConPTY interop. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
@@ -42,6 +45,7 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <Content Include="Assets\OverShell.ico" CopyToOutputDirectory="PreserveNewest" Link="OverShell.ico" />
   </ItemGroup>
 
   <Target Name="OverShellAllowWindowsToolPack" BeforeTargets="_PackToolValidation">

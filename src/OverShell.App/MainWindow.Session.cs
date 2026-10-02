@@ -101,7 +101,9 @@ public partial class MainWindow
 
         Loaded += (_, _) =>
         {
-            AnnounceRestore();
+            // After every Loaded handler: the notification pipeline (which carries the note
+            // when the layout has no status bar) is created by one of the later ones.
+            Dispatcher.BeginInvoke(AnnounceRestore, System.Windows.Threading.DispatcherPriority.Background);
 
             // The tear-offs wait for the first layout: a surface moves between windows only
             // once its HWND exists (§12.12), and that happens when the main host lays out.

@@ -133,6 +133,7 @@ public partial class MainWindow
         var c = _commands;
 
         c.Register("tab.new", "New tab", "Tabs", () => NewTab(_catalog.DefaultProfile), description: "Open the default profile");
+        c.Register("tab.duplicate", "Duplicate tab", "Tabs", () => { if (TargetTab is { } t) DuplicateTab(t); }, () => TargetTab is not null, "Same profile, same directory, same group - next to this tab");
         c.Register("tab.close", "Close tab", "Tabs", () => { if (TargetTab is { } t) CloseTab(t); }, () => TargetTab is not null);
         c.Register("tab.next", "Next tab", "Tabs", () => ActivateRelative(1), () => Tabs.Count > 1);
         c.Register("tab.previous", "Previous tab", "Tabs", () => ActivateRelative(-1), () => Tabs.Count > 1);
@@ -248,7 +249,8 @@ public partial class MainWindow
 
     internal PaletteWindow? Palette => _palette;
 
-    private string? HintFor(string commandId) => _keybindings.FirstChordFor(commandId);
+    /// <summary>The chord shown next to a command (menus, palette hints); null when none is bound.</summary>
+    internal string? HintFor(string commandId) => _keybindings.FirstChordFor(commandId);
 
     // -------------------------------------------------------------- palette
 
@@ -602,9 +604,18 @@ public partial class MainWindow
 
     private DispatcherTimer? _statusMessageTimer;
 
-    /// <summary>Shows a line in the status bar's detail slot for a few seconds, then restores the working directory.</summary>
+    /// <summary>
+    /// Shows a line in the status bar's detail slot for a few seconds, then restores the
+    /// working directory. When the layout has no status bar (Zen), the line goes to an
+    /// in-window toast instead — a message nobody can see is not a message.
+    /// </summary>
     private void ShowStatusMessage(string message)
     {
+        if (!_statusVisible)
+        {
+            _notifications?.Announce(message);
+        }
+
         TxtMessage.Text = message;
 
         _statusMessageTimer ??= new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(8) };

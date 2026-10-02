@@ -24,6 +24,8 @@ internal sealed class NotificationPipeline : IDisposable
 {
     private readonly List<(string Name, NotificationSinkConfig Config, Action<NotificationEvent> Send)> _sinks = [];
     private readonly Window _window;
+    private readonly FrameworkElement _toastAnchor;
+    private readonly Action<string> _focusTab;
     private readonly TraceLog _trace = TraceLog.Agents;
     private ToastHost? _toasts;
     private TaskbarBadge? _taskbar;
@@ -31,6 +33,8 @@ internal sealed class NotificationPipeline : IDisposable
     public NotificationPipeline(Window window, FrameworkElement toastAnchor, Action<string> focusTab, NotificationSettings settings)
     {
         _window = window;
+        _toastAnchor = toastAnchor;
+        _focusTab = focusTab;
 
         foreach (var (name, config) in settings.Sinks)
         {
@@ -69,7 +73,7 @@ internal sealed class NotificationPipeline : IDisposable
                     // Windows toasts without an external program; a click opens overshell://focus/<tab>.
                     try
                     {
-                        NativeToast.EnsureRegistered("OverShell", null);
+                        NativeToast.EnsureRegistered("OverShell", Path.Combine(AppContext.BaseDirectory, "OverShell.ico"));
                     }
                     catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException)
                     {
@@ -87,6 +91,16 @@ internal sealed class NotificationPipeline : IDisposable
         }
     }
 
+    /// <summary>
+    /// A line from OverShell itself, over the terminal, for when the status bar is not
+    /// there to show it (a Zen layout). Uses the overlay whether or not the overlay sink is
+    /// enabled: this is the application speaking, not a notification the user tuned.
+    /// </summary>
+    public void Announce(string message, int durationMs = 6000)
+    {
+        _toasts ??= new ToastHost(_window, _toastAnchor, _focusTab);
+        _toasts.Announce("OverShell", message, (Brush)Application.Current.FindResource("Accent.Base"), durationMs);
+    }
     /// <summary>Names of the sinks that are live, for diagnostics.</summary>
     public IEnumerable<string> ActiveSinks => _sinks.Select(s => s.Name);
 

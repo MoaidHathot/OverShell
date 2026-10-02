@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -944,6 +945,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             AddTab(profile, activate: true);
         }
+    }
+    /// <summary>
+    /// A new tab of the same profile in the same directory and group, placed right after
+    /// <paramref name="source"/> - the shell's current directory as OverShell knows it
+    /// (OSC 7 / 9;9, or the process probe), not the profile's starting directory.
+    /// </summary>
+    internal TerminalTab DuplicateTab(TerminalTab source)
+    {
+        var profile = source.Profile;
+        if (!string.IsNullOrWhiteSpace(source.WorkingDirectory) && Directory.Exists(source.WorkingDirectory))
+        {
+            profile = profile with { StartingDirectory = source.WorkingDirectory };
+        }
+
+        var tab = AddTab(profile, activate: true);
+
+        // Move first: MoveTab makes a tab adopt the group of the one it displaces (that is
+        // what a drag across a group header means), which is not what a duplicate wants.
+        var from = Tabs.IndexOf(source);
+        if (from >= 0)
+        {
+            MoveTab(tab, from + 1);
+        }
+
+        tab.Group = source.Group;
+        return tab;
     }
 
     // -------------------------------------------------------- event handlers

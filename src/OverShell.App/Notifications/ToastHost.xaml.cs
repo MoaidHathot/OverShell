@@ -77,15 +77,25 @@ public partial class ToastHost : Window
     public void Show(NotificationEvent e, Brush accent, int durationMs)
     {
         var values = e.TemplateValues();
-        var toast = new Toast
+        Show(new Toast
         {
             TabId = e.TabId,
             Title = values["title"],
             Message = e.Message,
             Detail = e.Detail ?? e.WorkingDirectory,
             Accent = accent,
-        };
+        }, durationMs);
+    }
 
+    /// <summary>
+    /// A line from OverShell itself rather than about a tab — what the status bar would
+    /// say when a layout has no status bar (Zen). Clicking it only dismisses it.
+    /// </summary>
+    public void Announce(string title, string message, Brush accent, int durationMs) =>
+        Show(new Toast { TabId = string.Empty, Title = title, Message = message, Accent = accent }, durationMs);
+
+    private void Show(Toast toast, int durationMs)
+    {
         while (Toasts.Count >= MaxVisible)
         {
             Remove(Toasts[0]);
@@ -163,7 +173,11 @@ public partial class ToastHost : Window
         if (sender is FrameworkElement { DataContext: Toast toast })
         {
             Remove(toast);
-            _focusTab(toast.TabId);
+            if (toast.TabId.Length > 0)
+            {
+                _focusTab(toast.TabId);
+            }
+
             e.Handled = true;
         }
     }

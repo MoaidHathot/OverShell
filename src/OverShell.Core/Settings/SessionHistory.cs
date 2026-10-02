@@ -21,8 +21,9 @@ public static class SessionHistory
     public static string Directory(string stateRoot) => Path.Combine(stateRoot, "sessions");
 
     /// <summary>
-    /// Archives <paramref name="snapshot"/> unless it is empty or identical in content to the
-    /// newest archive (a restart that restored everything and closed again adds nothing).
+    /// Archives <paramref name="snapshot"/> unless it is empty or its tabs are the same as the
+    /// newest archive's (a restart that restored everything and closed again adds nothing;
+    /// nor does a moved window or another closed-tab entry — the archive is about the tabs).
     /// Returns the archive path, or null when nothing was written.
     /// </summary>
     public static string? Archive(string stateRoot, SessionSnapshot snapshot, out string? error)
@@ -38,7 +39,7 @@ public static class SessionHistory
         {
             System.IO.Directory.CreateDirectory(directory);
             var newest = List(stateRoot).FirstOrDefault();
-            if (newest is not null && SessionSnapshot.Load(newest.Path, out _) is { } last && last.ComparableJson() == snapshot.ComparableJson())
+            if (newest is not null && TabsJson(newest.Tabs) == TabsJson(snapshot.Tabs))
             {
                 return null;
             }
@@ -88,6 +89,10 @@ public static class SessionHistory
 
         return result.OrderByDescending(s => s.SavedAt).ToList();
     }
+
+    /// <summary>The tabs as identity: what they run and where, not where their windows sat or when they closed.</summary>
+    private static string TabsJson(IReadOnlyList<SavedTab> tabs) =>
+        System.Text.Json.JsonSerializer.Serialize(tabs.Select(t => new { t.ProfileId, t.WorkingDirectory, t.Label, t.Group, t.Harness, t.AgentRunning, t.SessionId, t.ResumeCommand, t.Detached }), Jsonc.SerializerOptions);
 
     private static void Prune(string directory)
     {

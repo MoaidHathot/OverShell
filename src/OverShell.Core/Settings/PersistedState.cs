@@ -72,7 +72,12 @@ public sealed class PersistedState
 
             var root = new JsonObject { ["version"] = 1, ["labels"] = labels };
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, root.ToJsonString(Jsonc.SerializerOptions) + "\n", new System.Text.UTF8Encoding(false));
+
+            // Temp file renamed over the old one, like the session file: a crash mid-write
+            // must not leave a half-written file that the next start then discards as corrupt.
+            var temp = _path + ".tmp";
+            File.WriteAllText(temp, root.ToJsonString(Jsonc.SerializerOptions) + "\n", new System.Text.UTF8Encoding(false));
+            File.Move(temp, _path, overwrite: true);
             return true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

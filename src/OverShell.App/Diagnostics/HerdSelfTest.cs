@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -61,6 +61,9 @@ internal static class HerdSelfTest
                         break;
                     case "icons":
                         await RunIconsAsync(window, firstTab);
+                        break;
+                    case "polish":
+                        await RunPolishAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -281,9 +284,117 @@ internal static class HerdSelfTest
     /// must adopt the id from the turn's own events — otherwise a restored tab could never be
     /// resumed by id again.
     /// </summary>
+    /// <summary>Waits until the shell has printed a prompt and gone quiet for a second (at most 20 s).</summary>
+    private static async Task WaitForPromptAsync(TerminalTab tab)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (DateTime.UtcNow < deadline)
+        {
+            tab.RequestScreen();
+            await Task.Delay(500);
+            var last = tab.ScreenRows.LastOrDefault(r => r.Trim().Length > 0) ?? string.Empty;
+            if (tab.HasStarted && tab.IsRunning && (last.Contains("PS ", StringComparison.Ordinal) || last.TrimEnd().EndsWith('>')))
+            {
+                await Task.Delay(600);
+                return;
+            }
+        }
+    }
+
     /// <summary>
-    /// Harness icons (§12.13): one tab per bundled harness, made an agent by a report, then
-    /// the tab strip rendered at 1x and 3x. Each icon must resolve to a geometry, draw a
+    /// P5 batch 1 (§12.14): duplicate tab, the detached mark as an icon, state icons stripped    /// from displayed titles, and the status note reaching a layout without a status bar.
+    /// </summary>
+    private static async Task RunPolishAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (polish) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        // The shell must be at its prompt before anything is typed: input sent while a profile
+        // is still loading lands wherever the shell is at that moment.
+        await WaitForPromptAsync(tab);
+
+        // ---- title: a state icon in front is detection's business, not the caption's ----
+        // Raw ESC/BEL typed into PSReadLine would be keys (Escape clears the line), so the
+        // sequences are built by the shell from [char] codes, as the main self-test does.
+        var bell = char.ConvertFromUtf32(0x1F514);
+        tab.SendText("$e=[char]27; $a=[char]7; Write-Host \"${e}]0;" + bell + " OC | OverShell | polish${a}\"; Start-Sleep -Seconds 3\r");
+        await Task.Delay(1500);
+        Log($"  title: raw harness={tab.Harness ?? "-"} shown='{tab.Title}' caption='{window.Title}' tooltip-first='{tab.Tooltip.Split('\n')[0]}'");
+        Check(tab.Harness == "opencode", "the raw title (with the bell icon) still detects OpenCode");
+        Check(tab.Title == "OC | OverShell | polish", "the shown title has the icon stripped");
+        Check(!window.Title.Contains(bell, StringComparison.Ordinal) && window.Title.StartsWith("OC | OverShell | polish", StringComparison.Ordinal), "the window caption has it stripped too");
+        Check(tab.Tooltip.Split('\n')[0] == "OC | OverShell | polish", "and the tooltip's first line");
+
+        // ---- duplicate: same profile, same directory, same group, right after the source ----
+        await Task.Delay(2000); // the title command's sleep ends
+        await WaitForPromptAsync(tab);
+        tab.SendText("cd $env:windir; Write-Host \"${e}]9;9;$env:windir${a}\"\r");
+        await Task.Delay(1200);
+        window.SetGroup(tab, "polish group");
+        var third = window.AddTab(tab.Profile, activate: false);
+        await Task.Delay(800);
+        var before = window.Tabs.Count;
+        window.ActiveTab = tab;
+        window.Commands.TryExecute("tab.duplicate");
+        await Task.Delay(1500);
+        var dup = window.ActiveTab;
+        Log($"  duplicate: tabs {before}->{window.Tabs.Count} source cwd='{tab.WorkingDirectory}' dup cwd='{dup?.WorkingDirectory}' group='{dup?.Group}' index source={window.Tabs.IndexOf(tab)} dup={window.Tabs.IndexOf(dup!)} third={window.Tabs.IndexOf(third)}");
+        Check(window.Tabs.Count == before + 1 && dup is not null && !ReferenceEquals(dup, tab), "tab.duplicate opened a tab and activated it");
+        Check(dup is not null && string.Equals(dup.WorkingDirectory?.TrimEnd('\\'), tab.WorkingDirectory?.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase), "the duplicate starts in the source's current directory, not the profile's");
+        Check(dup?.Group == "polish group", "the duplicate joined the source's group");
+        Check(dup is not null && window.Tabs.IndexOf(dup) == window.Tabs.IndexOf(tab) + 1, "the duplicate sits right after its source");
+        Check(window.HintFor("tab.duplicate") == "Ctrl+Shift+D" && window.HintFor("tab.new") == "Ctrl+Shift+T" && window.HintFor("tab.detach") == "Ctrl+Shift+X" && window.HintFor("tab.reopenClosed") == "Ctrl+Shift+Z", "Windows Terminal chords: Ctrl+Shift+T new, Ctrl+Shift+D duplicate; detach and reopen moved");
+
+        // ---- detached mark: an icon element in the item, no text prefix ----
+        var tearOff = window.Detach(third);
+        await Task.Delay(600);
+        var marks = FindAll<System.Windows.Controls.TextBlock>(window).Where(tb => tb.Name == "DetachedMark").ToList();
+        var visibleMarks = marks.Where(m => m.IsVisible).ToList();
+        Log($"  detached: third.Detached={third.Detached} detail='{third.Detail}' marks={marks.Count} visible={visibleMarks.Count} font={visibleMarks.FirstOrDefault()?.FontFamily}");
+        Check(third.Detached && !third.Detail.Contains('\u29C9'), "the detail text no longer carries the U+29C9 prefix");
+        Check(visibleMarks.Count == 1 && visibleMarks[0].FontFamily.Source.Contains("Segoe Fluent Icons", StringComparison.Ordinal), "exactly one tab item shows the detached mark, drawn from the icon font");
+        if (window.FindName("TitleBarSurface") is System.Windows.FrameworkElement strip)
+        {
+            SaveVisual(strip, "overshell-selftest-polish-tabstrip.png");
+        }
+
+        if (tearOff is not null)
+        {
+            window.Attach(third);
+            await Task.Delay(300);
+        }
+
+        Check(!FindAll<System.Windows.Controls.TextBlock>(window).Any(tb => tb.Name == "DetachedMark" && tb.IsVisible), "attaching hides the mark again");
+
+        // ---- zen: the status note has nowhere to go but the overlay ----
+        window.Commands.TryExecute("view.zen");
+        await Task.Delay(800);
+        var toastsBefore = window.Notifications?.VisibleToasts ?? -1;
+        window.Commands.TryExecute("session.save");
+        await Task.Delay(600);
+        var toastsAfter = window.Notifications?.VisibleToasts ?? -1;
+        Log($"  zen: status visible={window.CurrentLayout.Status.Visible} toasts {toastsBefore}->{toastsAfter}");
+        Check(!window.CurrentLayout.Status.Visible, "the zen layout has no status bar");
+        Check(toastsAfter == toastsBefore + 1, "the status message went to an in-window toast instead");
+        if (window.Notifications?.ToastVisual is { } toasts)
+        {
+            SaveVisual(toasts, "overshell-selftest-polish-zen-toast.png");
+        }
+
+        window.Commands.TryExecute("view.terminal");
+        await Task.Delay(500);
+        window.CloseTab(dup!);
+        window.CloseTab(third);
+        Log($"=== selftest (polish) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Harness icons (§12.13): one tab per bundled harness, made an agent by a report, then    /// the tab strip rendered at 1x and 3x. Each icon must resolve to a geometry, draw a
     /// plausible number of pixels in its cell, and differ from the others - the text glyphs
     /// they replaced rendered as near-identical smudges at 11 px.
     /// </summary>
@@ -852,7 +963,7 @@ internal static class HerdSelfTest
         window.Commands.TryExecute("tab.previous");
 
         var tabsBefore = window.Tabs.Count;
-        Check(window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control), "Ctrl+T resolves through keybindings.jsonc to tab.new");
+        Check(window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift), "Ctrl+Shift+T resolves through keybindings.jsonc to tab.new");
         await Task.Delay(1200);
         Check(window.Tabs.Count == tabsBefore + 1, "…and opened a tab");
         Check(!window.DispatchChord(System.Windows.Input.Key.C, System.Windows.Input.ModifierKeys.Control), "Ctrl+C with no selection is not swallowed (reaches the shell)");
@@ -979,7 +1090,7 @@ internal static class HerdSelfTest
             System.IO.Directory.CreateDirectory(OverShell.Core.AppPaths.LayoutsDir);
             System.IO.File.WriteAllText(System.IO.Path.Combine(OverShell.Core.AppPaths.LayoutsDir, "top.jsonc"),
                 """{ "description": "selftest override", "tabs": { "placement": "left", "style": "list", "width": 210 }, "sidebar": { "placement": "right", "width": 260 } }""");
-            System.IO.File.WriteAllText(OverShell.Core.AppPaths.KeybindingsFile, """[ { "keys": "ctrl+alt+9", "command": "tab.new" }, { "keys": "ctrl+t", "command": "unbound" } ]""");
+            System.IO.File.WriteAllText(OverShell.Core.AppPaths.KeybindingsFile, """[ { "keys": "ctrl+alt+9", "command": "tab.new" }, { "keys": "ctrl+shift+t", "command": "unbound" } ]""");
             await Task.Delay(1500);
 
             var leftPanel = (System.Windows.FrameworkElement)window.FindName("LeftPanel")!;
@@ -992,7 +1103,7 @@ internal static class HerdSelfTest
             Check(window.DispatchChord(System.Windows.Input.Key.D9, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Alt), "a reloaded keybindings.jsonc binds Ctrl+Alt+9 to tab.new");
             await Task.Delay(1000);
             Check(window.Tabs.Count == tabsBeforeReload + 1, "…and it opened a tab");
-            Check(!window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control), "…and \"unbound\" removed Ctrl+T");
+            Check(!window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift), "…and \"unbound\" removed Ctrl+Shift+T");
             window.CloseTab(window.Tabs[^1]);
 
             System.IO.File.Delete(System.IO.Path.Combine(OverShell.Core.AppPaths.LayoutsDir, "top.jsonc"));
@@ -1000,7 +1111,7 @@ internal static class HerdSelfTest
             await Task.Delay(1500);
             Log($"  after removing overrides: layout tabs={window.CurrentLayout.Tabs.Placement} caption={window.CaptionHeight}");
             Check(window.CurrentLayout.Tabs.Placement == OverShell.Core.Layout.TabsPlacement.Top && window.CaptionHeight > 50, "deleting the override restores the preset live");
-            Check(window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control), "…and Ctrl+T is bound again");
+            Check(window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift), "…and Ctrl+Shift+T is bound again");
             await Task.Delay(800);
             window.CloseTab(window.Tabs[^1]);
         }

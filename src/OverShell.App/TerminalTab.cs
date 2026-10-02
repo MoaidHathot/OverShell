@@ -10,6 +10,7 @@ using OverShell.App.Agents;
 using OverShell.App.Terminal;
 using OverShell.App.Terminal.Hyperlinks;
 using OverShell.Config;
+using OverShell.Core.Agents;
 
 namespace OverShell.App;
 
@@ -142,9 +143,13 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     /// <summary>The scheme's default foreground — what a hovered link is underlined with.</summary>
     public Brush Foreground { get; }
 
-    /// <summary>What the tab shows: the shell's own title when it is meaningful, else the profile name.</summary>
+    /// <summary>
+    /// What the tab shows: the shell's own title when it is meaningful, else the profile
+    /// name — without the state icon an agent puts in front (<see cref="TitleText.ForDisplay"/>);
+    /// the state dot carries that. Detection reads the raw title.
+    /// </summary>
     public string Title =>
-        IsMeaningfulTitle(_shellTitle) ? _shellTitle! : Profile.Name;
+        IsMeaningfulTitle(_shellTitle) ? TitleText.ForDisplay(_shellTitle) : Profile.Name;
 
     public string? WorkingDirectory => _workingDirectory;
 
@@ -162,7 +167,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
                 return _workingDirectory;
             }
 
-            return IsMeaningfulTitle(_shellTitle) ? _shellTitle! : string.Empty;
+            return IsMeaningfulTitle(_shellTitle) ? TitleText.ForDisplay(_shellTitle) : string.Empty;
         }
     }
 

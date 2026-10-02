@@ -1,0 +1,10 @@
+# Text files are LF in the repository and in working copies: the pre-commit scan rejects CRLF.
+* text=auto eol=lf
+
+# Binaries: never normalised, never diffed as text.
+*.ico binary
+*.png binary
+*.jpg binary
+*.nupkg binary
+*.dll binary
+*.exe binary

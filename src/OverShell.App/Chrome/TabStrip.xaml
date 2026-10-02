@@ -100,6 +100,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <chrome:HarnessIcon x:Name="TabGlyph" Tab="{Binding}" Size="11" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                                 <TextBlock x:Name="TabLabel" Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
+                                <TextBlock x:Name="DetachedMark" Text="&#xE8A7;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="In its own window" Visibility="Collapsed" />
                                 <Border x:Name="UnreadBadge" Width="6" Height="6" Margin="6,0,0,0" CornerRadius="3" VerticalAlignment="Center" Background="{Binding StateBrush}" Visibility="Collapsed" />
                             </StackPanel>
                             <TextBlock x:Name="TabDetail" Text="{Binding Detail}" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Detail}" Foreground="{StaticResource Text.Disabled}" />
@@ -134,6 +135,9 @@
                 <DataTrigger Binding="{Binding IsRunning}" Value="False">
                     <Setter TargetName="TabLabel" Property="Foreground" Value="{StaticResource Text.Disabled}" />
                     <Setter TargetName="TabLabel" Property="FontStyle" Value="Italic" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Detached}" Value="True">
+                    <Setter TargetName="DetachedMark" Property="Visibility" Value="Visible" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                     <Setter TargetName="TabGlyph" Property="Visibility" Value="Visible" />
@@ -211,6 +215,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <chrome:HarnessIcon x:Name="TabGlyph" Tab="{Binding}" Size="11" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                                 <TextBlock x:Name="TabLabel" Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
+                                <TextBlock x:Name="DetachedMark" Text="&#xE8A7;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="In its own window" Visibility="Collapsed" />
                                 <Border x:Name="UnreadBadge" Width="6" Height="6" Margin="6,0,0,0" CornerRadius="3" VerticalAlignment="Center" Background="{Binding StateBrush}" Visibility="Collapsed" />
                             </StackPanel>
                             <TextBlock x:Name="TabDetail" Text="{Binding Detail}" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Detail}" Foreground="{StaticResource Text.Disabled}" />
@@ -239,6 +244,9 @@
                 <DataTrigger Binding="{Binding IsRunning}" Value="False">
                     <Setter TargetName="TabLabel" Property="Foreground" Value="{StaticResource Text.Disabled}" />
                     <Setter TargetName="TabLabel" Property="FontStyle" Value="Italic" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Detached}" Value="True">
+                    <Setter TargetName="DetachedMark" Property="Visibility" Value="Visible" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                     <Setter TargetName="TabGlyph" Property="Visibility" Value="Visible" />
@@ -307,6 +315,7 @@
                         <Border x:Name="StateDot" Width="10" Height="10" CornerRadius="5" Background="{Binding Accent}" />
                     </Grid>
                     <chrome:HarnessIcon x:Name="TabGlyph" Tab="{Binding}" Size="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,5,3" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
+                    <TextBlock x:Name="DetachedMark" Text="&#xE8A7;" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="5,0,0,3" FontFamily="{StaticResource Font.Icons}" FontSize="8" Foreground="{StaticResource Text.Disabled}" ToolTip="In its own window" Visibility="Collapsed" />
                     <Border x:Name="UnreadBadge" Width="6" Height="6" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,5,5,0" CornerRadius="3" Background="{Binding StateBrush}" Visibility="Collapsed" />
                 </Grid>
             </Border>
@@ -318,6 +327,9 @@
                 <Trigger SourceName="TabRoot" Property="IsMouseOver" Value="True">
                     <Setter TargetName="TabRoot" Property="Background" Value="{StaticResource Surface.Hover}" />
                 </Trigger>
+                <DataTrigger Binding="{Binding Detached}" Value="True">
+                    <Setter TargetName="DetachedMark" Property="Visibility" Value="Visible" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                     <Setter TargetName="TabGlyph" Property="Visibility" Value="Visible" />
                 </DataTrigger>

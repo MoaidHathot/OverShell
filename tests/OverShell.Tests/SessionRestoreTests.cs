@@ -188,6 +188,12 @@ public class SessionHistoryTests
             Assert.Null(error);
             Assert.Single(SessionHistory.List(dir.FullName));
 
+            // A moved window, another closed-tab entry: still the same session as far as the archive is concerned.
+            var moved = Snapshot(t0.AddMinutes(2), SessionCloseReason.Closed, "C:\\a");
+            var movedWithExtras = new SessionSnapshot { SavedAt = moved.SavedAt, CloseReason = moved.CloseReason, Tabs = moved.Tabs, Window = new SavedWindow { Left = 500, Top = 20, Width = 900, Height = 700 }, RecentlyClosed = [new SavedTab { ProfileId = "{p}", Label = "gone" }] };
+            Assert.Null(SessionHistory.Archive(dir.FullName, movedWithExtras, out _));
+            Assert.Single(SessionHistory.List(dir.FullName));
+
             // A different tab set is new; two archives in the same second get distinct names.
             Assert.NotNull(SessionHistory.Archive(dir.FullName, Snapshot(t0, SessionCloseReason.Closed, "C:\\b"), out _));
             Assert.Equal(2, SessionHistory.List(dir.FullName).Count);

@@ -106,3 +106,29 @@ public class AgentRulesTests
         Assert.Equal(AgentState.Done, oc.Progress["4"]);
     }
 }
+
+public class TitleTextTests
+{
+    [Theory]
+    [InlineData("🔔 OC | OverShell | fix the tests", "OC | OverShell | fix the tests")]
+    [InlineData("❓ OC | repo | session", "OC | repo | session")]
+    [InlineData("❌ OC | repo | session", "OC | repo | session")]
+    [InlineData("✳ Claude Code", "Claude Code")]
+    [InlineData("✻ · Claude Code", "Claude Code")]
+    [InlineData("⚠️ build failed", "build failed")]
+    [InlineData("PowerShell", "PowerShell")]
+    [InlineData("[1] vim ~/notes.md", "[1] vim ~/notes.md")]
+    [InlineData("~/repo", "~/repo")]
+    [InlineData("→ next", "→ next")]
+    public void Leading_state_icons_are_stripped_for_display(string raw, string shown) =>
+        Assert.Equal(shown, TitleText.ForDisplay(raw));
+
+    [Fact]
+    public void A_title_that_is_only_an_icon_stays_as_it_is()
+    {
+        Assert.Equal("🔔", TitleText.ForDisplay("🔔"));
+        Assert.Equal("✳ ", TitleText.ForDisplay("✳ "));
+        Assert.Equal(string.Empty, TitleText.ForDisplay(null));
+        Assert.Equal(string.Empty, TitleText.ForDisplay(string.Empty));
+    }
+}

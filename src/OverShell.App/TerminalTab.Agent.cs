@@ -163,7 +163,7 @@ public sealed partial class TerminalTab
         return true;
     }
 
-    /// <summary>Second line: state and what the agent says it is doing, or the project.</summary>
+    /// <summary>Second line: state and what the agent says it is doing, or the project. A detached tab is marked by an icon in the item, not in this text.</summary>
     public string Detail
     {
         get
@@ -171,7 +171,7 @@ public sealed partial class TerminalTab
             var state = StateText;
             var what = IsAgent ? Agent.Summary ?? Project : Project;
             var detail = state.Length == 0 ? what : what.Length == 0 ? state : $"{state} · {what}";
-            return Detached ? "⧉ " + detail : detail;
+            return detail;
         }
     }
 

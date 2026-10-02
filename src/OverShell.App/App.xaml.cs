@@ -24,6 +24,9 @@ public partial class App : Application
     [DllImport("kernel32.dll")]
     private static extern uint GetFileType(nint handle);
 
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
     private const uint AttachParentProcess = unchecked((uint)-1);
     private const int StdOutputHandle = -11;
     private const uint FileTypeChar = 0x0002;
@@ -89,6 +92,12 @@ public partial class App : Application
         // The skin goes on before the first window exists, so fonts and metrics resolve to
         // it too; later saves only recolour (Chrome/SkinLoader), which needs unfrozen brushes.
         Core.AppPaths.EnsureCreated();
+
+        // One identity for the shell: taskbar grouping, toasts (NativeToast registers this id
+        // under HKCU) and the jump list all key on the process's AppUserModelID. Without an
+        // explicit one Windows derives it from the exe path, which changes with every tool
+        // store version.
+        _ = SetCurrentProcessExplicitAppUserModelID(Notifications.NativeToast.AppUserModelId);
         var unfrozen = Chrome.SkinLoader.PrepareThemeForLiveRecolour();
         Diagnostics.TraceLog.Agents.Write($"theme: {unfrozen} brush(es) made recolourable");
         var settings = Core.Settings.AppSettings.Load(File.Exists(Core.AppPaths.SettingsFile) ? Core.AppPaths.SettingsFile : null);
