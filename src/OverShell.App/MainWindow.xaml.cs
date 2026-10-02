@@ -80,6 +80,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeViews();
         InitializeDepth();
         InitializeTearOff();
+        InitializeSession();
 
         // The saved session, else a single terminal — panes and extra tabs are opt-in.
         var initialView = RestoreOrOpenDefault();
@@ -1026,8 +1027,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _configWatcher?.Dispose();
 
         // The session is written while the tabs are still alive, so their directories and
-        // session ids are the real ones.
-        SaveSession(force: true);
+        // session ids are the real ones; "closed" tells the next start this was a clean end.
+        SaveSession(force: true, reason: SessionCloseReason.Closed);
 
         CloseTearOffs();
         _shortcuts.Dispose();

@@ -71,6 +71,92 @@ public class SessionSnapshotTests
             dir.Delete(recursive: true);
         }
     }
+
+    [Fact]
+    public void Version_2_round_trips_close_reason_placement_detached_tabs_and_history()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-session");
+        try
+        {
+            var path = Path.Combine(dir.FullName, "session.json");
+            var closedAt = new DateTimeOffset(2026, 9, 14, 10, 0, 0, TimeSpan.FromHours(3));
+            var snapshot = new SessionSnapshot
+            {
+                SavedAt = closedAt,
+                CloseReason = SessionCloseReason.SessionEnding,
+                Window = new SavedWindow { Left = 100, Top = 50, Width = 1200, Height = 800, Maximized = true },
+                Tabs =
+                [
+                    new SavedTab { ProfileId = "{p1}", WorkingDirectory = "C:\\a" },
+                    new SavedTab { ProfileId = "{p1}", Detached = true, Window = new SavedWindow { Left = 10, Top = 20, Width = 640, Height = 480 } },
+                ],
+                RecentlyClosed = [new SavedTab { ProfileId = "{p2}", Label = "old", ClosedAt = closedAt }],
+            };
+
+            Assert.True(snapshot.Save(path, out var saveError), saveError);
+            var text = File.ReadAllText(path);
+            Assert.Contains("\"version\": 2", text);
+            Assert.Contains("\"closeReason\": \"sessionEnding\"", text);
+
+            var loaded = SessionSnapshot.Load(path, out var loadError)!;
+            Assert.Null(loadError);
+            Assert.Equal(SessionCloseReason.SessionEnding, loaded.CloseReason);
+            Assert.False(loaded.Interrupted);
+            Assert.True(loaded.Window!.Maximized);
+            Assert.Equal(1200, loaded.Window.Width);
+            Assert.True(loaded.Tabs[1].Detached);
+            Assert.Equal(640, loaded.Tabs[1].Window!.Width);
+            Assert.Null(loaded.Tabs[0].Window);
+            Assert.Equal("old", Assert.Single(loaded.RecentlyClosed).Label);
+            Assert.Equal(closedAt, loaded.RecentlyClosed[0].ClosedAt);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void A_running_file_counts_as_interrupted_but_a_version_1_file_never_does()
+    {
+        // Written while running: no close reason yet.
+        var running = Jsonc.To<SessionSnapshot>(Jsonc.Parse("{ \"version\": 2, \"view\": \"terminal\", \"tabs\": [] }", out _), out _)!;
+        Assert.Null(running.CloseReason);
+        Assert.True(running.Interrupted);
+
+        // Before P4 the file never said how it ended; an upgrade must not report a crash.
+        var v1 = Jsonc.To<SessionSnapshot>(Jsonc.Parse("{ \"version\": 1, \"view\": \"terminal\", \"tabs\": [] }", out _), out _)!;
+        Assert.False(v1.Interrupted);
+
+        var closed = Jsonc.To<SessionSnapshot>(Jsonc.Parse("{ \"version\": 2, \"closeReason\": \"closed\", \"tabs\": [] }", out _), out _)!;
+        Assert.False(closed.Interrupted);
+        Assert.Equal(SessionCloseReason.Closed, closed.CloseReason);
+    }
+
+    [Fact]
+    public void Comparable_json_ignores_the_timestamp_and_the_close_reason_only()
+    {
+        var a = new SessionSnapshot { SavedAt = DateTimeOffset.Now, Tabs = [new SavedTab { ProfileId = "x" }] };
+        var b = new SessionSnapshot { SavedAt = DateTimeOffset.Now.AddMinutes(5), CloseReason = SessionCloseReason.Closed, Tabs = [new SavedTab { ProfileId = "x" }] };
+        var c = new SessionSnapshot { SavedAt = a.SavedAt, Tabs = [new SavedTab { ProfileId = "x", WorkingDirectory = "C:\\" }] };
+        var d = new SessionSnapshot { SavedAt = a.SavedAt, Window = new SavedWindow { Left = 1 }, Tabs = [new SavedTab { ProfileId = "x" }] };
+
+        Assert.Equal(a.ComparableJson(), b.ComparableJson());
+        Assert.NotEqual(a.ComparableJson(), c.ComparableJson());
+        Assert.NotEqual(a.ComparableJson(), d.ComparableJson());
+    }
+
+    [Fact]
+    public void Describe_counts_tabs_by_name_most_common_first()
+    {
+        var tabs = new List<SavedTab>
+        {
+            new() { Harness = "opencode" }, new() { Harness = null }, new() { Harness = "opencode" }, new() { Harness = null },
+        };
+        Assert.Equal("4 tabs · OpenCode ×2, PowerShell ×2", SessionSnapshot.Describe(tabs, t => t.Harness is null ? "PowerShell" : "OpenCode"));
+        Assert.Equal("1 tab · Shell", SessionSnapshot.Describe([new SavedTab()], _ => "Shell"));
+        Assert.Equal("no tabs", SessionSnapshot.Describe([], _ => "x"));
+    }
 }
 
 public class SnippetsTests

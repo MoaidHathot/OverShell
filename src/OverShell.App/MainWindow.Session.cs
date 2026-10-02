@@ -12,31 +12,69 @@ using OverShell.Core.Settings;
 namespace OverShell.App;
 
 /// <summary>
-/// What survives a restart and what arrives from outside (DESIGN.md §12.11): the session
-/// file written on close and every half minute, restored at the next start with agents
-/// resumed; and the <c>overshell://</c> requests a second instance hands over through a
-/// named pipe before exiting.
+/// What survives a restart and what arrives from outside (DESIGN.md §12.11, §12.13): the
+/// session file written as the window closes and every couple of seconds while it runs —
+/// so a crash or a power cut loses seconds, not the session — restored at the next start
+/// with agents resumed; and the <c>overshell://</c> requests a second instance hands over
+/// through a named pipe before exiting.
 /// </summary>
 public partial class MainWindow
 {
-    private static readonly TimeSpan SessionSaveInterval = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// How often the live state is compared with the file. Two seconds is the window a
+    /// crash can lose; the compare is a few microseconds and the write happens only on change.
+    /// </summary>
+    private static readonly TimeSpan SessionSaveInterval = TimeSpan.FromSeconds(2);
 
     private DateTimeOffset _lastSessionSave;
     private string _lastSessionJson = string.Empty;
     private bool _restoredSession;
+    private bool _sessionClosed;
+    private WindowState _lastVisibleState = WindowState.Normal;
+    private SessionSnapshot? _previousSession;
+    private readonly List<SavedTab> _recentlyClosed = [];
 
     /// <summary>True when the last start reopened a saved session rather than the default profile.</summary>
     internal bool RestoredSession => _restoredSession;
 
+    /// <summary>The file as it was when this run started, before this run overwrote it; null when there was none.</summary>
+    internal SessionSnapshot? PreviousSession => _previousSession;
+
+    /// <summary>Tabs closed by the user, oldest first, carried across restarts.</summary>
+    internal IReadOnlyList<SavedTab> RecentlyClosed => _recentlyClosed;
+
     // ---------------------------------------------------------------- session
+
+    private void InitializeSession()
+    {
+        // A minimized window reports RestoreBounds but forgets whether it was maximized
+        // before; remembering the last visible state keeps the save honest.
+        StateChanged += (_, _) =>
+        {
+            if (WindowState != WindowState.Minimized)
+            {
+                _lastVisibleState = WindowState;
+            }
+        };
+
+        _previousSession = SessionSnapshot.Load(AppPaths.SessionFile, out var error);
+        if (error is not null)
+        {
+            _trace.Write($"session: {error}");
+        }
+
+        if (_previousSession is not null)
+        {
+            _recentlyClosed.AddRange(_previousSession.RecentlyClosed.TakeLast(SessionSnapshot.RecentlyClosedLimit));
+        }
+    }
 
     /// <summary>Reopens the saved tabs, or the default profile when there is nothing to reopen. Returns the view to show.</summary>
     private string RestoreOrOpenDefault()
     {
         var view = _settings.View;
-        string? error = null;
 
-        if (_settings.Session.Restore && SessionSnapshot.Load(AppPaths.SessionFile, out error) is { Tabs.Count: > 0 } saved)
+        if (_settings.Session.Restore && _previousSession is { Tabs.Count: > 0 } saved)
         {
             foreach (var savedTab in saved.Tabs)
             {
@@ -80,12 +118,8 @@ public partial class MainWindow
                 }
 
                 _restoredSession = true;
-                _trace.Write($"session: restored {Tabs.Count} tab(s) from {AppPaths.SessionFile} (saved {saved.SavedAt:HH:mm:ss})");
+                _trace.Write($"session: restored {Tabs.Count} tab(s) from {AppPaths.SessionFile} (saved {saved.SavedAt:HH:mm:ss}, {(saved.Interrupted ? "interrupted" : saved.CloseReason?.ToString().ToLowerInvariant() ?? "v1")})");
             }
-        }
-        else if (error is not null)
-        {
-            _trace.Write($"session: {error}");
         }
 
         if (Tabs.Count == 0 && _catalog.DefaultProfile is { } defaultProfile)
@@ -96,34 +130,69 @@ public partial class MainWindow
         return view;
     }
 
-    private SessionSnapshot BuildSessionSnapshot() => new()
+    /// <summary>One tab as the session file remembers it.</summary>
+    private SavedTab CaptureTab(TerminalTab t, DateTimeOffset? closedAt = null) => new()
     {
-        SavedAt = DateTimeOffset.Now,
-        View = _viewId,
-        ActiveIndex = ActiveTab is { } active ? Math.Max(0, Tabs.IndexOf(active)) : 0,
-        Tabs = Tabs.Where(t => t.IsRunning || !t.HasStarted).Select(t => new SavedTab
-        {
-            ProfileId = t.Profile.Id,
-            WorkingDirectory = t.WorkingDirectory,
-            Label = t.UserLabel,
-            Group = t.Group,
-            Harness = t.Harness,
-            AgentRunning = t.IsAgent && t.State is not (Core.Agents.AgentState.Exited or Core.Agents.AgentState.Unknown),
-            SessionId = t.Agent.SessionId,
-            ResumeCommand = t.ResumeCommand,
-        }).ToList(),
-        LayoutOverrides = new Dictionary<string, string>(_layoutOverrides, StringComparer.OrdinalIgnoreCase),
+        ProfileId = t.Profile.Id,
+        WorkingDirectory = t.WorkingDirectory,
+        Label = t.UserLabel,
+        Group = t.Group,
+        Harness = t.Harness,
+        AgentRunning = t.IsAgent && t.State is not (Core.Agents.AgentState.Exited or Core.Agents.AgentState.Unknown),
+        SessionId = t.Agent.SessionId,
+        ResumeCommand = t.ResumeCommand,
+        Detached = t.Detached,
+        Window = t.Detached ? CaptureWindow(_tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, t)), WindowState.Normal) : null,
+        ClosedAt = closedAt,
     };
 
-    /// <summary>Writes the session file when something changed; on close, unconditionally.</summary>
-    internal void SaveSession(bool force = false)
+    /// <summary>A window's placement in DIPs, or null before it has been laid out.</summary>
+    private static SavedWindow? CaptureWindow(Window? window, WindowState lastVisible)
     {
-        var snapshot = BuildSessionSnapshot();
+        if (window is null)
+        {
+            return null;
+        }
 
-        // Compare without the timestamp, or every save would look like a change.
-        var comparable = new SessionSnapshot { View = snapshot.View, ActiveIndex = snapshot.ActiveIndex, Tabs = snapshot.Tabs, LayoutOverrides = snapshot.LayoutOverrides };
-        var json = Jsonc.Serialize(comparable);
-        if (!force && json == _lastSessionJson)
+        var maximized = (window.WindowState == WindowState.Minimized ? lastVisible : window.WindowState) == WindowState.Maximized;
+        var bounds = window.WindowState == WindowState.Normal
+            ? new Rect(window.Left, window.Top, window.ActualWidth, window.ActualHeight)
+            : window.RestoreBounds;
+        if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0 || double.IsNaN(bounds.X) || double.IsNaN(bounds.Y))
+        {
+            return null;
+        }
+
+        return new SavedWindow { Left = bounds.X, Top = bounds.Y, Width = bounds.Width, Height = bounds.Height, Maximized = maximized };
+    }
+
+    private SessionSnapshot BuildSessionSnapshot(SessionCloseReason? reason) => new()
+    {
+        SavedAt = DateTimeOffset.Now,
+        CloseReason = reason,
+        View = _viewId,
+        ActiveIndex = ActiveTab is { } active ? Math.Max(0, Tabs.IndexOf(active)) : 0,
+        Window = CaptureWindow(this, _lastVisibleState),
+        Tabs = Tabs.Where(t => t.IsRunning || !t.HasStarted).Select(t => CaptureTab(t)).ToList(),
+        LayoutOverrides = new Dictionary<string, string>(_layoutOverrides, StringComparer.OrdinalIgnoreCase),
+        RecentlyClosed = _recentlyClosed.TakeLast(SessionSnapshot.RecentlyClosedLimit).ToList(),
+    };
+
+    /// <summary>
+    /// Writes the session file when something changed; with a <paramref name="reason"/>,
+    /// unconditionally — that is the window closing, and nothing is written after it, so
+    /// a late heartbeat cannot turn "closed" back into "running".
+    /// </summary>
+    internal void SaveSession(bool force = false, SessionCloseReason? reason = null)
+    {
+        if (_sessionClosed)
+        {
+            return;
+        }
+
+        var snapshot = BuildSessionSnapshot(reason);
+        var json = snapshot.ComparableJson();
+        if (!force && reason is null && json == _lastSessionJson)
         {
             return;
         }
@@ -131,6 +200,7 @@ public partial class MainWindow
         if (snapshot.Save(AppPaths.SessionFile, out var error))
         {
             _lastSessionJson = json;
+            _sessionClosed = reason is not null;
         }
         else
         {
