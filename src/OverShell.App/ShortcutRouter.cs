@@ -175,6 +175,9 @@ internal sealed class ShortcutRouter : IDisposable
     /// <summary>The window with keyboard focus on this thread. Diagnostics only.</summary>
     internal static IntPtr FocusedWindow() => GetFocus();
 
+    /// <summary>The foreground window, whoever owns it. Diagnostics only.</summary>
+    internal static IntPtr ForegroundWindow() => GetForegroundWindow();
+
     /// <summary>True when the foreground window belongs to this process. Diagnostics only.</summary>
     internal static bool ForegroundIsOurs()
     {

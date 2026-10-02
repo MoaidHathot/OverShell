@@ -63,6 +63,13 @@ public partial class MainWindow
             }
         };
 
+        // Back in the main window: the tear-off is no longer where the user looks.
+        Activated += (_, _) =>
+        {
+            NoteActivated(null);
+            _trace.Write("session: main window activated");
+        };
+
         _previousSession = SessionSnapshot.Load(AppPaths.SessionFile, out var error);
         if (error is not null)
         {
@@ -98,9 +105,12 @@ public partial class MainWindow
 
             // The tear-offs wait for the first layout: a surface moves between windows only
             // once its HWND exists (§12.12), and that happens when the main host lays out.
+            // ApplicationIdle, not Background: the view's own focus request is posted at
+            // Input priority, and it would otherwise pull activation back to the main window
+            // after a restored tear-off had been brought forward.
             if (_pendingDetach.Count > 0)
             {
-                Dispatcher.BeginInvoke(RestoreTearOffs, System.Windows.Threading.DispatcherPriority.Background);
+                Dispatcher.BeginInvoke(RestoreTearOffs, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             }
         };
     }
@@ -168,6 +178,48 @@ public partial class MainWindow
         }
 
         _pendingDetach.Clear();
+
+        // The saved active tab decides which window the user was in, not the order the
+        // tear-offs were re-created in; a detached active tab brings its tear-off forward.
+        if (_restoredSession && _previousSession is { } saved && saved.Tabs.ElementAtOrDefault(saved.ActiveIndex) is { Detached: true } && Tabs.ElementAtOrDefault(saved.ActiveIndex) is { Detached: true } activeDetached)
+        {
+            var window = _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, activeDetached));
+            NoteActivated(window);
+            if (window is not null)
+            {
+                BringTearOffForward(window, activeDetached, "restore");
+
+                // The terminals reveal themselves a moment later (TerminalTab.MarkRevealed), and a
+                // native child HWND becoming visible in the main window takes activation back.
+                // One more time after that, then the user's clicks decide.
+                var again = new System.Windows.Threading.DispatcherTimer(System.Windows.Threading.DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(600) };
+                again.Tick += (_, _) =>
+                {
+                    again.Stop();
+                    if (_tearOffs.Contains(window))
+                    {
+                        BringTearOffForward(window, activeDetached, "restore, after reveal");
+                    }
+                };
+                again.Start();
+            }
+        }
+        else
+        {
+            NoteActivated(null);
+        }
+    }
+
+    private void BringTearOffForward(TearOffWindow window, TerminalTab tab, string why)
+    {
+        // Activate() alone is refused here: the tear-off was just shown by a window that is
+        // itself still completing activation. SetForegroundWindow from the foreground process
+        // is allowed, and the tear-off focuses its terminal on Activated.
+        var activated = window.Activate();
+        var hwnd = new WindowInteropHelper(window).Handle;
+        var foreground = hwnd != 0 && SetForegroundWindow(hwnd);
+        NoteActivated(window);
+        _trace.Write($"session: active tab [{tab.Id}] is detached; its tear-off brought forward ({why}: Activate={activated}, SetForegroundWindow={foreground})");
     }
 
     /// <summary>Reopens the saved tabs, or the default profile when there is nothing to reopen. Returns the view to show.</summary>
@@ -319,12 +371,25 @@ public partial class MainWindow
         SavedAt = DateTimeOffset.Now,
         CloseReason = reason,
         View = _viewId,
-        ActiveIndex = ActiveTab is { } active ? Math.Max(0, Tabs.IndexOf(active)) : 0,
+        ActiveIndex = Math.Max(0, Tabs.IndexOf(FocusedTab() ?? ActiveTab!)),
         Window = CaptureWindow(this, _lastVisibleState),
         Tabs = Tabs.Where(t => t.IsRunning || !t.HasStarted).Select(t => CaptureTab(t)).ToList(),
         LayoutOverrides = new Dictionary<string, string>(_layoutOverrides, StringComparer.OrdinalIgnoreCase),
         RecentlyClosed = _recentlyClosed.TakeLast(SessionSnapshot.RecentlyClosedLimit).ToList(),
     };
+
+    /// <summary>
+    /// The tab the user was last looking at: the tear-off's tab when a tear-off was the
+    /// OverShell window activated most recently, else the main window's active tab.
+    /// Detaching the active tab moves <see cref="ActiveTab"/> to its neighbour, so the main
+    /// window alone would forget that the torn-off tab was the one in use.
+    /// </summary>
+    private TerminalTab? FocusedTab() => _lastActivatedTearOff is { } w && _tearOffs.Contains(w) ? w.Tab : ActiveTab;
+
+    private TearOffWindow? _lastActivatedTearOff;
+
+    /// <summary>Called by the windows as they activate: the main window clears the tear-off memory, a tear-off sets it.</summary>
+    internal void NoteActivated(TearOffWindow? tearOff) => _lastActivatedTearOff = tearOff;
 
     /// <summary>
     /// Writes the session file when something changed; with a <paramref name="reason"/>,

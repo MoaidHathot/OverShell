@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "history" or "icons";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -53,6 +53,9 @@ internal static class HerdSelfTest
                     case "session2":
                         await RunSessionRestoreAsync(window, firstTab);
                         break;
+                    case "sessionend":
+                        await RunSessionEndingAsync(window, firstTab);
+                        break;
                     case "history":
                         await RunHistoryAsync(window, firstTab);
                         break;
@@ -78,8 +81,9 @@ internal static class HerdSelfTest
 
     /// <summary>
     /// First half of the restart check: two tabs, a label, a group, a fake agent session
-    /// with a harmless resume command; the window then closes itself, which writes the
-    /// session file the second half reads.
+    /// with a harmless resume command, the main window moved, the second tab torn off and
+    /// moved; the window then closes itself, which writes the session file the second half
+    /// reads.
     /// </summary>
     private static async Task RunSessionSaveAsync(MainWindow window, TerminalTab tab)
     {
@@ -96,8 +100,26 @@ internal static class HerdSelfTest
         window.ActiveTab = second;
         await Task.Delay(300);
 
-        Log($"  before close: tabs={window.Tabs.Count} active={window.Tabs.IndexOf(window.ActiveTab!)} label='{tab.UserLabel}' group='{second.Group}' resume='{tab.ResumeCommand}' agent={tab.IsAgent} state={tab.State}");
+        // Placement (12.13): a distinctive main-window rectangle and a torn-off second tab in
+        // a window of its own, also moved - the second half checks both came back.
+        window.WindowState = System.Windows.WindowState.Normal;
+        window.Left = 220;
+        window.Top = 140;
+        window.Width = 980;
+        window.Height = 640;
+        var tearOff = window.Detach(second);
+        if (tearOff is not null)
+        {
+            tearOff.Left = 1300;
+            tearOff.Top = 260;
+            tearOff.Width = 720;
+            tearOff.Height = 480;
+        }
+
+        await Task.Delay(500);
+        Log($"  before close: tabs={window.Tabs.Count} active={window.Tabs.IndexOf(window.ActiveTab!)} label='{tab.UserLabel}' group='{second.Group}' resume='{tab.ResumeCommand}' agent={tab.IsAgent} state={tab.State} main={window.Left:F0},{window.Top:F0} {window.Width:F0}x{window.Height:F0} detached={second.Detached} tearoff={(tearOff is null ? "-" : $"{tearOff.Left:F0},{tearOff.Top:F0} {tearOff.Width:F0}x{tearOff.Height:F0}")}");
         Log($"  {(tab.ResumeCommand == "Write-Host selftest-resumed" ? "PASS" : "FAIL")}  the integration's resume command is kept on the tab");
+        Log($"  {(second.Detached ? "PASS" : "FAIL")}  the second tab is detached before the close");
         Log("=== selftest (session1) result: closing ===");
 
         // Closing the window is what saves the session; the run script sees a clean exit.
@@ -120,7 +142,33 @@ internal static class HerdSelfTest
         Check(window.Tabs.Count == 2, "both tabs came back");
         Check(window.Tabs.Count > 0 && window.Tabs[0].UserLabel == "session label", "the user's label came back");
         Check(window.Tabs.Count > 1 && window.Tabs[1].Group == "restored group", "the group came back");
-        Check(window.ActiveTab is not null && window.Tabs.IndexOf(window.ActiveTab) == 1, "the active tab came back");
+        // The tab in use was the detached one: the main window shows its neighbour (by design,
+        // a detached tab is looked at in its own window) and the tear-off is what comes forward.
+        Check(window.PreviousSession?.ActiveIndex == 1, "the active tab (the detached one) was recorded as active");
+
+        // What the previous run said about itself, and where things were put.
+        var previous = window.PreviousSession;
+        Log($"  previous: version={previous?.Version} closeReason={previous?.CloseReason} interrupted={previous?.Interrupted} window={(previous?.Window is { } w ? $"{w.Left:F0},{w.Top:F0} {w.Width:F0}x{w.Height:F0}" : "-")} detached=[{string.Join(",", previous?.Tabs.Select(t => t.Detached) ?? [])}]");
+        Check(previous is { Version: 2, CloseReason: SessionCloseReason.Closed, Interrupted: false }, "the previous run recorded a clean close");
+        // The saved rectangles are whatever the windows really had before the close - a tiling
+        // window manager may have moved them from where session1 put them - and the restore
+        // must have asked for exactly those (the trace records the request at SourceInitialized).
+        Check(previous?.Window is { Width: >= 520, Height: >= 320 }, "the main window's placement was saved");
+        Check(previous?.Tabs.Count == 2 && previous.Tabs[1].Detached && previous.Tabs[1].Window is { Width: >= 400, Height: >= 240 }, "the tear-off's placement was saved on its tab");
+        var trace = System.IO.File.Exists(TraceLog.Agents.Path) ? System.IO.File.ReadAllText(TraceLog.Agents.Path) : string.Empty;
+        Check(previous?.Window is { } mw && trace.Contains($"main window placed at {mw.Left:F0},{mw.Top:F0} {mw.Width:F0}x{mw.Height:F0}", StringComparison.Ordinal), "the restore applied the saved main-window placement");
+        Check(previous?.Tabs.ElementAtOrDefault(1)?.Window is { } tw && trace.Contains($"placed at {tw.Left:F0},{tw.Top:F0} {tw.Width:F0}x{tw.Height:F0}", StringComparison.Ordinal), "the restore applied the saved tear-off placement");
+
+        // The tear-off is re-created after the first layout.
+        await Task.Delay(800);
+        var tearOff = window.TearOffs.FirstOrDefault();
+        Log($"  now: main={window.Left:F0},{window.Top:F0} {window.Width:F0}x{window.Height:F0} tearoffs={window.TearOffs.Count} second.Detached={window.Tabs.ElementAtOrDefault(1)?.Detached} tearoff={(tearOff is null ? "-" : $"{tearOff.Left:F0},{tearOff.Top:F0} {tearOff.Width:F0}x{tearOff.Height:F0}")}");
+        Check(window.Tabs.Count > 1 && window.Tabs[1].Detached && tearOff is not null && ReferenceEquals(tearOff.Tab, window.Tabs[1]), "the second tab came back detached, in a tear-off of its own");
+        var fg = ShortcutRouter.ForegroundWindow();
+        var tearOffHwnd = tearOff is null ? 0 : new System.Windows.Interop.WindowInteropHelper(tearOff).Handle;
+        var mainHwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        Log($"  foreground=0x{fg:X} tearoff=0x{tearOffHwnd:X} (IsActive={tearOff?.IsActive}) main=0x{mainHwnd:X} (IsActive={window.IsActive}) focus=0x{ShortcutRouter.FocusedWindow():X} ours={ShortcutRouter.ForegroundIsOurs()}");
+        Check(tearOff is not null && (fg == tearOffHwnd || !ShortcutRouter.ForegroundIsOurs()), "the restored tear-off was brought forward as the window in use (or the foreground left us)");
 
         // The resume command is typed once the shell is quiet; the marker must show on screen.
         var deadline = DateTime.UtcNow.AddSeconds(15);
@@ -135,15 +183,97 @@ internal static class HerdSelfTest
 
         Log($"  screen tail: {string.Join(" ⏎ ", window.Tabs[0].ScreenRows.TakeLast(4))}");
         Check(typed, "the resume command was typed into the restored agent tab and ran");
+        Check(window.Tabs[0].ResumeCommand == "Write-Host selftest-resumed" && window.Tabs[0].Agent.SessionId == "ses-restore", "the restored tab was seeded with the saved session id and resume command");
+
+        var archives = SessionHistory.List(AppPaths.StateRoot);
+        Log($"  archives: {archives.Count} ({string.Join("; ", archives.Select(a => $"{System.IO.Path.GetFileName(a.Path)}: {a.Tabs.Count} tab(s), {(a.Interrupted ? "interrupted" : a.CloseReason?.ToString())}"))})");
+        Check(archives.Count >= 1 && archives[0].Tabs.Count == 2 && archives[0].CloseReason == SessionCloseReason.Closed, "the clean close archived the session");
 
         Log($"=== selftest (session2) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
 
     /// <summary>
-    /// Spike 4 with the real harness: <c>opencode run</c> inside the tab, the installed
-    /// OverShell plugin reporting over loopback. Records when the process probe and the
-    /// plugin each recognised the agent, and every state the tab went through.
+    /// Sign-out and restart (12.13): Windows asks with WM_QUERYENDSESSION, WPF raises
+    /// SessionEnding and <em>schedules</em> Shutdown; the handler saves synchronously so the
+    /// file says "sessionEnding" even if the process is ended before that Shutdown runs.
+    /// The message is sent to our own window with ENDSESSION_LOGOFF in lParam, and the
+    /// handler cancels the shutdown it would otherwise cause, so the window stays up for the
+    /// checks; the file is read back and the next start would show the sign-out note.
     /// </summary>
+    private static async Task RunSessionEndingAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (sessionend) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        tab.UserLabel = "signed out";
+        await Task.Delay(2600); // one periodic save with the label
+        var before = SessionSnapshot.Load(AppPaths.SessionFile, out _);
+        Check(before is { CloseReason: null } && before.Tabs.Count == 1 && before.Tabs[0].Label == "signed out", "while running, the file has the label and no close reason");
+
+        var cancelled = false;
+        System.Windows.Application.Current.SessionEnding += (_, e) => { e.Cancel = true; cancelled = true; };
+
+        // WPF listens for WM_QUERYENDSESSION on the Application's hidden "parking" window
+        // (Application.EnsureHwndSource in dotnet/wpf), not on MainWindow; the system
+        // broadcasts to every top-level window, so a real sign-out reaches it. The test sends
+        // the message to every hidden, title-less top-level window of this thread, which is
+        // that one (and nothing else that minds).
+        const uint WmQueryEndSession = 0x0011;
+        var endSessionLogoff = unchecked((nint)0x80000000u);
+        var mainHwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        var sent = new List<string>();
+        EnumThreadWindows(GetCurrentThreadId(), (hwnd, _) =>
+        {
+            if (hwnd != mainHwnd && !IsWindowVisible(hwnd) && GetWindowTextLength(hwnd) == 0)
+            {
+                var answer = SendMessage(hwnd, WmQueryEndSession, 0, endSessionLogoff);
+                sent.Add($"0x{hwnd:X}->{answer}");
+            }
+
+            return true;
+        }, 0);
+        await Task.Delay(300);
+        Log($"  WM_QUERYENDSESSION sent to hidden thread windows [{string.Join(", ", sent)}]; our test handler cancelled the shutdown={cancelled}; window alive={window.IsLoaded}");
+        Check(cancelled, "SessionEnding was raised for WM_QUERYENDSESSION");
+
+        var after = SessionSnapshot.Load(AppPaths.SessionFile, out _);
+        Log($"  file now: closeReason={after?.CloseReason} savedAt={after?.SavedAt:HH:mm:ss.fff} tabs={after?.Tabs.Count}");
+        Check(after is { CloseReason: SessionCloseReason.SessionEnding }, "the file was written synchronously with closeReason=sessionEnding");
+        Check(after?.Tabs.Count == 1 && after.Tabs[0].Label == "signed out", "it still carries the tabs");
+
+        // Nothing is written after the closing save: a heartbeat must not turn it back into "running".
+        tab.UserLabel = "after sign-out";
+        await Task.Delay(2600);
+        var later = SessionSnapshot.Load(AppPaths.SessionFile, out _);
+        Check(later is { CloseReason: SessionCloseReason.SessionEnding } && later.Tabs[0].Label == "signed out", "later heartbeats did not overwrite the sign-out save");
+
+        Log($"=== selftest (sessionend) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint SendMessage(nint hwnd, uint msg, nint wParam, nint lParam);
+
+    private delegate bool EnumThreadWindowsProc(nint hwnd, nint lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool EnumThreadWindows(uint threadId, EnumThreadWindowsProc callback, nint lParam);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(nint hwnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetWindowTextLength(nint hwnd);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
     /// <summary>
     /// The resume path end to end (§12.13): a first <c>opencode run</c> creates a session the
     /// plugin reports through <c>session.created</c>; a second <c>opencode run --session
@@ -488,6 +618,11 @@ internal static class HerdSelfTest
         Log($"=== selftest (opencode-resume) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
 
+    /// <summary>
+    /// Spike 4 with the real harness: <c>opencode run</c> inside the tab, the installed
+    /// OverShell plugin reporting over loopback. Records when the process probe and the
+    /// plugin each recognised the agent, and every state the tab went through.
+    /// </summary>
     private static async Task RunOpenCodeAsync(MainWindow window, TerminalTab tab)
     {
         Log("=== selftest (opencode) start ===");

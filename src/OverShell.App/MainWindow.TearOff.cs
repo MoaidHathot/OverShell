@@ -61,11 +61,15 @@ public partial class MainWindow
 
         window.Host();
         window.ReattachRequested += OnTearOffClosing;
-        window.Activated += (_, _) => UpdateViewed();
+        window.Activated += (_, _) => { NoteActivated(window); UpdateViewed(); };
         window.Deactivated += (_, _) => UpdateViewed();
         _tearOffs.Add(window);
         _shortcuts.AddWindow(window);
         window.Show();
+
+        // A new tear-off is where the user's attention goes, whether or not Windows lets it
+        // take the foreground right away (a restore re-creates several in a row).
+        NoteActivated(window);
 
         _trace.Write($"[{tab.Id}] detached into window 0x{new WindowInteropHelper(window).Handle:X} (terminal 0x{window.TerminalHwnd:X})");
         UpdateViewed();

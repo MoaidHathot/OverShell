@@ -20,6 +20,9 @@ internal sealed class TraceLog
 
     public bool Enabled { get; }
 
+    /// <summary>Where the lines go, for a self-test that reads its own evidence back.</summary>
+    public string Path => _path;
+
     public void Write(string message)
     {
         if (!Enabled)
