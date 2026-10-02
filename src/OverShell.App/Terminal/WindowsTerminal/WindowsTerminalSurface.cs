@@ -255,6 +255,13 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
 
         if (!session.HasStarted)
         {
+            // The previous screen, dimmed, goes in before the shell exists, so its prompt
+            // lands under it and the rows scroll into scrollback like any other output.
+            if (session.Descriptor.Preamble is { Length: > 0 } preamble)
+            {
+                _connection.Inject(preamble);
+            }
+
             var (columns, rows) = Grid;
             session.Start(Math.Max(columns, 2), Math.Max(rows, 2));
         }

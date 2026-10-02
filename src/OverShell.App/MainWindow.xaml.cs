@@ -171,9 +171,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ------------------------------------------------------------ tab model
 
-    internal TerminalTab AddTab(TerminalProfile profile, bool activate)
+    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null)
     {
-        var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher, _agents);
+        var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher, _agents, preamble: preamble);
         tab.UserLabel = _state.LabelFor(profile.Id, tab.WorkingDirectory);
 
         tab.PropertyChanged += (_, e) =>

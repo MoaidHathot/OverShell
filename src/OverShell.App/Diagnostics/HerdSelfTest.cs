@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -74,6 +74,9 @@ internal static class HerdSelfTest
                         break;
                     case "resilience":
                         await RunResilienceAsync(window, firstTab);
+                        break;
+                    case "ghost":
+                        await RunGhostAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -295,8 +298,55 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// P5 batch 3 (§12.14): the close question while agents work, the restore note on a
-    /// restored tab, and the crash-loop guard. The launcher seeds the state root with a live
+    /// The previous screen (§12.14): the launcher seeds an interrupted session whose tab has
+    /// saved rows with a marker; the restored tab must show those rows dimmed above its new
+    /// prompt, with the rule naming when they were seen. The running tab's rows must land in
+    /// the screens file within a few seconds, keyed by the tab's id.
+    /// </summary>
+    private static async Task RunGhostAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (ghost) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        await WaitForPromptAsync(tab);
+        tab.RequestScreen();
+        await Task.Delay(400);
+        var rows = tab.ScreenRows;
+        var marker = rows.ToList().FindIndex(r => r.Contains("GHOST-MARKER-LINE", StringComparison.Ordinal));
+        var rule = rows.ToList().FindIndex(r => r.Contains("interrupted", StringComparison.Ordinal) && r.Contains("the screen before", StringComparison.Ordinal));
+        var prompt = rows.ToList().FindLastIndex(r => r.Contains("PS ", StringComparison.Ordinal) && r.Contains('>'));
+        Log($"  restored={window.RestoredSession} rows={rows.Count} marker@{marker} rule@{rule} prompt@{prompt}");
+        Log($"  screen: {string.Join(" ⏎ ", rows.Where(r => r.Trim().Length > 0).Take(8))}");
+        Check(window.RestoredSession, "the interrupted session was restored");
+        Check(marker >= 0, "the previous screen's rows are on the new screen");
+        Check(rule > marker, "…followed by the rule naming the interrupted session");
+        Check(prompt > rule, "…and the shell's prompt below both");
+
+        // The rows are dim text, not something the shell ran: the shell's own output is unaffected.
+        tab.SendText("Write-Host ghost-live-output\r");
+        await Task.Delay(1500);
+        tab.RequestScreen();
+        await Task.Delay(400);
+        Check(tab.ScreenRows.Any(r => r.Contains("ghost-live-output", StringComparison.Ordinal) && !r.Contains("Write-Host", StringComparison.Ordinal)), "the shell works normally under the ghost");
+
+        // The screens file for this run.
+        await Task.Delay(6000);
+        var screens = SessionScreens.Load(AppPaths.SessionScreensFile, out var error);
+        var mine = screens?.Tabs.GetValueOrDefault(tab.Id);
+        Log($"  screens file: tabs={screens?.Tabs.Count} mine={(mine is null ? "-" : $"{mine.Rows.Count} rows, last '{mine.Rows.LastOrDefault()}'")} error={error ?? "-"}");
+        Check(mine is not null && mine.Rows.Any(r => r.Contains("ghost-live-output", StringComparison.Ordinal)), "the screens file carries this tab's current rows under its id");
+        Check(screens is not null && !screens.Tabs.ContainsKey("ghost001"), "the previous run's tab id is gone from the file (it is this run's file now)");
+
+        Log($"=== selftest (ghost) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// P5 batch 3 (§12.14): the close question while agents work, the restore note on a    /// restored tab, and the crash-loop guard. The launcher seeds the state root with a live
     /// file and archives that look like two early deaths, so the start must hold the restore.
     /// </summary>
     private static async Task RunResilienceAsync(MainWindow window, TerminalTab tab)

@@ -319,3 +319,54 @@ public class RestorePolicyTests
         Assert.False(RestorePolicy.ShouldHold(Live(interrupted: true, 20), [Archive(interrupted: true, 10, stamped: false)]));
     }
 }
+
+public class SessionScreensTests
+{
+    [Fact]
+    public void Trim_keeps_the_bottom_rows_without_trailing_blanks()
+    {
+        var rows = Enumerable.Range(1, 40).Select(i => $"row {i}   ").Concat(["", "   ", ""]).ToList();
+        var trimmed = SessionScreens.Trim(rows);
+
+        Assert.Equal(SessionScreens.RowsKept, trimmed.Count);
+        Assert.Equal("row 11", trimmed[0]);
+        Assert.Equal("row 40", trimmed[^1]);
+        Assert.Empty(SessionScreens.Trim(["", ""]));
+    }
+
+    [Fact]
+    public void Preamble_dims_the_rows_strips_controls_and_ends_with_the_rule_and_a_blank_line()
+    {
+        var screen = new SavedScreen { Rows = ["PS C:\\> build", "ok\u001b[31m evil", "PS C:\\> "], At = DateTimeOffset.Now };
+        var text = SessionScreens.Preamble(screen, "interrupted 10:21, the screen before");
+
+        Assert.StartsWith("\u001b[2mPS C:\\> build\r\nok[31m evil\r\n", text);
+        // Ordinal on purpose: a culture-aware compare treats ESC as ignorable and would find "ok" + ESC in "ok[".
+        Assert.DoesNotContain("ok\u001b", text, StringComparison.Ordinal);
+        Assert.EndsWith("\u001b[0m\u001b[2;3m\u2014 interrupted 10:21, the screen before \u2014\u001b[0m\r\n\r\n", text);
+    }
+
+    [Fact]
+    public void Round_trips_through_the_file()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-screens");
+        try
+        {
+            var path = Path.Combine(dir.FullName, "session-screens.json");
+            var at = new DateTimeOffset(2026, 10, 3, 2, 40, 0, TimeSpan.FromHours(3));
+            var file = new SessionScreens { Tabs = { ["abc"] = new SavedScreen { Rows = ["a", "b"], At = at } } };
+            Assert.True(file.Save(path, out var error), error);
+            Assert.False(File.Exists(path + ".tmp"));
+
+            var loaded = SessionScreens.Load(path, out error);
+            Assert.Null(error);
+            Assert.Equal(["a", "b"], loaded!.Tabs["abc"].Rows);
+            Assert.Equal(at, loaded.Tabs["abc"].At);
+            Assert.Null(SessionScreens.Load(Path.Combine(dir.FullName, "none.json"), out _));
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+}

@@ -38,6 +38,11 @@ public partial class MainWindow
     private readonly List<(TerminalTab Tab, SavedWindow? Window)> _pendingDetach = [];
     private readonly DateTimeOffset _startedAt = DateTimeOffset.Now;
     private bool _restoreHeld;
+    private SessionScreens? _previousScreens;
+    private readonly Dictionary<string, (long Version, SavedScreen Screen)> _screens = new(StringComparer.Ordinal);
+    private DateTimeOffset _lastScreensSave;
+    private bool _screensBusy;
+    private static readonly TimeSpan ScreensSaveInterval = TimeSpan.FromSeconds(5);
 
     /// <summary>Set by the command line (<c>--fresh</c>) before the window is built: skip the restore once.</summary>
     internal static bool StartFresh { get; set; }
@@ -76,6 +81,12 @@ public partial class MainWindow
         if (error is not null)
         {
             _trace.Write($"session: {error}");
+        }
+
+        _previousScreens = SessionScreens.Load(AppPaths.SessionScreensFile, out var screensError);
+        if (screensError is not null)
+        {
+            _trace.Write($"session: screens: {screensError}");
         }
 
         if (_previousSession is not null)
@@ -326,7 +337,7 @@ public partial class MainWindow
             profile = profile with { CommandLine = plan.Command };
         }
 
-        var tab = AddTab(profile, activate);
+        var tab = AddTab(profile, activate, PreambleFor(savedTab));
         if (!string.IsNullOrWhiteSpace(savedTab.Label))
         {
             tab.UserLabel = savedTab.Label;
@@ -360,6 +371,7 @@ public partial class MainWindow
     /// <summary>One tab as the session file remembers it.</summary>
     private SavedTab CaptureTab(TerminalTab t, DateTimeOffset? closedAt = null) => new()
     {
+        Id = t.Id,
         ProfileId = t.Profile.Id,
         WorkingDirectory = t.WorkingDirectory,
         Label = t.UserLabel,
@@ -462,6 +474,88 @@ public partial class MainWindow
             _lastSessionSave = now;
             SaveSession();
         }
+
+        if (_settings.Session.ShowPreviousScreen != "never" && !_screensBusy && now - _lastScreensSave >= ScreensSaveInterval)
+        {
+            _lastScreensSave = now;
+            _ = SaveScreensAsync();
+        }
+    }
+
+    /// <summary>
+    /// The last rows of every tab whose screen changed since last time, to the screens file
+    /// (§12.14). One UIA read per changed tab, a few milliseconds each; hidden tabs read fine.
+    /// </summary>
+    private async Task SaveScreensAsync()
+    {
+        _screensBusy = true;
+        try
+        {
+            var changed = false;
+            foreach (var tab in Tabs.ToArray())
+            {
+                var version = tab.OutputVersion;
+                if (!tab.IsRunning || (_screens.TryGetValue(tab.Id, out var known) && known.Version == version))
+                {
+                    continue;
+                }
+
+                var rows = await _agents.Screen.ReadRowsAsync(tab.TerminalHwnd);
+                if (_sessionClosed)
+                {
+                    return;
+                }
+
+                if (rows is null)
+                {
+                    continue;
+                }
+
+                _screens[tab.Id] = (version, new SavedScreen { Rows = SessionScreens.Trim(rows), At = DateTimeOffset.Now });
+                changed = true;
+            }
+
+            foreach (var gone in _screens.Keys.Where(id => !_tabsById.ContainsKey(id)).ToArray())
+            {
+                _screens.Remove(gone);
+                changed = true;
+            }
+
+            if (changed)
+            {
+                var file = new SessionScreens { Tabs = _screens.ToDictionary(kv => kv.Key, kv => kv.Value.Screen, StringComparer.Ordinal) };
+                if (!file.Save(AppPaths.SessionScreensFile, out var error))
+                {
+                    _trace.Write($"session: screens: could not save: {error}");
+                }
+            }
+        }
+        finally
+        {
+            _screensBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// The ghost for a restored tab: its previous rows dimmed, with a rule saying when they
+    /// were last seen - when the setting and the way the last run ended call for it.
+    /// </summary>
+    private string? PreambleFor(SavedTab savedTab)
+    {
+        var mode = _settings.Session.ShowPreviousScreen;
+        if (mode == "never" || savedTab.Id is null || _previousScreens is null || !_previousScreens.Tabs.TryGetValue(savedTab.Id, out var screen) || screen.Rows.Count == 0)
+        {
+            return null;
+        }
+
+        var interrupted = _previousSession?.Interrupted == true || _previousSession?.CloseReason == SessionCloseReason.SessionEnding;
+        if (mode != "always" && !interrupted)
+        {
+            return null;
+        }
+
+        var caption = $"{(_previousSession?.Interrupted == true ? "interrupted" : "previous session")} {screen.At.ToLocalTime():HH:mm}, the screen before";
+        return SessionScreens.Preamble(screen, caption);
     }
 
     // ---------------------------------------------------------------- closing

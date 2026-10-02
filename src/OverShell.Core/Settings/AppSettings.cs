@@ -94,6 +94,12 @@ public sealed class SessionSettings
     public bool RestoreWindows { get; init; } = true;
 
     /// <summary>
+    /// Paint what each tab showed when the previous run ended, dimmed, above the new shell's
+    /// prompt: <c>interrupted</c> (default - after a crash or sign-out, when you did not choose
+    /// to close), <c>always</c>, or <c>never</c>.
+    /// </summary>
+    public string ShowPreviousScreen { get; init; } = "interrupted";
+    /// <summary>
     /// Closing the window while agents are working or waiting asks first (they resume at the
     /// next start, but a mid-turn kill is rarely what Alt+F4 meant). Never on sign-out.
     /// </summary>

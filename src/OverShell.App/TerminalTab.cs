@@ -55,7 +55,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     private bool _disposed;
     private DispatcherTimer? _revealTimeout;
 
-    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null)
+    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null, string? preamble = null)
     {
         Profile = profile;
         Scheme = scheme;
@@ -89,6 +89,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
             WorkingDirectory = startingDirectory,
             ProfileId = profile.Id,
             Environment = environment,
+            Preamble = preamble,
         };
 
         // Before the session exists: the stream's signals must have a listener from the first byte.

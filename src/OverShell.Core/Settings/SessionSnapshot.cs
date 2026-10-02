@@ -21,6 +21,9 @@ public sealed class SavedWindow
 /// <summary>One tab as it is remembered between runs.</summary>
 public sealed class SavedTab
 {
+    /// <summary>The tab's run-time id, the key into <c>session-screens.json</c>; a restored tab gets a new one.</summary>
+    public string? Id { get; init; }
+
     public string? ProfileId { get; init; }
 
     public string? WorkingDirectory { get; init; }

@@ -31,5 +31,8 @@ public sealed record SessionDescriptor
     /// <summary>The Windows Terminal profile this came from, if any.</summary>
     public string? ProfileId { get; init; }
 
+    /// <summary>VT text the surface paints before the child's first output - a restored tab's previous screen (§12.14). Null for none.</summary>
+    public string? Preamble { get; init; }
+
     public SessionKind Kind { get; init; } = SessionKind.Shell;
 }

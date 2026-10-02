@@ -55,6 +55,9 @@ public static class AppPaths
     /// <summary>The tabs and view of the last run (§12.11); machine-local, never roams.</summary>
     public static string SessionFile => Path.Combine(StateRoot, "session.json");
 
+    /// <summary>The last rows of every open tab (§12.14), beside the session file; what a restore after a crash paints first.</summary>
+    public static string SessionScreensFile => Path.Combine(StateRoot, "session-screens.json");
+
     /// <summary>
     /// Creates the two roots if they do not exist yet. Only the roots: the sub-folders
     /// (<c>agents\</c>, <c>layouts\</c>, <c>skins\</c>) are optional and are made when

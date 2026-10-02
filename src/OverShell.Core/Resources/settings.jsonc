@@ -47,12 +47,14 @@
   // them typed once it is quiet. restartWithWindows asks Windows to start OverShell again
   // after a restart or sign-out (never after a crash); it is off because starting by
   // itself is a choice. confirmCloseWithAgents asks before closing the window while agents
-  // are working or waiting (never on sign-out).
+  // are working or waiting (never on sign-out). showPreviousScreen paints what each tab
+  // showed when the last run ended, dimmed, above the new prompt: interrupted | always | never.
   "session": {
     "restore": true,
     "resumeAgents": true,
     "resumeWithoutId": true,
     "restoreWindows": true,
+    "showPreviousScreen": "interrupted",
     "confirmCloseWithAgents": true,
     "restartWithWindows": false
   },
