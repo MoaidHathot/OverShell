@@ -472,6 +472,7 @@ public partial class MainWindow
                 _gitStatus = null;
             }
 
+            _trace.Write($"session: restart with Windows - {ApplicationRestart.Apply(_settings.Session.RestartWithWindows)}");
 
             parts.Add($"settings{(_settings.Problems.Count > 0 ? $" ({_settings.Problems.Count} problem(s))" : string.Empty)}");
         }

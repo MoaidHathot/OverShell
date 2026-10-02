@@ -29,7 +29,8 @@ public partial class MainWindow
     }
 
     /// <summary>Moves a tab's surface into a new window. The main window shows its neighbour meanwhile.</summary>
-    internal TearOffWindow? Detach(TerminalTab tab)
+    /// <param name="placement">Where the window goes (a restored session); null for the default offset from the main window.</param>
+    internal TearOffWindow? Detach(TerminalTab tab, Core.Settings.SavedWindow? placement = null)
     {
         if (tab.Detached || Tabs.Count < 2)
         {
@@ -53,6 +54,11 @@ public partial class MainWindow
         tab.View.Visibility = Visibility.Visible;
 
         var window = new TearOffWindow(this, tab);
+        if (placement is not null)
+        {
+            ApplyPlacement(window, placement, $"tear-off [{tab.Id}]");
+        }
+
         window.Host();
         window.ReattachRequested += OnTearOffClosing;
         window.Activated += (_, _) => UpdateViewed();

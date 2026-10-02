@@ -78,6 +78,14 @@ public partial class App : Application
             return;
         }
 
+        // `--fresh`: start with the default profile and leave the saved session in the
+        // history, for when a restore keeps bringing back something unwanted.
+        OverShell.App.MainWindow.StartFresh = args.Any(a => a.Equals("--fresh", StringComparison.OrdinalIgnoreCase));
+        if (args.Any(a => a.Equals(ApplicationRestart.Marker, StringComparison.OrdinalIgnoreCase)))
+        {
+            Diagnostics.TraceLog.Agents.Write("start: restarted by Windows after a restart or sign-out");
+        }
+
         // The skin goes on before the first window exists, so fonts and metrics resolve to
         // it too; later saves only recolour (Chrome/SkinLoader), which needs unfrozen brushes.
         Core.AppPaths.EnsureCreated();
@@ -377,6 +385,7 @@ public partial class App : Application
         out_.WriteLine("OverShell - Overseer Shell. A Windows terminal that watches the AI coding agents in its tabs.");
         out_.WriteLine();
         out_.WriteLine("  OverShell                                   open the window (a second start hands over to the first)");
+        out_.WriteLine("  OverShell --fresh                           open without restoring the last session (it stays in the history)");
         out_.WriteLine("  OverShell overshell://focus/<tabId>         focus a tab in the running window (also view/<id>, new?profile=&cwd=)");
         out_.WriteLine("  OverShell settings path|init|open           configuration and state roots; starter files from the defaults");
         out_.WriteLine("  OverShell integrations status");

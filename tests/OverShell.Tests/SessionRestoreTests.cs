@@ -138,3 +138,47 @@ public class SessionRestoreTests
         Assert.Empty(settings.Problems);
     }
 }
+
+public class WindowPlacementTests
+{
+    private static readonly Bounds Desktop = new(0, 0, 2560, 1440);
+
+    [Fact]
+    public void A_window_still_on_the_desktop_keeps_its_place()
+    {
+        var saved = new SavedWindow { Left = 100, Top = 50, Width = 1200, Height = 800 };
+        Assert.Equal(new Bounds(100, 50, 1200, 800), WindowPlacement.Clamp(saved, Desktop, 520, 320));
+
+        // Partly off the right edge but with more than a caption's worth visible: left alone.
+        var edge = new SavedWindow { Left = 2400, Top = 1300, Width = 1200, Height = 800 };
+        Assert.Equal(new Bounds(2400, 1300, 1200, 800), WindowPlacement.Clamp(edge, Desktop, 520, 320));
+    }
+
+    [Fact]
+    public void A_window_on_a_monitor_that_is_gone_moves_to_the_desktop_corner()
+    {
+        // Saved on a second monitor to the left that is no longer attached.
+        var gone = new SavedWindow { Left = -1900, Top = 100, Width = 1200, Height = 800 };
+        Assert.Equal(new Bounds(0, 0, 1200, 800), WindowPlacement.Clamp(gone, Desktop, 520, 320));
+
+        // Only a sliver visible (less than 120 px): also moved.
+        var sliver = new SavedWindow { Left = 2500, Top = 100, Width = 1200, Height = 800 };
+        Assert.Equal(new Bounds(0, 0, 1200, 800), WindowPlacement.Clamp(sliver, Desktop, 520, 320));
+
+        // A desktop that moved: the virtual screen may start at negative coordinates.
+        var shifted = new Bounds(-1920, 0, 4480, 1440);
+        var farRight = new SavedWindow { Left = 5000, Top = 0, Width = 800, Height = 600 };
+        Assert.Equal(new Bounds(-1920, 0, 800, 600), WindowPlacement.Clamp(farRight, shifted, 520, 320));
+    }
+
+    [Fact]
+    public void A_window_larger_than_the_desktop_shrinks_to_it_and_bad_sizes_are_ignored()
+    {
+        var huge = new SavedWindow { Left = 0, Top = 0, Width = 5000, Height = 3000 };
+        Assert.Equal(new Bounds(0, 0, 2560, 1440), WindowPlacement.Clamp(huge, Desktop, 520, 320));
+
+        Assert.Null(WindowPlacement.Clamp(null, Desktop, 520, 320));
+        Assert.Null(WindowPlacement.Clamp(new SavedWindow { Width = 100, Height = 100 }, Desktop, 520, 320));
+        Assert.Null(WindowPlacement.Clamp(new SavedWindow { Left = double.NaN, Top = 0, Width = 800, Height = 600 }, Desktop, 520, 320));
+    }
+}

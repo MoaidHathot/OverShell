@@ -33,6 +33,10 @@ public partial class MainWindow
     private WindowState _lastVisibleState = WindowState.Normal;
     private SessionSnapshot? _previousSession;
     private readonly List<SavedTab> _recentlyClosed = [];
+    private readonly List<(TerminalTab Tab, SavedWindow? Window)> _pendingDetach = [];
+
+    /// <summary>Set by the command line (<c>--fresh</c>) before the window is built: skip the restore once.</summary>
+    internal static bool StartFresh { get; set; }
 
     /// <summary>True when the last start reopened a saved session rather than the default profile.</summary>
     internal bool RestoredSession => _restoredSession;
@@ -67,6 +71,90 @@ public partial class MainWindow
         {
             _recentlyClosed.AddRange(_previousSession.RecentlyClosed.TakeLast(SessionSnapshot.RecentlyClosedLimit));
         }
+
+        if (_settings.Session.Restore && _settings.Session.RestoreWindows && !StartFresh)
+        {
+            ApplyPlacement(this, _previousSession?.Window, "main window");
+        }
+
+        _trace.Write($"session: restart with Windows - {ApplicationRestart.Apply(_settings.Session.RestartWithWindows)}");
+
+        Loaded += (_, _) =>
+        {
+            AnnounceRestore();
+
+            // The tear-offs wait for the first layout: a surface moves between windows only
+            // once its HWND exists (§12.12), and that happens when the main host lays out.
+            if (_pendingDetach.Count > 0)
+            {
+                Dispatcher.BeginInvoke(RestoreTearOffs, System.Windows.Threading.DispatcherPriority.Background);
+            }
+        };
+    }
+
+    /// <summary>Puts a window where the session file says, clamped to the desktop that exists now (<see cref="WindowPlacement.Clamp"/>).</summary>
+    private void ApplyPlacement(Window window, SavedWindow? saved, string what)
+    {
+        var desktop = new Bounds(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop, SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+        if (WindowPlacement.Clamp(saved, desktop, window.MinWidth, window.MinHeight) is not { } bounds)
+        {
+            return;
+        }
+
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        window.Left = bounds.Left;
+        window.Top = bounds.Top;
+        window.Width = bounds.Width;
+        window.Height = bounds.Height;
+        if (saved!.Maximized)
+        {
+            window.WindowState = WindowState.Maximized;
+        }
+
+        // What Win32 was actually asked for, before anything else (a tiling window manager,
+        // say) has had a chance to move the window: the evidence that the placement landed.
+        window.SourceInitialized += (_, _) =>
+        {
+            if (GetWindowRect(new WindowInteropHelper(window).Handle, out var rect))
+            {
+                _trace.Write($"session: {what} created at physical {rect.Left},{rect.Top} {rect.Right - rect.Left}x{rect.Bottom - rect.Top}");
+            }
+        };
+
+        _trace.Write($"session: {what} placed at {bounds.Left:F0},{bounds.Top:F0} {bounds.Width:F0}x{bounds.Height:F0}{(saved.Maximized ? " maximized" : string.Empty)}" +
+                     (bounds.Left != saved.Left || bounds.Top != saved.Top || bounds.Width != saved.Width || bounds.Height != saved.Height ? $" (saved {saved.Left:F0},{saved.Top:F0} {saved.Width:F0}x{saved.Height:F0}, clamped to the desktop)" : string.Empty));
+    }
+
+    /// <summary>The status-bar note about how the previous run ended, when that is worth a word.</summary>
+    private void AnnounceRestore()
+    {
+        if (!_restoredSession || _previousSession is not { } saved)
+        {
+            return;
+        }
+
+        var count = $"{Tabs.Count} tab{(Tabs.Count == 1 ? string.Empty : "s")}";
+        if (saved.Interrupted)
+        {
+            ShowStatusMessage($"Restored {count} from an interrupted session (saved {saved.SavedAt.ToLocalTime():HH:mm})");
+        }
+        else if (saved.CloseReason == SessionCloseReason.SessionEnding)
+        {
+            ShowStatusMessage($"Restored {count} after Windows signed out or restarted");
+        }
+    }
+
+    private void RestoreTearOffs()
+    {
+        foreach (var (tab, placement) in _pendingDetach.ToArray())
+        {
+            if (Tabs.Contains(tab) && !tab.Detached)
+            {
+                Detach(tab, placement);
+            }
+        }
+
+        _pendingDetach.Clear();
     }
 
     /// <summary>Reopens the saved tabs, or the default profile when there is nothing to reopen. Returns the view to show.</summary>
@@ -74,12 +162,20 @@ public partial class MainWindow
     {
         var view = _settings.View;
 
-        if (_settings.Session.Restore && _previousSession is { Tabs.Count: > 0 } saved)
+        if (StartFresh)
+        {
+            _trace.Write("session: --fresh, the saved session is not restored (it stays in the history)");
+        }
+        else if (_settings.Session.Restore && _previousSession is { Tabs.Count: > 0 } saved)
         {
             var plans = SessionRestore.PlanAll(saved.Tabs, saved.ActiveIndex, t => RestoreCommandLine(ProfileFor(t)), _agents.Rules, _settings.Session);
             for (var i = 0; i < saved.Tabs.Count; i++)
             {
-                OpenSavedTab(saved.Tabs[i], activate: false, plans[i]);
+                var tab = OpenSavedTab(saved.Tabs[i], activate: false, plans[i]);
+                if (tab is not null && saved.Tabs[i].Detached && _settings.Session.RestoreWindows)
+                {
+                    _pendingDetach.Add((tab, saved.Tabs[i].Window));
+                }
             }
 
             if (Tabs.Count > 0)
@@ -333,6 +429,16 @@ public partial class MainWindow
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(nint hwnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint hwnd, out Win32Rect rect);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Win32Rect
+    {
+        public int Left, Top, Right, Bottom;
+    }
 }
 
 /// <summary>
