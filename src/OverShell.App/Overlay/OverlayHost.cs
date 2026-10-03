@@ -173,8 +173,83 @@ internal sealed class OverlayHost : Window
         }
     }
 
-    public void HideOverlay()
+    /// <summary>
+    /// Tints the given cells and outlines others - the find bar's other matches and its
+    /// current one (12.14). Rectangles are physical screen pixels, one per run of cells on a
+    /// row. The outline sits just inside its cells so neighbouring rows stay untouched.
+    /// </summary>
+    public void ShowCells(IReadOnlyList<Rect> fills, IReadOnlyList<Rect> outlines, Brush fill, Brush stroke)
     {
+        if (fills.Count == 0 && outlines.Count == 0)
+        {
+            HideOverlay();
+            return;
+        }
+
+        var scale = VisualTreeHelper.GetDpi(Owner).DpiScaleX;
+        var strokeThickness = Math.Max(1, (int)Math.Round(scale));
+
+        var cells = new List<(Rect Rect, bool Outline)>(fills.Count + outlines.Count);
+        foreach (var rect in fills)
+        {
+            cells.Add((Snap(rect), false));
+        }
+
+        foreach (var rect in outlines)
+        {
+            cells.Add((Snap(rect), true));
+        }
+
+        var union = cells[0].Rect;
+        for (var i = 1; i < cells.Count; i++)
+        {
+            union.Union(cells[i].Rect);
+        }
+
+        Place(union);
+        scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+
+        _canvas.Children.Clear();
+        foreach (var (rect, outline) in cells)
+        {
+            var shape = new Rectangle
+            {
+                Width = rect.Width / scale,
+                Height = rect.Height / scale,
+                IsHitTestVisible = false,
+                RadiusX = 2,
+                RadiusY = 2,
+            };
+
+            if (outline)
+            {
+                shape.Stroke = stroke;
+                shape.StrokeThickness = strokeThickness / scale;
+            }
+            else
+            {
+                shape.Fill = fill;
+            }
+
+            Canvas.SetLeft(shape, (rect.X - union.X) / scale);
+            Canvas.SetTop(shape, (rect.Y - union.Y) / scale);
+            _canvas.Children.Add(shape);
+        }
+
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        static Rect Snap(Rect r)
+        {
+            var x = Math.Round(r.X);
+            var y = Math.Round(r.Y);
+            return new Rect(x, y, Math.Max(1, Math.Round(r.Right) - x), Math.Max(1, Math.Round(r.Bottom) - y));
+        }
+    }
+
+    public void HideOverlay()    {
         _canvas.Children.Clear();
         _placed = Rect.Empty;
 

@@ -61,13 +61,20 @@ public sealed class TearOffWindow : Window
         _maximize = CaptionButton("\uE922", "Maximize", (_, _) => ToggleMaximize());
         _caption = BuildCaption(tab);
 
+        // The same find bar as the main window's, below the terminal (12.14).
+        var findBar = new FindBar { Visibility = Visibility.Collapsed };
+        Find = new FindBarController(findBar, this, (owner as MainWindow)?.Search ?? new Terminal.Search.TerminalSearch());
+
         var layout = new Grid();
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(_caption, 0);
         Grid.SetRow(_host, 1);
+        Grid.SetRow(findBar, 2);
         layout.Children.Add(_caption);
         layout.Children.Add(_host);
+        layout.Children.Add(findBar);
 
         _root = new Border
         {
@@ -94,6 +101,9 @@ public sealed class TearOffWindow : Window
 
     public TerminalTab Tab { get; }
 
+    /// <summary>This window's find bar, over its one tab.</summary>
+    internal FindBarController Find { get; }
+
     /// <summary>Raised when the window closes with the surface still inside it; the main window takes it back.</summary>
     public event Action<TerminalTab>? ReattachRequested;
 
@@ -108,6 +118,7 @@ public sealed class TearOffWindow : Window
     public FrameworkElement Release()
     {
         _reattachOnClose = false;
+        Find.Forget(Tab);
         _host.Children.Remove(Tab.View);
         Tab.Detached = false;
         return Tab.View;

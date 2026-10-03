@@ -50,6 +50,7 @@ public partial class MainWindow
             ActiveTab = next;
         }
 
+        _findBar.Forget(tab);
         TerminalHost.Children.Remove(tab.View);
         tab.View.Visibility = Visibility.Visible;
 

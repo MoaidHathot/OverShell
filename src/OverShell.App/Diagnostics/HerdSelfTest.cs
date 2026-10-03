@@ -22,7 +22,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -93,6 +93,9 @@ internal static class HerdSelfTest
                         break;
                     case "tearoff":
                         await RunTearOffChromeAsync(window, firstTab);
+                        break;
+                    case "find":
+                        await RunFindAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -314,8 +317,250 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Tear-off chrome (§12.14): a tear-off wears the main window's chrome - no system
-    /// caption, a caption surface with the tab's dot, icon, label and detail, the three
+    /// Find in the buffer (§12.14): Ctrl+Shift+F opens the bar over the active tab; typing
+    /// finds every occurrence, scrollback included, starting from the lowest one on screen;
+    /// the current match is the terminal's own selection and stepping to a hidden one scrolls
+    /// it into view; the other visible matches are tinted by the overlay; match case; new
+    /// output is picked up; the open bar follows the active tab; a tear-off has its own.
+    /// </summary>
+    private static async Task RunFindAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (find) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        await WaitForPromptAsync(tab);
+
+        // 120 rows, NEEDLE on every 30th, so some occurrences end up in scrollback.
+        tab.SendText("foreach ($i in 1..120) { \"find-spike row $i\" + $(if ($i % 30 -eq 0) { ' NEEDLE' } else { '' }) }\r");
+        await Task.Delay(3000);
+
+        var bar = window.FindBarView;
+        var controller = window.FindController;
+        Check(!bar.IsVisible && controller.Session is null, "the bar starts hidden, with no session");
+
+        Check(window.DispatchChord(System.Windows.Input.Key.F, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift), "Ctrl+Shift+F is terminal.find");
+        await Task.Delay(500);
+        Check(bar.IsVisible && controller.Session?.Tab == tab, "the bar opens over the active tab");
+        if (window.IsActive)
+        {
+            Check(bar.IsKeyboardFocusWithin, "the box takes the keyboard");
+        }
+        else
+        {
+            Log("  SKIP  focus check: another window holds the foreground");
+        }
+
+        bar.Text = "needle";
+        await Task.Delay(900);
+        var session = controller.Session!;
+        Log($"  search 'needle': count={session.Count} visible={session.VisibleCount} current={session.CurrentIndex} status='{session.Status}' overlay={session.DescribeOverlay()}");
+        Check(session.Count == 5, "finds every occurrence, scrollback included (the command line and four rows)");
+        Check(session.CurrentIndex == 4 && bar.StatusText == "5 of 5", "starts at the lowest match on screen - '5 of 5'");
+        Check(session.CurrentRects.Count > 0, "the current match is on screen");
+        Check(session.DescribeOverlay().Contains("visible=True", StringComparison.Ordinal) && session.DescribeOverlay().Contains($"children={session.VisibleCount}", StringComparison.Ordinal), $"the overlay shows one shape per visible match ({session.VisibleCount}): tints for the others, an outline for this one");
+        var hwnd = tab.TerminalHwnd;
+        var selected = await Task.Run(() => SelectedViaUia(hwnd));
+        Check(selected == "NEEDLE", $"the current match is the terminal's own selection ('{selected}')");
+        SaveScreen(window, "overshell-selftest-find-screen.png");
+        SaveVisual(bar, "overshell-selftest-find-bar.png");
+
+        // Up through older text; the command line was scrolled away.
+        for (var i = 0; i < 4; i++)
+        {
+            Check(window.Commands.TryExecute("terminal.findUp"), $"terminal.findUp #{i + 1}");
+            await Task.Delay(500);
+        }
+
+        tab.RequestScreen();
+        await Task.Delay(400);
+        Log($"  after 4x up: current={session.CurrentIndex} status='{session.Status}' rects={session.CurrentRects.Count} top row='{tab.ScreenRows.FirstOrDefault()}'");
+        Check(session.CurrentIndex == 0 && bar.StatusText == "1 of 5", "four steps up reach the oldest match - '1 of 5'");
+        Check(session.CurrentRects.Count > 0 && (tab.ScreenRows.FirstOrDefault() ?? string.Empty).Contains("foreach", StringComparison.Ordinal), "a hidden match is scrolled into view when stepped to");
+
+        window.Commands.TryExecute("terminal.findUp");
+        await Task.Delay(500);
+        Check(session.CurrentIndex == 4, "stepping past the oldest wraps to the newest");
+        window.Commands.TryExecute("terminal.findDown");
+        await Task.Delay(500);
+        Check(session.CurrentIndex == 0, "stepping past the newest wraps to the oldest");
+
+        // Match case.
+        bar.MatchCase.IsChecked = true;
+        await Task.Delay(700);
+        Log($"  match case 'needle': count={session.Count} status='{session.Status}' up.enabled={bar.BtnUp.IsEnabled} matchCase={session.MatchCase}");
+        Check(session.Count == 0 && bar.StatusText == "No matches" && !bar.BtnUp.IsEnabled, "match case: 'needle' no longer matches NEEDLE; the arrows grey out");
+        bar.Text = "NEEDLE";
+        await Task.Delay(700);
+        Check(session.Count == 5 && bar.BtnUp.IsEnabled, "...and 'NEEDLE' does");
+        bar.Text = "zzzqqq";
+        await Task.Delay(700);
+        Check(session.Count == 0 && bar.StatusText == "No matches", "text that occurs nowhere reads 'No matches' (the provider answers E_FAIL, not null)");
+        bar.Text = "NEEDLE";
+        await Task.Delay(700);
+
+        // New output is picked up by the poll without a step.
+        tab.SendText("Write-Host extra-NEEDLE-line\r");
+        await Task.Delay(1500);
+        Log($"  after output: count={session.Count} status='{session.Status}'");
+        Check(session.Count == 7, "new output is picked up (the echoed command and its output: 7)");
+
+        // The open bar follows the active tab.
+        var second = window.AddTab(tab.Profile, activate: true);
+        await WaitForPromptAsync(second);
+        await Task.Delay(600);
+        Check(bar.IsVisible && controller.Session?.Tab == second && controller.Session.Count == 0 && bar.StatusText == "No matches", "switching tabs re-targets the open bar (a fresh shell: 'No matches')");
+        window.ActiveTab = tab;
+        await Task.Delay(800);
+        Check(controller.Session?.Tab == tab && controller.Session.Count == 7, "...and back");
+
+        // A tear-off has a bar of its own.
+        var tearOff = window.Detach(second);
+        await Task.Delay(700);
+        if (tearOff is not null)
+        {
+            tearOff.Find.Open(second);
+            await Task.Delay(400);
+            Check(tearOff.Find.IsOpen && tearOff.Find.Session?.Tab == second, "a tear-off opens its own find bar over its tab");
+            window.Attach(second);
+            await Task.Delay(500);
+            Check(!second.Detached && controller.Session?.Tab == second, "re-attaching ends the tear-off's session; the main bar follows the tab home");
+        }
+        else
+        {
+            Check(false, "detach for the tear-off find check");
+        }
+
+        window.ActiveTab = tab;
+        await Task.Delay(300);
+        controller.Close();
+        await Task.Delay(300);
+        Check(!bar.IsVisible && controller.Session is null, "closing hides the bar and ends the session");
+        Check(session.DescribeOverlay().Contains("visible=False", StringComparison.Ordinal) || session.DescribeOverlay() == "none", "...and the highlights are gone");
+
+        window.CloseTab(second);
+        Log($"=== selftest (find) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    private static string? SelectedViaUia(nint hwnd)
+    {
+        try
+        {
+            var element = System.Windows.Automation.AutomationElement.FromHandle(hwnd);
+            if (element.GetCurrentPattern(System.Windows.Automation.TextPattern.Pattern) is not System.Windows.Automation.TextPattern text)
+            {
+                return null;
+            }
+
+            var selection = text.GetSelection();
+            return selection.Length > 0 ? selection[0].GetText(-1).TrimEnd() : string.Empty;
+        }
+        catch (Exception e)
+        {
+            return $"error {e.GetType().Name}";
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(nint hwnd, out Win32Rect rect);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetDC(nint hwnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int ReleaseDC(nint hwnd, nint dc);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern nint CreateCompatibleDC(nint dc);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern nint CreateCompatibleBitmap(nint dc, int width, int height);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern nint SelectObject(nint dc, nint obj);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool BitBlt(nint dest, int x, int y, int width, int height, nint src, int srcX, int srcY, uint rop);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool DeleteObject(nint obj);
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool DeleteDC(nint dc);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct Win32Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    /// <summary>
+    /// What is actually on screen over a window's rectangle - native terminal, overlay
+    /// windows and all - unlike <see cref="SaveVisual"/>, which renders WPF content only.
+    /// Needs the window to be unobscured; the harness runs it on a free desktop area.
+    /// </summary>
+    private static void SaveScreen(System.Windows.Window window, string fileName)
+    {
+        const uint SrcCopy = 0x00CC0020;
+        try
+        {
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            if (!GetWindowRect(hwnd, out var rect))
+            {
+                Log($"  screen {fileName}: no window rect");
+                return;
+            }
+
+            var width = rect.Right - rect.Left;
+            var height = rect.Bottom - rect.Top;
+            var screen = GetDC(0);
+            var memory = CreateCompatibleDC(screen);
+            var bitmap = CreateCompatibleBitmap(screen, width, height);
+            var previous = SelectObject(memory, bitmap);
+            try
+            {
+                if (!BitBlt(memory, 0, 0, width, height, screen, rect.Left, rect.Top, SrcCopy))
+                {
+                    Log($"  screen {fileName}: BitBlt failed");
+                    return;
+                }
+
+                var source = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(
+                    bitmap, 0, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(source));
+                var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), fileName);
+                using var stream = System.IO.File.Create(path);
+                encoder.Save(stream);
+                Log($"  screen saved: {path} ({width}x{height} at {rect.Left},{rect.Top})");
+            }
+            finally
+            {
+                SelectObject(memory, previous);
+                DeleteObject(bitmap);
+                DeleteDC(memory);
+                ReleaseDC(0, screen);
+            }
+        }
+        catch (Exception e)
+        {
+            Log($"  screen {fileName} failed: {e.GetType().Name}: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Tear-off chrome (§12.14): a tear-off wears the main window's chrome - no system    /// caption, a caption surface with the tab's dot, icon, label and detail, the three
     /// caption buttons; the terminal keeps working inside; the close button re-attaches
     /// rather than ending the session; maximize and restore keep the margins right.
     /// </summary>

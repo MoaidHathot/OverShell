@@ -131,8 +131,11 @@
                 <StackPanel x:Name="RightPanel" Grid.Column="2" Orientation="Horizontal" Background="{StaticResource Surface.Chrome}" />
             </Grid>
 
-            <!-- ======================= Prompt bar (prompt.toggle) ======================= -->
-            <chrome:PromptBar x:Name="Prompt" Grid.Row="2" Visibility="Collapsed" />
+            <!-- ============ Find bar (terminal.find) and prompt bar (prompt.toggle) ============ -->
+            <StackPanel Grid.Row="2">
+                <chrome:FindBar x:Name="Find" Visibility="Collapsed" />
+                <chrome:PromptBar x:Name="Prompt" Visibility="Collapsed" />
+            </StackPanel>
 
             <!-- ======================= Bottom tab strip (bottom layouts) ======================= -->
             <Border x:Name="BottomBar"

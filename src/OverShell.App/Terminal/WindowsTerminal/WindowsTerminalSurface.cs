@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -35,6 +36,7 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
 
     private ITerminalSession? _session;
     private HwndHost? _container;
+    private ScrollBar? _scrollBar;
     private (ColorScheme Scheme, TerminalProfile Profile)? _theme;
     private TerminalPointer _pointer;
     private bool _loaded;
@@ -94,6 +96,8 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     }
 
     public event EventHandler? Ready;
+
+    public event EventHandler? ViewportChanged;
 
     /// <summary>
     /// The renderer's own underline for this font, provided the font it resolved is the one
@@ -188,6 +192,12 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
             _container = null;
         }
 
+        if (_scrollBar is { } scrollBar)
+        {
+            scrollBar.ValueChanged -= OnScrollBarValueChanged;
+            _scrollBar = null;
+        }
+
         Detach();
     }
 
@@ -203,10 +213,22 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
             container.MessageHook += OnContainerMessage;
         }
 
+        // The control mirrors every viewport move into its own scroll bar (TerminalScrolled
+        // -> scrollbar.Value); the terminal's scroll events themselves are internal to the
+        // package, so the bar is the one public place the viewport can be watched from.
+        if (_scrollBar is null && FindDescendant<ScrollBar>(_control) is { } scrollBar)
+        {
+            _scrollBar = scrollBar;
+            scrollBar.ValueChanged += OnScrollBarValueChanged;
+        }
+
         // SetTheme is a no-op until the control has a PresentationSource, hence here.
         ApplyThemeCore();
         Connect();
     }
+
+    private void OnScrollBarValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
+        ViewportChanged?.Invoke(this, EventArgs.Empty);
 
     private IntPtr OnContainerMessage(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {

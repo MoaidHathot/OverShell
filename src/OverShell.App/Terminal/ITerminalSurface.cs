@@ -80,6 +80,13 @@ public interface ITerminalSurface : IDisposable
     event EventHandler? Ready;
 
     /// <summary>
+    /// Raised on the UI thread when the viewport scrolls - by the user, by output arriving
+    /// while the view sits at the bottom, or by a search revealing a match. Anything drawn
+    /// over the text in screen coordinates re-places itself on it (the find bar's highlights).
+    /// </summary>
+    event EventHandler? ViewportChanged;
+
+    /// <summary>
     /// Binds a session to this surface. A session that has not started yet is started as
     /// soon as the surface knows its grid size.
     /// </summary>

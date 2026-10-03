@@ -81,6 +81,7 @@ public class KeybindingMapTests
         Assert.Equal("clipboard.paste", Resolve(map, "ctrl+v"));
         Assert.Equal("clipboard.copy", Resolve(map, "ctrl+shift+c"));
         Assert.Equal("palette.commands", Resolve(map, "ctrl+shift+p"));
+        Assert.Equal("terminal.find", Resolve(map, "ctrl+shift+f"));
         Assert.Equal("tab.jumpToAttention", Resolve(map, "ctrl+shift+j"));
     }
 

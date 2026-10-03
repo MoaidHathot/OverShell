@@ -80,6 +80,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         WireRouter();
         InitializeViews();
         InitializeDepth();
+        InitializeFind();
         InitializeTearOff();
         InitializeWorkspaces();
         InitializeSession();
@@ -163,6 +164,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 _tabStrip.EnsureVisible(_activeTab);
             }
 
+            // An open find bar searches whatever the window shows.
+            _findBar?.Retarget(_activeTab);
+
             Raise();
             UpdateViewed();
             UpdateStatus();
@@ -226,6 +230,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // Remembered while its directory and session id are still readable.
         RememberClosed(tab);
+        _findBar.Forget(tab);
 
         // Dispose first: it suppresses further input, so the focus and key messages
         // generated while the HwndHost is unloaded can't reach a closed pseudoconsole.

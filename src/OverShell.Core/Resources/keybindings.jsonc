@@ -38,6 +38,12 @@
   { "keys": "ctrl+shift+a",        "command": "tab.attach" },
   { "keys": "ctrl+shift+space",    "command": "palette.tabs" },
 
+  // ---- find ----
+  // Over the buffer, scrollback included. Inside the bar: Enter / F3 walk up (older text),
+  // Shift+Enter / Shift+F3 down, Esc closes. terminal.findUp / terminal.findDown are
+  // unbound by default.
+  { "keys": "ctrl+shift+f",        "command": "terminal.find" },
+
   // ---- prompt bar ----
   // Type once, send to the active tab or to every agent (we own the terminal's input).
   { "keys": "ctrl+shift+enter",    "command": "prompt.toggle" },

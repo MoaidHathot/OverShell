@@ -201,7 +201,7 @@ internal sealed class TerminalTextProbe
         TextPatternRange? found = null;
         for (var i = 0; i < MaxOccurrences; i++)
         {
-            var candidate = search.FindText(needle, false, false);
+            var candidate = TryFindText(search, needle, ignoreCase: false);
             if (candidate is null)
             {
                 break;
@@ -233,18 +233,45 @@ internal sealed class TerminalTextProbe
     }
 
     /// <summary>
-    /// The provider builds a found range from a half-open search hit and then increments
-    /// the end once more as if it were inclusive (<c>UiaTextRangeBase::FindText</c>), so
+    /// <c>FindText</c> as documented: the found range, or null when there is none. With no
+    /// hit the terminal's provider hands back a range object anyway, one that fails every
+    /// call with E_FAIL (measured, spike 7) - the UIA client surfaces that as a COMException
+    /// on first use. Probing it here and answering null is what lets callers fall back
+    /// instead of giving up on the whole probe.
+    /// </summary>
+    internal static TextPatternRange? TryFindText(TextPatternRange range, string needle, bool ignoreCase)
+    {
+        var found = range.FindText(needle, false, ignoreCase);
+        if (found is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            _ = found.GetText(0);
+            return found;
+        }
+        catch (COMException e) when (e.HResult == unchecked((int)0x80004005))
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The provider builds a found range from a half-open search hit and then increments    /// the end once more as if it were inclusive (<c>UiaTextRangeBase::FindText</c>), so
     /// the range normally covers one glyph too many. Measured rather than assumed: the end
     /// is pulled back a glyph at a time while the range's text — minus the CR LF a row end
     /// carries — is longer than what was searched for. At a row end the extra "glyph" is
     /// that CR LF, and pulling back would drop the last real one.
     /// </summary>
-    private static void TrimToNeedle(TextPatternRange range, int needleLength)
+    /// <returns>The range's text after trimming, without the CR LF a row end carries.</returns>
+    internal static string TrimToNeedle(TextPatternRange range, int needleLength)
     {
+        var text = string.Empty;
         for (var i = 0; i < 2; i++)
         {
-            var text = range.GetText(-1);
+            text = range.GetText(-1);
             if (text.EndsWith("\r\n", StringComparison.Ordinal))
             {
                 text = text[..^2];
@@ -256,6 +283,8 @@ internal sealed class TerminalTextProbe
                 break;
             }
         }
+
+        return text;
     }
 
     /// <summary>The rendered foreground of the range as a COLORREF, or null when the range is not uniformly coloured.</summary>

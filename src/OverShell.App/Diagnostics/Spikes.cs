@@ -19,8 +19,9 @@ namespace OverShell.App.Diagnostics;
 /// </summary>
 internal static class Spikes
 {
-    private static readonly bool Enabled =
-        Environment.GetEnvironmentVariable("OVERSHELL_SPIKES") == "1";
+    private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SPIKES");
+
+    private static readonly bool Enabled = Mode is "1" or "find";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-spikes.log");
@@ -48,7 +49,14 @@ internal static class Spikes
             timer.Stop();
             try
             {
-                await RunAsync(window, firstTab);
+                if (Mode == "find")
+                {
+                    await RunFindAsync(firstTab);
+                }
+                else
+                {
+                    await RunAsync(window, firstTab);
+                }
             }
             catch (Exception e)
             {
@@ -216,8 +224,136 @@ internal static class Spikes
         Log("=== spikes end ===");
     }
 
-    private static string? ReadVisibleText(nint hwnd)
+    /// <summary>
+    /// Spike 7 (§12.14, find): what the UIA text provider offers for a search box - does
+    /// <c>FindText</c> over <c>DocumentRange</c> reach scrollback, does <c>Select()</c>
+    /// scroll the viewport and select the match as Windows Terminal's own search does
+    /// (<c>Terminal::SelectNewRegion</c>), does <c>ScrollIntoView</c> work, and are the
+    /// bounding rectangles of an off-screen match empty - which is how a visible match is
+    /// told apart from a hidden one.
+    /// </summary>
+    private static async Task RunFindAsync(TerminalTab first)
     {
+        Log("=== spike 7 (find) start ===");
+        var hwnd = MainWindow.FindTerminalHwnd(first.View);
+        Log($"tab1 hwnd=0x{hwnd:X} grid={first.Grid.Columns}x{first.Grid.Rows}");
+
+        // 120 rows, NEEDLE on every 30th: two of them end up in scrollback.
+        first.SendText("foreach ($i in 1..120) { \"find-spike row $i\" + $(if ($i % 30 -eq 0) { ' NEEDLE' } else { '' }) }\r");
+        await Task.Delay(3000);
+
+        await Task.Run(() =>
+        {
+            try
+            {
+                var element = AutomationElement.FromHandle(hwnd);
+                if (element.GetCurrentPattern(TextPattern.Pattern) is not TextPattern text)
+                {
+                    Log("  no TextPattern");
+                    return;
+                }
+
+                Log($"  SupportedTextSelection={text.SupportedTextSelection}");
+                var visibleBefore = text.GetVisibleRanges()[0].GetText(-1);
+                Log($"  visible before: first='{FirstLine(visibleBefore)}' rows={visibleBefore.Split("\r\n").Length}");
+
+                var sw = Stopwatch.StartNew();
+                var doc = text.DocumentRange;
+                var docText = doc.GetText(-1);
+                Log($"  DocumentRange: {docText.Length} chars, rows={docText.Split("\r\n").Length}, contains 'row 30 NEEDLE'={docText.Contains("row 30 NEEDLE", StringComparison.Ordinal)} in {sw.Elapsed.TotalMilliseconds:F1} ms");
+
+                sw.Restart();
+                var search = doc.Clone();
+                var found = new List<TextPatternRange>();
+                for (var i = 0; i < 50; i++)
+                {
+                    var candidate = search.FindText("needle", false, true);
+                    if (candidate is null)
+                    {
+                        break;
+                    }
+
+                    found.Add(candidate);
+                    search.MoveEndpointByRange(TextPatternRangeEndpoint.Start, candidate, TextPatternRangeEndpoint.End);
+                }
+
+                Log($"  FindText(ignoreCase) over DocumentRange: {found.Count} matches in {sw.Elapsed.TotalMilliseconds:F1} ms");
+                foreach (var (range, index) in found.Select((r, i) => (r, i)))
+                {
+                    var rects = range.GetBoundingRectangles();
+                    var row = range.Clone();
+                    row.ExpandToEnclosingUnit(TextUnit.Line);
+                    Log($"    match {index}: text='{range.GetText(-1).Replace("\r\n", "\\r\\n")}' rects={rects.Length}{(rects.Length > 0 ? $" first=[{rects[0].X},{rects[0].Y} {rects[0].Width}x{rects[0].Height}]" : string.Empty)} row='{row.GetText(-1).TrimEnd()}'");
+                }
+
+                // Backward search from the end - the natural "previous match" primitive.
+                sw.Restart();
+                var backward = doc.FindText("needle", true, true);
+                Log($"  FindText(backward) from DocumentRange: {(backward is null ? "null" : $"'{backward.GetText(-1).TrimEnd()}'")} in {sw.Elapsed.TotalMilliseconds:F1} ms");
+
+                if (found.Count >= 2)
+                {
+                    // Select the first (scrollback) match: does the viewport follow?
+                    sw.Restart();
+                    found[0].Select();
+                    var elapsed = sw.Elapsed.TotalMilliseconds;
+                    System.Threading.Thread.Sleep(300);
+                    var visibleAfter = text.GetVisibleRanges()[0].GetText(-1);
+                    var selection = text.GetSelection();
+                    var rectsAfter = found[0].GetBoundingRectangles();
+                    Log($"  Select(match 0) in {elapsed:F1} ms: visible first='{FirstLine(visibleAfter)}' contains row30={visibleAfter.Contains("row 30 NEEDLE", StringComparison.Ordinal)} selection={selection.Length}{(selection.Length > 0 ? $" '{selection[0].GetText(-1).TrimEnd()}'" : string.Empty)} rects now={rectsAfter.Length}");
+
+                    // ScrollIntoView on the second match, aligned to top.
+                    sw.Restart();
+                    found[1].ScrollIntoView(true);
+                    elapsed = sw.Elapsed.TotalMilliseconds;
+                    System.Threading.Thread.Sleep(300);
+                    var visibleScrolled = text.GetVisibleRanges()[0].GetText(-1);
+                    Log($"  ScrollIntoView(match 1, top) in {elapsed:F1} ms: visible first='{FirstLine(visibleScrolled)}' contains row60={visibleScrolled.Contains("row 60 NEEDLE", StringComparison.Ordinal)} rects now={found[1].GetBoundingRectangles().Length}");
+
+                    // Back to the bottom: scroll the last document line into view.
+                    var last = doc.Clone();
+                    last.MoveEndpointByRange(TextPatternRangeEndpoint.Start, doc, TextPatternRangeEndpoint.End);
+                    var lastVisible = text.GetVisibleRanges()[0];
+                    last.ScrollIntoView(false);
+                    System.Threading.Thread.Sleep(300);
+                    var visibleBottom = text.GetVisibleRanges()[0].GetText(-1);
+                    Log($"  ScrollIntoView(end): visible first='{FirstLine(visibleBottom)}' back to start view={FirstLine(visibleBottom) == FirstLine(visibleBefore)}");
+
+                    // Degenerate select clears the selection?
+                    var degenerate = found[0].Clone();
+                    degenerate.MoveEndpointByRange(TextPatternRangeEndpoint.End, degenerate, TextPatternRangeEndpoint.Start);
+                    degenerate.Select();
+                    System.Threading.Thread.Sleep(200);
+                    Log($"  degenerate Select(): selection={text.GetSelection().Length}");
+
+                    // Leave a VISIBLE match selected without any scroll, so a screenshot can show
+                    // whether the renderer paints a selection made through UIA.
+                    var visible = found.LastOrDefault(r => r.GetBoundingRectangles().Length > 0);
+                    if (visible is not null)
+                    {
+                        var trimmed = visible.Clone();
+                        trimmed.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, -1);
+                        trimmed.Select();
+                        System.Threading.Thread.Sleep(200);
+                        var sel = text.GetSelection();
+                        Log($"  Select(visible match, trimmed): selection='{(sel.Length > 0 ? sel[0].GetText(-1).TrimEnd() : string.Empty)}' rects={trimmed.GetBoundingRectangles().Length} first={(trimmed.GetBoundingRectangles().Length > 0 ? trimmed.GetBoundingRectangles()[0].ToString() : "-")}");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Log($"  spike7 error: {e.GetType().Name}: {e.Message}");
+            }
+        });
+
+        first.RequestScreen();
+        await Task.Delay(500);
+        Log($"  after: screen rows={first.ScreenRows.Count} last='{first.ScreenRows.LastOrDefault(r => r.Trim().Length > 0)}'");
+        Log("=== spike 7 (find) end ===");
+    }
+
+    private static string? ReadVisibleText(nint hwnd)    {
         try
         {
             var element = AutomationElement.FromHandle(hwnd);
