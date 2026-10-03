@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -77,6 +77,9 @@ internal static class HerdSelfTest
                         break;
                     case "ghost":
                         await RunGhostAsync(window, firstTab);
+                        break;
+                    case "workspaces":
+                        await RunWorkspacesAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -298,8 +301,95 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// The previous screen (§12.14): the launcher seeds an interrupted session whose tab has
-    /// saved rows with a marker; the restored tab must show those rows dimmed above its new
+    /// Workspaces (§12.14): save the open tabs as one, see the file and its command appear,
+    /// open it (tabs added next to the open ones, command typed, label and group kept), and
+    /// reach it through an <c>overshell://workspace/…</c> request. Runs against a throwaway
+    /// configuration root (the launcher sets OVERSHELL_CONFIG_DIR).
+    /// </summary>
+    private static async Task RunWorkspacesAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (workspaces) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        await WaitForPromptAsync(tab);
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+
+        // Two tabs, one with a label and a group, one a "running agent" by report.
+        tab.UserLabel = "ws build";
+        window.SetGroup(tab, "ws group");
+        var second = window.AddTab(tab.Profile with { StartingDirectory = windows }, activate: false);
+        await Task.Delay(1200);
+        second.ApplyReport(new IntegrationReport(second.Id, "opencode", 1, AgentState.Working, "opencode", "working", null, "ses-ws", null, Release: false));
+        await Task.Delay(300);
+
+        // ---- save ----
+        var path = window.SaveWorkspace("Selftest WS");
+        var text = System.IO.File.ReadAllText(path);
+        Log($"  saved: {path}\n{text}");
+        Check(System.IO.Path.GetFileName(path) == "selftest-ws.jsonc" && path.StartsWith(AppPaths.WorkspacesDir, StringComparison.OrdinalIgnoreCase), "workspace.save wrote workspaces\\selftest-ws.jsonc under the configuration root");
+        Check(text.Contains("\"label\": \"ws build\"", StringComparison.Ordinal) && text.Contains("\"group\": \"ws group\"", StringComparison.Ordinal), "…with the label and group");
+        Check(text.Contains("\"command\": \"opencode\"", StringComparison.Ordinal), "…and the agent tab's program as its command");
+        Check(window.Commands.Find("workspace.open.selftest-ws") is not null, "the command workspace.open.selftest-ws exists right away");
+
+        // ---- a file written by hand appears as a command on reload ----
+        var byHand = System.IO.Path.Combine(AppPaths.WorkspacesDir, "by-hand.jsonc");
+        System.IO.File.WriteAllText(byHand, $$"""{ "name": "By Hand", "tabs": [ { "profile": "{{tab.Profile.Name}}", "cwd": "{{windows.Replace("\\", "\\\\")}}", "label": "handmade", "group": "hand", "command": "Write-Host workspace-cmd-ran" } ] }""");
+        var deadline = DateTime.UtcNow.AddSeconds(6);
+        while (DateTime.UtcNow < deadline && window.Commands.Find("workspace.open.by-hand") is null)
+        {
+            await Task.Delay(250);
+        }
+
+        Check(window.Commands.Find("workspace.open.by-hand") is not null, "a workspaces\\by-hand.jsonc saved by hand became a command without a restart (hot reload)");
+
+        // ---- open: tabs added next to the open ones, the command typed once the shell is quiet ----
+        var before = window.Tabs.Count;
+        window.Commands.TryExecute("workspace.open.by-hand");
+        await Task.Delay(500);
+        var opened = window.Tabs.LastOrDefault();
+        Check(window.Tabs.Count == before + 1 && opened is { UserLabel: "handmade", Group: "hand" } && ReferenceEquals(window.ActiveTab, opened), "opening added the tab next to the open ones, active, with its label and group");
+        Check(string.Equals(opened?.WorkingDirectory?.TrimEnd('\\'), windows.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase), "…in the workspace's directory");
+        Check(opened?.RestoreNote?.StartsWith("from workspace 'By Hand'", StringComparison.Ordinal) == true, "…with a note saying which workspace");
+
+        var typed = false;
+        deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline && !typed && opened is not null)
+        {
+            await Task.Delay(500);
+            opened.RequestScreen();
+            await Task.Delay(300);
+            typed = opened.ScreenRows.Any(r => r.Contains("workspace-cmd-ran", StringComparison.Ordinal) && !r.Contains("Write-Host", StringComparison.Ordinal));
+        }
+
+        Check(typed, "the workspace's command was typed into the new shell and ran");
+
+        // ---- protocol: a second start would hand this over; here the running window handles it ----
+        before = window.Tabs.Count;
+        window.HandleArguments([Core.Integrations.ProtocolRequest.WorkspaceUrl("Selftest WS")]);
+        await Task.Delay(800);
+        Log($"  after overshell://workspace/Selftest WS: tabs {before}->{window.Tabs.Count} labels=[{string.Join(", ", window.Tabs.Select(t => t.UserLabel ?? "-"))}]");
+        Check(window.Tabs.Count == before + 2, "overshell://workspace/<name> opened the saved workspace's two tabs");
+        Check(window.Tabs.Count(t => t.UserLabel == "ws build") == 2, "…the labelled one twice now (the original and the workspace's copy)");
+
+        window.HandleArguments(["overshell://workspace/no-such"]);
+        await Task.Delay(300);
+        Check(((System.Windows.Controls.TextBlock)window.FindName("TxtMessage")!).Text.Contains("No workspace", StringComparison.Ordinal), "an unknown workspace name is a status message, not an error");
+
+        foreach (var extra in window.Tabs.Skip(1).ToArray())
+        {
+            window.CloseTab(extra);
+        }
+
+        Log($"=== selftest (workspaces) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// The previous screen (§12.14): the launcher seeds an interrupted session whose tab has    /// saved rows with a marker; the restored tab must show those rows dimmed above its new
     /// prompt, with the rule naming when they were seen. The running tab's rows must land in
     /// the screens file within a few seconds, keyed by the tab's id.
     /// </summary>

@@ -121,10 +121,23 @@ public partial class MainWindow
         }
 
         _commands.Register("view.toggle", "View: toggle last two", "View", () => ApplyView(_previousViewId), description: "Switch between the current view and the one before it");
-        _commands.Register("settings.reload", "Reload configuration", "Settings", () => ReloadConfiguration(all: true), description: "settings.jsonc, keybindings.jsonc, snippets.jsonc, agents\\, layouts\\, skins\\");
+        _commands.Register("settings.reload", "Reload configuration", "Settings", () => ReloadConfiguration(all: true), description: "settings.jsonc, keybindings.jsonc, snippets.jsonc, agents\\, layouts\\, skins\\, workspaces\\");
 
-        // Layouts at runtime: pick any preset (or user layout) for the current view. The choice
-        // lives for this session; settings.jsonc is where it becomes permanent.
+        RegisterLayoutCommands();
+    }
+
+    /// <summary>
+    /// Layouts at runtime: pick any preset (or user layout) for the current view. The choice
+    /// lives for this session; settings.jsonc is where it becomes permanent. Re-run on reload,
+    /// so a new <c>layouts\*.jsonc</c> is a command right away rather than at the next start.
+    /// </summary>
+    private void RegisterLayoutCommands()
+    {
+        foreach (var stale in _commands.All.Where(c => c.Id.StartsWith("layout.", StringComparison.Ordinal)).Select(c => c.Id).ToArray())
+        {
+            _commands.Remove(stale);
+        }
+
         foreach (var layout in _layouts.All.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase))
         {
             var name = layout.Name;
@@ -414,15 +427,22 @@ public partial class MainWindow
         var agents = paths.Any(p => p.StartsWith(AppPaths.AgentsDir, StringComparison.OrdinalIgnoreCase));
         var layouts = paths.Any(p => p.StartsWith(AppPaths.LayoutsDir, StringComparison.OrdinalIgnoreCase));
         var skins = paths.Any(p => p.StartsWith(AppPaths.SkinsDir, StringComparison.OrdinalIgnoreCase));
+        var workspaces = paths.Any(p => p.StartsWith(AppPaths.WorkspacesDir, StringComparison.OrdinalIgnoreCase));
         var snippets = paths.Any(p => string.Equals(p, AppPaths.SnippetsFile, StringComparison.OrdinalIgnoreCase));
 
-        ReloadConfiguration(all: false, settings, keys, agents, layouts, skins, snippets);
+        ReloadConfiguration(all: false, settings, keys, agents, layouts, skins, snippets, workspaces);
     }
 
     /// <summary>Reloads configuration files and re-applies them to the running window.</summary>
-    internal void ReloadConfiguration(bool all, bool settings = false, bool keybindings = false, bool agents = false, bool layouts = false, bool skins = false, bool snippets = false)
+    internal void ReloadConfiguration(bool all, bool settings = false, bool keybindings = false, bool agents = false, bool layouts = false, bool skins = false, bool snippets = false, bool workspaces = false)
     {
         var parts = new List<string>();
+
+        if (all || workspaces)
+        {
+            LoadWorkspaces();
+            parts.Add($"workspaces ({_workspaces.All.Count})");
+        }
 
         if (all || keybindings)
         {
@@ -445,6 +465,7 @@ public partial class MainWindow
         if (all || layouts)
         {
             _layouts = LayoutCatalog.Load(AppPaths.LayoutsDir);
+            RegisterLayoutCommands();
             parts.Add($"layouts ({_layouts.All.Count})");
         }
 

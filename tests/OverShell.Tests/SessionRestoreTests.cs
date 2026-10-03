@@ -370,3 +370,95 @@ public class SessionScreensTests
         }
     }
 }
+
+public class WorkspaceTests
+{
+    [Theory]
+    [InlineData("OverShell dev", "overshell-dev")]
+    [InlineData("  Build & Test!!  ", "build-test")]
+    [InlineData("日本語 work", "日本語-work")]
+    [InlineData("---", "workspace")]
+    public void Slugs_are_file_and_command_safe(string name, string slug) => Assert.Equal(slug, Workspace.Slug(name));
+
+    [Fact]
+    public void Loads_files_names_them_after_the_file_when_unnamed_and_reports_problems()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-ws");
+        try
+        {
+            File.WriteAllText(Path.Combine(dir.FullName, "dev.jsonc"), """
+                // a workspace
+                { "view": "herd", "tabs": [ { "profile": "PowerShell", "cwd": "%USERPROFILE%", "label": "home" }, { "command": "opencode", "detached": true } ] }
+                """);
+            File.WriteAllText(Path.Combine(dir.FullName, "Named One.jsonc"), """{ "name": "Review", "description": "PRs", "tabs": [ { "profile": "cmd" } ] }""");
+            File.WriteAllText(Path.Combine(dir.FullName, "empty.jsonc"), """{ "tabs": [] }""");
+            File.WriteAllText(Path.Combine(dir.FullName, "broken.jsonc"), "{ nope");
+
+            var catalog = WorkspaceCatalog.Load(dir.FullName);
+
+            Assert.Equal(2, catalog.All.Count);
+            var dev = catalog.Find("dev")!;
+            Assert.Equal("dev", dev.Name);
+            Assert.Equal("herd", dev.View);
+            Assert.Equal(2, dev.Tabs.Count);
+            Assert.Equal("home", dev.Tabs[0].Label);
+            Assert.True(dev.Tabs[1].Detached);
+            Assert.Equal("workspace.open.dev", dev.CommandId);
+            Assert.Equal("Review", catalog.Find("review")!.Name);
+            Assert.Equal(2, catalog.Problems.Count);
+            Assert.Contains(catalog.Problems, p => p.Contains("empty.jsonc") && p.Contains("no tabs"));
+            Assert.Contains(catalog.Problems, p => p.Contains("broken.jsonc"));
+            Assert.Empty(WorkspaceCatalog.Load(Path.Combine(dir.FullName, "missing")).All);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Save_writes_a_commented_file_that_loads_back()
+    {
+        var dir = Directory.CreateTempSubdirectory("overshell-ws");
+        try
+        {
+            var workspace = new Workspace
+            {
+                Name = "OverShell dev",
+                View = "terminal",
+                Tabs = [new WorkspaceTab { Profile = "PowerShell", Cwd = "W:\\Github\\OverShell", Label = "build", Group = "dev" }, new WorkspaceTab { Profile = "PowerShell", Cwd = "W:\\Github\\OverShell", Command = "opencode" }],
+            };
+
+            var path = WorkspaceCatalog.Save(dir.FullName, workspace);
+            Assert.Equal("overshell-dev.jsonc", Path.GetFileName(path));
+            var text = File.ReadAllText(path);
+            Assert.StartsWith("// OverShell workspace", text);
+            Assert.Contains("\"command\": \"opencode\"", text);
+            Assert.DoesNotContain("\"detached\"", text);
+
+            var loaded = WorkspaceCatalog.Load(dir.FullName).Find("OverShell dev")!;
+            Assert.Equal("OverShell dev", loaded.Name);
+            Assert.Equal(path, loaded.Path);
+            Assert.Equal("opencode", loaded.Tabs[1].Command);
+            Assert.Equal("dev", loaded.Tabs[0].Group);
+        }
+        finally
+        {
+            dir.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Protocol_urls_for_workspaces_reopen_and_history_parse()
+    {
+        var ws = OverShell.Core.Integrations.ProtocolRequest.Parse(OverShell.Core.Integrations.ProtocolRequest.WorkspaceUrl("OverShell dev"))!;
+        Assert.Equal(OverShell.Core.Integrations.ProtocolAction.Workspace, ws.Action);
+        Assert.Equal("OverShell dev", ws.Target);
+
+        Assert.Equal(OverShell.Core.Integrations.ProtocolAction.Reopen, OverShell.Core.Integrations.ProtocolRequest.Parse("overshell://reopen")!.Action);
+        var history = OverShell.Core.Integrations.ProtocolRequest.Parse(OverShell.Core.Integrations.ProtocolRequest.HistoryUrl("20261003-022142-interrupted"))!;
+        Assert.Equal(OverShell.Core.Integrations.ProtocolAction.History, history.Action);
+        Assert.Equal("20261003-022142-interrupted", history.Target);
+        Assert.Null(OverShell.Core.Integrations.ProtocolRequest.Parse("overshell://history")!.Target);
+    }
+}

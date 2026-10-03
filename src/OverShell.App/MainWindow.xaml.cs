@@ -81,6 +81,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeViews();
         InitializeDepth();
         InitializeTearOff();
+        InitializeWorkspaces();
         InitializeSession();
 
         // The saved session, else a single terminal — panes and extra tabs are opt-in.

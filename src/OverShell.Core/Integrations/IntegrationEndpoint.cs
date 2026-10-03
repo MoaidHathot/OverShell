@@ -21,7 +21,7 @@ public sealed class IntegrationEndpoint : IDisposable
 {
     private const int MaxBodyBytes = 256 * 1024;
 
-    private readonly HttpListener _listener = new();
+    private HttpListener _listener = new();
     private readonly CancellationTokenSource _stop = new();
     private Task? _loop;
 
@@ -73,9 +73,12 @@ public sealed class IntegrationEndpoint : IDisposable
                 _loop = Task.Run(LoopAsync);
                 return;
             }
-            catch (HttpListenerException)
+            catch (Exception e) when (e is HttpListenerException or ObjectDisposedException)
             {
-                // Port taken or reserved; try another.
+                // Port taken or reserved (Hyper-V and WSL reserve whole ranges in 49152-65535).
+                // A failed Start() leaves the HttpListener disposed - the next Prefixes.Clear()
+                // would throw ObjectDisposedException - so every attempt gets a fresh one.
+                _listener = new HttpListener();
             }
         }
 

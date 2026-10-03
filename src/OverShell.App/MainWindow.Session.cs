@@ -791,6 +791,47 @@ public partial class MainWindow
                 ApplyView(view);
                 break;
 
+            case ProtocolAction.Workspace when request.Target is { } name:
+                if (_workspaces.Find(name) is { } workspace)
+                {
+                    OpenWorkspace(workspace);
+                }
+                else
+                {
+                    ShowStatusMessage($"No workspace '{name}' (workspaces\\<name>.jsonc)");
+                }
+
+                break;
+
+            case ProtocolAction.Reopen:
+                if (ReopenClosedTab() is null)
+                {
+                    ShowStatusMessage("Nothing to reopen");
+                }
+
+                break;
+
+            case ProtocolAction.History when request.Target is { } stem:
+                {
+                    var archive = SessionHistory.List(AppPaths.StateRoot).FirstOrDefault(a => string.Equals(Path.GetFileNameWithoutExtension(a.Path), stem, StringComparison.OrdinalIgnoreCase));
+                    if (archive is not null)
+                    {
+                        ReopenSession(archive);
+                    }
+                    else
+                    {
+                        ShowStatusMessage($"No archived session '{stem}'");
+                    }
+
+                    break;
+                }
+
+            case ProtocolAction.History:
+                // The picker is an owned window that closes on deactivation: the window comes up first.
+                BringToFront();
+                Dispatcher.BeginInvoke(OpenSessionHistory, System.Windows.Threading.DispatcherPriority.Background);
+                return;
+
             case ProtocolAction.New:
                 {
                     var profile = request.Query.TryGetValue("profile", out var id)

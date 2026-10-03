@@ -12,6 +12,15 @@ public enum ProtocolAction
     /// <summary><c>overshell://new?profile=&lt;id&gt;&amp;cwd=&lt;path&gt;</c> — open a tab.</summary>
     New,
 
+    /// <summary><c>overshell://workspace/&lt;name&gt;</c> — open a workspace's tabs next to the open ones.</summary>
+    Workspace,
+
+    /// <summary><c>overshell://reopen</c> — the most recently closed tab.</summary>
+    Reopen,
+
+    /// <summary><c>overshell://history</c> — the session history picker; <c>overshell://history/&lt;archive stem&gt;</c> reopens that archive.</summary>
+    History,
+
     /// <summary><c>overshell://</c> alone, or anything unknown: just show the window.</summary>
     Show,
 }
@@ -57,9 +66,20 @@ public sealed record ProtocolRequest(ProtocolAction Action, string? Target, IRea
             "focus" when target is not null => new ProtocolRequest(ProtocolAction.Focus, target, query),
             "view" when target is not null => new ProtocolRequest(ProtocolAction.View, target.ToLowerInvariant(), query),
             "new" => new ProtocolRequest(ProtocolAction.New, target, query),
+            "workspace" when target is not null => new ProtocolRequest(ProtocolAction.Workspace, target, query),
+            "reopen" => new ProtocolRequest(ProtocolAction.Reopen, null, query),
+            "history" => new ProtocolRequest(ProtocolAction.History, target, query),
             _ => new ProtocolRequest(ProtocolAction.Show, null, query),
         };
     }
 
     public static string FocusUrl(string tabId) => $"{Scheme}://focus/{Uri.EscapeDataString(tabId)}";
+
+    public static string WorkspaceUrl(string name) => $"{Scheme}://workspace/{Uri.EscapeDataString(name)}";
+
+    public static string HistoryUrl(string? archiveStem = null) => archiveStem is null ? $"{Scheme}://history" : $"{Scheme}://history/{Uri.EscapeDataString(archiveStem)}";
+
+    public const string ReopenUrl = Scheme + "://reopen";
+
+    public const string NewUrl = Scheme + "://new";
 }
