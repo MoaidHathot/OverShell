@@ -114,6 +114,10 @@ public partial class MainWindow
 
         Loaded += (_, _) =>
         {
+            // The jump list needs the window's identity on the taskbar; the history and the
+            // workspaces are known by now.
+            UpdateJumpList();
+
             // After every Loaded handler: the notification pipeline (which carries the note
             // when the layout has no status bar) is created by one of the later ones.
             Dispatcher.BeginInvoke(AnnounceRestore, System.Windows.Threading.DispatcherPriority.Background);

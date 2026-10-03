@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -83,6 +83,9 @@ internal static class HerdSelfTest
                         break;
                     case "overflow":
                         await RunOverflowAsync(window, firstTab);
+                        break;
+                    case "jumplist":
+                        await RunJumpListAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -304,8 +307,66 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// The tab strip under crowding (§12.14): with room to spare tabs are 150-240 px; as tabs
-    /// are added every tab shrinks to the same width down to 104 px; past that the strip
+    /// The jump list (§12.14): read back from the application after start, it carries the
+    /// three tasks, the seeded archived session and the seeded workspace, every entry an
+    /// <c>overshell://</c> URL for this executable; the URLs are then handled by the running
+    /// window the way a second instance would hand them over.
+    /// </summary>
+    private static async Task RunJumpListAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (jumplist) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        await Task.Delay(800);
+        var list = System.Windows.Shell.JumpList.GetJumpList(System.Windows.Application.Current);
+        var tasks = list?.JumpItems.OfType<System.Windows.Shell.JumpTask>().ToList() ?? [];
+        Log($"  jump list: {tasks.Count} task(s): {string.Join(" | ", tasks.Select(t => $"[{t.CustomCategory ?? "Tasks"}] {t.Title} -> {t.Arguments}"))}");
+        Check(tasks.Count >= 5, "the jump list is set and has the three tasks plus history and workspace entries");
+        Check(tasks.Any(t => t.CustomCategory is null && t.Arguments == "overshell://new") && tasks.Any(t => t.Arguments == "overshell://reopen") && tasks.Any(t => t.Arguments == "overshell://history"), "New tab, Reopen closed tab and Session history are tasks with their URLs");
+        Check(tasks.Any(t => t.CustomCategory == "Recent sessions" && t.Arguments!.StartsWith("overshell://history/", StringComparison.Ordinal) && t.Title.Contains("2 tabs", StringComparison.Ordinal)), "the seeded archived session is under 'Recent sessions' with its tab summary");
+        Check(tasks.Any(t => t.CustomCategory == "Workspaces" && t.Title == "Jump WS" && t.Arguments == "overshell://workspace/Jump%20WS"), "the seeded workspace is under 'Workspaces'");
+        Check(tasks.All(t => string.Equals(t.ApplicationPath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) && string.Equals(t.IconResourcePath, Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)), "every entry starts this executable and uses its icon");
+
+        // The URLs do what they say when handed to the running window.
+        var before = window.Tabs.Count;
+        window.HandleArguments(["overshell://new"]);
+        await Task.Delay(600);
+        Check(window.Tabs.Count == before + 1, "overshell://new opened a tab");
+
+        window.CloseTab(window.Tabs[^1]);
+        await Task.Delay(300);
+        window.HandleArguments(["overshell://reopen"]);
+        await Task.Delay(600);
+        Check(window.Tabs.Count == before + 1, "overshell://reopen brought the closed tab back");
+
+        var archive = tasks.First(t => t.CustomCategory == "Recent sessions").Arguments!;
+        before = window.Tabs.Count;
+        window.HandleArguments([archive]);
+        await Task.Delay(800);
+        Check(window.Tabs.Count == before + 2, "overshell://history/<archive> reopened the archived session's two tabs");
+
+        window.HandleArguments(["overshell://history"]);
+        await Task.Delay(900);
+        var picker = window.Palette;
+        Check(picker is { IsVisible: true } || !ShortcutRouter.ForegroundIsOurs(), "overshell://history opened the history picker (or the foreground left us)");
+        picker?.Close();
+        await Task.Delay(300);
+
+        foreach (var extra in window.Tabs.Skip(1).ToArray())
+        {
+            window.CloseTab(extra);
+        }
+
+        Log($"=== selftest (jumplist) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// The tab strip under crowding (§12.14): with room to spare tabs are 150-240 px; as tabs    /// are added every tab shrinks to the same width down to 104 px; past that the strip
     /// scrolls, a chevron appears, the far edge fades, and activating a tab brings it into
     /// view. Measured at 4, 12 and 20 tabs, with a PNG of the strip at each.
     /// </summary>

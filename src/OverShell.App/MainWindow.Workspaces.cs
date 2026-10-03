@@ -47,6 +47,11 @@ public partial class MainWindow
         }
 
         static string DescribeTab(WorkspaceTab t) => t.Label ?? t.Command?.Split(' ')[0] ?? t.Profile ?? "shell";
+
+        if (IsLoaded)
+        {
+            UpdateJumpList();
+        }
     }
 
     /// <summary>Opens every tab of <paramref name="workspace"/> next to the open ones; the first becomes active. Returns how many opened.</summary>
