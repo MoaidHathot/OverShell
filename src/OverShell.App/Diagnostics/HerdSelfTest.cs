@@ -21,7 +21,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -80,6 +80,9 @@ internal static class HerdSelfTest
                         break;
                     case "workspaces":
                         await RunWorkspacesAsync(window, firstTab);
+                        break;
+                    case "overflow":
+                        await RunOverflowAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -301,8 +304,96 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Workspaces (§12.14): save the open tabs as one, see the file and its command appear,
-    /// open it (tabs added next to the open ones, command typed, label and group kept), and
+    /// The tab strip under crowding (§12.14): with room to spare tabs are 150-240 px; as tabs
+    /// are added every tab shrinks to the same width down to 104 px; past that the strip
+    /// scrolls, a chevron appears, the far edge fades, and activating a tab brings it into
+    /// view. Measured at 4, 12 and 20 tabs, with a PNG of the strip at each.
+    /// </summary>
+    private static async Task RunOverflowAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (overflow) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var strip = window.Strip;
+        var caption = (System.Windows.FrameworkElement)window.FindName("TitleBarSurface")!;
+        double TabWidth() => FindAll<System.Windows.Controls.Border>(strip).Where(b => b.Name == "TabRoot").Select(b => b.ActualWidth).DefaultIfEmpty(0).Average();
+        int Visible() => FindAll<System.Windows.Controls.Border>(strip).Count(b => b.Name == "TabRoot" && b.ActualWidth > 0);
+        var chevron = (System.Windows.Controls.Button)strip.FindName("BtnOverflow");
+        var fadeRight = (System.Windows.FrameworkElement)strip.FindName("FadeRight");
+        var fadeLeft = (System.Windows.FrameworkElement)strip.FindName("FadeLeft");
+
+        async Task AddUntil(int count)
+        {
+            while (window.Tabs.Count < count)
+            {
+                window.AddTab(tab.Profile, activate: false);
+                await Task.Delay(60);
+            }
+
+            await Task.Delay(700);
+        }
+
+        await AddUntil(4);
+        Log($"  4 tabs: width={TabWidth():F0} overflow={strip.IsOverflowing} chevron={chevron.IsVisible} fades={fadeLeft.IsVisible}/{fadeRight.IsVisible} strip={strip.ActualWidth:F0} caption={caption.ActualWidth:F0}");
+        Check(TabWidth() is >= 150 and <= 240 && !strip.IsOverflowing && !chevron.IsVisible, "4 tabs: relaxed widths, no overflow chrome");
+        SaveVisual(caption, "overshell-selftest-overflow-04.png");
+
+        await AddUntil(12);
+        var w12 = TabWidth();
+        Log($"  12 tabs: width={w12:F0} overflow={strip.IsOverflowing} chevron={chevron.IsVisible} fades={fadeLeft.IsVisible}/{fadeRight.IsVisible}");
+        Check(w12 < 150 && w12 >= 104, "12 tabs: every tab shrank below 150 px but not below 104");
+        Check(Visible() == 12, "…all twelve are laid out");
+        SaveVisual(caption, "overshell-selftest-overflow-12.png");
+
+        await AddUntil(20);
+        var w20 = TabWidth();
+        Log($"  20 tabs: width={w20:F0} overflow={strip.IsOverflowing} chevron={chevron.IsVisible} fades={fadeLeft.IsVisible}/{fadeRight.IsVisible} scrollable={((System.Windows.Controls.ScrollViewer)strip.FindName("Scroller")).ScrollableWidth:F0}");
+        Check(Math.Abs(w20 - 104) < 1.5, "20 tabs: tabs stopped at the 104 px floor");
+        Check(strip.IsOverflowing && chevron.IsVisible, "…the strip scrolls and the overflow chevron is shown");
+        Check(fadeRight.IsVisible && !fadeLeft.IsVisible, "…the right edge fades (more tabs that way), the left does not (at the start)");
+        SaveVisual(caption, "overshell-selftest-overflow-20-start.png");
+
+        // Activating the last tab scrolls it into view; the fades swap sides.
+        var scroller = (System.Windows.Controls.ScrollViewer)strip.FindName("Scroller");
+        window.ActiveTab = window.Tabs[^1];
+        await Task.Delay(700);
+        var lastRoot = FindAll<System.Windows.Controls.Border>(strip).Last(b => b.Name == "TabRoot");
+        var lastRight = lastRoot.TranslatePoint(new System.Windows.Point(lastRoot.ActualWidth, 0), scroller).X;
+        Log($"  last tab active: offset={scroller.HorizontalOffset:F0}/{scroller.ScrollableWidth:F0} last tab right edge at {lastRight:F0} of viewport {scroller.ViewportWidth:F0} fades={fadeLeft.IsVisible}/{fadeRight.IsVisible}");
+        Check(scroller.HorizontalOffset > 0 && lastRight <= scroller.ViewportWidth + 0.5, "activating the last tab scrolled it into view");
+        Check(fadeLeft.IsVisible, "…and now the left edge fades (tabs scrolled out that way)");
+        SaveVisual(caption, "overshell-selftest-overflow-20-end.png");
+
+        window.ActiveTab = window.Tabs[0];
+        await Task.Delay(700);
+        Check(scroller.HorizontalOffset < 1, "activating the first tab scrolled back to the start");
+
+        // The chevron opens the switcher.
+        window.Commands.TryExecute("palette.tabs");
+        await Task.Delay(600);
+        var items = window.Palette?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Count : -1;
+        Check(items == 20 || window.Palette is null, $"the switcher (what the chevron opens) lists every tab ({items})");
+        window.Palette?.Close();
+        await Task.Delay(300);
+
+        // Back to few tabs: relaxed again.
+        foreach (var extra in window.Tabs.Skip(1).ToArray())
+        {
+            window.CloseTab(extra);
+        }
+
+        await Task.Delay(700);
+        Check(TabWidth() >= 150 && !strip.IsOverflowing && !chevron.IsVisible, "closing them relaxes the widths and hides the chrome");
+        Log($"=== selftest (overflow) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Workspaces (§12.14): save the open tabs as one, see the file and its command appear,    /// open it (tabs added next to the open ones, command typed, label and group kept), and
     /// reach it through an <c>overshell://workspace/…</c> request. Runs against a throwaway
     /// configuration root (the launcher sets OVERSHELL_CONFIG_DIR).
     /// </summary>

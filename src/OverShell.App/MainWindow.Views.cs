@@ -68,6 +68,8 @@ public partial class MainWindow
 
         _tabStrip.Tabs = Tabs;
         _tabStrip.TabSelected += tab => ActiveTab = tab;
+        _tabStrip.OverflowRequested += () => _commands.TryExecute("palette.tabs");
+        _tabStrip.EdgeFadeBrush = TitleBarSurface.Background;
         _tabStrip.TabCloseRequested += CloseTab;
         _tabStrip.TabMenuRequested += ShowTabMenu;
         _tabStrip.NewTabRequested += () => NewTab(_catalog.DefaultProfile);
@@ -256,9 +258,11 @@ public partial class MainWindow
         {
             case TabsPlacement.Top:
                 CaptionTabsHost.Content = _tabStrip;
+                _tabStrip.EdgeFadeBrush = TitleBarSurface.Background;
                 break;
             case TabsPlacement.Bottom:
                 BottomTabsHost.Content = _tabStrip;
+                _tabStrip.EdgeFadeBrush = BottomBar.Background;
                 break;
             case TabsPlacement.Left:
             case TabsPlacement.Right:

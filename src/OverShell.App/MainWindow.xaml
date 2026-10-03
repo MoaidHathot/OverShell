@@ -79,10 +79,14 @@
 
                     <!-- the tab strip lives here in "top" layouts; otherwise the title -->
                     <Grid Grid.Column="1">
+                        <!-- Stretched, so the strip knows how much room there is (it fits its tabs to it, 12.14);
+                             its own content stays left-aligned and its empty part is not hit-testable, so the
+                             caption still drags there. -->
                         <ContentControl x:Name="CaptionTabsHost"
                                         Focusable="False"
                                         VerticalAlignment="Bottom"
-                                        HorizontalAlignment="Left"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Stretch"
                                         shell:WindowChrome.IsHitTestVisibleInChrome="True" />
                         <TextBlock x:Name="TxtCaptionTitle"
                                    VerticalAlignment="Center"
@@ -137,7 +141,7 @@
                     BorderBrush="{StaticResource Surface.Border}"
                     BorderThickness="0,1,0,0"
                     Visibility="Collapsed">
-                <ContentControl x:Name="BottomTabsHost" Focusable="False" Margin="8,4,8,0" HorizontalAlignment="Left" />
+                <ContentControl x:Name="BottomTabsHost" Focusable="False" Margin="8,4,8,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" />
             </Border>
 
             <!-- =========================== Status bar ======================== -->

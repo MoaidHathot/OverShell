@@ -160,6 +160,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 _activeTab.IsActive = true;
                 Title = $"{_activeTab.Title} — OverShell";
+                _tabStrip.EnsureVisible(_activeTab);
             }
 
             Raise();
@@ -1114,6 +1115,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         TitleBarSurface.Background = (Brush)FindResource(
             active ? "Surface.ChromeTranslucent" : "Surface.Chrome");
+        _tabStrip.EdgeFadeBrush = TitleBarSurface.Background;
         StatusBarSurface.Background = (Brush)FindResource(
             active ? "Surface.StatusTranslucent" : "Surface.Chrome");
 
