@@ -34,7 +34,7 @@
                                FontFamily="{StaticResource Font.Ui}"
                                FontSize="9"
                                FontWeight="Bold"
-                               Foreground="#FF0B1020"
+                               Foreground="{StaticResource Accent.OnAccent}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
             </Grid>

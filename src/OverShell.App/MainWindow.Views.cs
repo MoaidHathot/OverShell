@@ -510,6 +510,7 @@ public partial class MainWindow
 
         if (all || settings || skins)
         {
+            _trace.Write($"theme: {ThemeManager.Apply(_settings)}");
             ApplySkinFromSettings();
             if (skins && !settings)
             {

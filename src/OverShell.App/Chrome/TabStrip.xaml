@@ -120,12 +120,19 @@
                 </Grid>
             </Border>
             <DataTemplate.Triggers>
+                <!-- The active tab is painted with its terminal's own background so it joins the body
+                     below; its text therefore takes the scheme's foreground, not the theme's - a dark
+                     scheme under a light theme (or a light scheme under the dark one) stays readable. -->
                 <DataTrigger Binding="{Binding IsActive}" Value="True">
                     <Setter TargetName="TabRoot" Property="Background" Value="{Binding Background}" />
                     <Setter TargetName="ActiveBar" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="TabLabel" Property="Foreground" Value="{StaticResource Text.Primary}" />
+                    <Setter TargetName="TabLabel" Property="Foreground" Value="{Binding Foreground}" />
                     <Setter TargetName="TabLabel" Property="FontWeight" Value="SemiBold" />
-                    <Setter TargetName="TabDetail" Property="Foreground" Value="{StaticResource Text.Secondary}" />
+                    <Setter TargetName="TabDetail" Property="Foreground" Value="{Binding Foreground}" />
+                    <Setter TargetName="TabDetail" Property="Opacity" Value="0.72" />
+                    <Setter TargetName="TabGlyph" Property="Fill" Value="{Binding Foreground}" />
+                    <Setter TargetName="DetachedMark" Property="Foreground" Value="{Binding Foreground}" />
+                    <Setter TargetName="TabClose" Property="Foreground" Value="{Binding Foreground}" />
                     <Setter TargetName="TabClose" Property="Opacity" Value="1" />
                 </DataTrigger>
                 <Trigger SourceName="TabRoot" Property="IsMouseOver" Value="True">

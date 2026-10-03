@@ -29,9 +29,56 @@ internal static class SkinLoader
 {
     private static readonly Dictionary<string, ThemeColor> Colors = new(StringComparer.Ordinal);
     private static readonly Dictionary<string, Color> Skinned = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, Color> Defaults = new(StringComparer.Ordinal);
     private static ResourceDictionary? _current;
 
     public static string? CurrentName { get; private set; }
+
+    /// <summary>The theme in force underneath any skin: <c>dark</c> or <c>light</c> (§12.14).</summary>
+    public static string CurrentTheme { get; private set; } = "dark";
+
+    /// <summary>
+    /// Sets the colours under the skin (§12.14): the light palette, the system accent. Keys
+    /// a skin has overridden keep the skin's colour and remember the new one as what to go
+    /// back to; everything else repaints at once. Keys not in <paramref name="colors"/> go
+    /// back to the dark palette's defaults, so switching light -> dark needs no second list.
+    /// </summary>
+    public static void SetBase(string themeName, IReadOnlyDictionary<string, Color> colors)
+    {
+        CurrentTheme = themeName;
+        foreach (var (name, model) in Colors)
+        {
+            if (!colors.TryGetValue(name, out var color) && !Defaults.TryGetValue(name, out color))
+            {
+                continue;
+            }
+
+            if (Skinned.ContainsKey(name))
+            {
+                Skinned[name] = color;
+            }
+            else
+            {
+                model.Value = color;
+            }
+        }
+    }
+
+    /// <summary>The brush colours of a compiled palette dictionary (<c>Theme/Palette.Light.xaml</c>), by key.</summary>
+    public static IReadOnlyDictionary<string, Color> LoadPalette(string relativeUri)
+    {
+        var dictionary = (ResourceDictionary)Application.LoadComponent(new Uri(relativeUri, UriKind.Relative));
+        var result = new Dictionary<string, Color>(StringComparer.Ordinal);
+        foreach (var key in dictionary.Keys)
+        {
+            if (key is string name && dictionary[key] is SolidColorBrush brush)
+            {
+                result[name] = brush.Color;
+            }
+        }
+
+        return result;
+    }
 
     /// <summary>Replaces every theme brush with a bound, unfreezable one. Call once, before the first window.</summary>
     public static int PrepareThemeForLiveRecolour()
@@ -50,6 +97,7 @@ internal static class SkinLoader
                 if (key is string name && dictionary[key] is SolidColorBrush brush && !Colors.ContainsKey(name))
                 {
                     var model = new ThemeColor(brush.Color);
+                    Defaults[name] = brush.Color;
                     var bound = new SolidColorBrush();
                     BindingOperations.SetBinding(bound, SolidColorBrush.ColorProperty, new Binding(nameof(ThemeColor.Value)) { Source = model, Mode = BindingMode.OneWay });
                     dictionary[key] = bound;

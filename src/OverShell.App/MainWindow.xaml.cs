@@ -1134,6 +1134,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         const int WmSettingChange = 0x001A;
         const int WmDwmCompositionChanged = 0x031E;
+        const int WmDwmColorizationColorChanged = 0x0320;
 
         if (PresentationSource.FromVisual(this) is not HwndSource source)
         {
@@ -1145,6 +1146,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (msg is WmSettingChange or WmDwmCompositionChanged)
             {
                 Dispatcher.BeginInvoke(ApplyBackdrop, DispatcherPriority.Background);
+            }
+
+            // Dark/light flipped ("ImmersiveColorSet"), or the accent changed: the theme
+            // follows Windows live when settings.theme/accent say "system".
+            if (msg == WmDwmColorizationColorChanged || (msg == WmSettingChange && lParam != IntPtr.Zero && Marshal.PtrToStringUni(lParam) is "ImmersiveColorSet"))
+            {
+                Dispatcher.BeginInvoke(() => _trace.Write($"theme: Windows changed - {Chrome.ThemeManager.Apply(_settings)}"), DispatcherPriority.Background);
             }
 
             return IntPtr.Zero;

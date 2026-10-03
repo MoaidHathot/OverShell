@@ -71,7 +71,7 @@
                             <TextBlock Text="&#xE756;"
                                        FontFamily="{StaticResource Font.Icons}"
                                        FontSize="9"
-                                       Foreground="#FF0B1020"
+                                       Foreground="{StaticResource Accent.OnAccent}"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
                         </Border>

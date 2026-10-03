@@ -101,6 +101,7 @@ public partial class App : Application
         var unfrozen = Chrome.SkinLoader.PrepareThemeForLiveRecolour();
         Diagnostics.TraceLog.Agents.Write($"theme: {unfrozen} brush(es) made recolourable");
         var settings = Core.Settings.AppSettings.Load(File.Exists(Core.AppPaths.SettingsFile) ? Core.AppPaths.SettingsFile : null);
+        Diagnostics.TraceLog.Agents.Write($"theme: {Chrome.ThemeManager.Apply(settings)}");
         if (Chrome.SkinLoader.Apply(settings.Skin) is { } skinProblem)
         {
             Diagnostics.TraceLog.Agents.Write($"skin: {skinProblem}");

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json.Nodes;
+using System.Windows.Media;
 using System.Windows.Threading;
 using OverShell.Core;
 using OverShell.Core.Agents;
@@ -21,7 +22,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -86,6 +87,9 @@ internal static class HerdSelfTest
                         break;
                     case "jumplist":
                         await RunJumpListAsync(window, firstTab);
+                        break;
+                    case "theme":
+                        await RunThemeAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -307,8 +311,79 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// The jump list (§12.14): read back from the application after start, it carries the
-    /// three tasks, the seeded archived session and the seeded workspace, every entry an
+    /// Themes (§12.14): the start follows Windows (dark here) with the system accent; setting
+    /// theme=light recolours every theme brush live - the caption surface, text, the brand
+    /// mark's glyph; a skin's colour still wins over the theme; "palette" and "#RRGGBB" accents
+    /// land; and dark comes back. PNGs of the caption in both themes.
+    /// </summary>
+    private static async Task RunThemeAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (theme) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        Color BrushColor(string key) => ((System.Windows.Media.SolidColorBrush)System.Windows.Application.Current.FindResource(key)).Color;
+        var caption = (System.Windows.FrameworkElement)window.FindName("TitleBarSurface")!;
+        var windowsLight = Chrome.SystemTheme.AppsUseLightTheme();
+        var systemAccent = Chrome.SystemTheme.Accent(onLight: windowsLight);
+
+        var start = Chrome.ThemeManager.Current;
+        Log($"  start: theme={start.Theme} accent={start.Accent} from {start.AccentSource}; Windows apps {(windowsLight ? "light" : "dark")}, system accent {systemAccent}");
+        Check(start.Theme == (windowsLight ? "light" : "dark"), "theme=system follows the Windows app theme");
+        Check(systemAccent is null || (start.AccentSource == "system" && BrushColor("Accent.Base") == systemAccent.Value && BrushColor("State.Working") == systemAccent.Value), "accent=system: Accent.Base and State.Working are the Windows accent (the variant for this theme)");
+        var darkChrome = BrushColor("Surface.Chrome");
+        SaveVisual(caption, $"overshell-selftest-theme-{start.Theme}.png");
+
+        // ---- light, live, through settings.jsonc ----
+        var settingsFile = AppPaths.SettingsFile;
+        var hadSettings = System.IO.File.Exists(settingsFile);
+        var previous = hadSettings ? System.IO.File.ReadAllText(settingsFile) : null;
+        System.IO.File.WriteAllText(settingsFile, """{ "theme": "light", "accent": "#C0392B" }""");
+        await Task.Delay(1800);
+        var lightChrome = BrushColor("Surface.Chrome");
+        Log($"  after theme=light accent=#C0392B: chrome {darkChrome} -> {lightChrome} text={BrushColor("Text.Primary")} accent={BrushColor("Accent.Base")} onAccent={BrushColor("Accent.OnAccent")} theme={Chrome.ThemeManager.Current.Theme}");
+        Check(Chrome.ThemeManager.Current.Theme == "light" && lightChrome != darkChrome && Luma(lightChrome) > 0.8 && Luma(BrushColor("Text.Primary")) < 0.2, "theme=light repainted the chrome light and the text dark, live");
+        Check(BrushColor("Accent.Base") == Color.FromRgb(0xC0, 0x39, 0x2B) && BrushColor("State.Working") == Color.FromRgb(0xC0, 0x39, 0x2B), "a #RRGGBB accent landed on Accent.Base and State.Working");
+        Check(BrushColor("Accent.OnAccent") == Colors.White, "…with white on it (a dark accent)");
+        Check(((System.Windows.Media.SolidColorBrush)caption.GetValue(System.Windows.Controls.Border.BackgroundProperty)).Color == lightChrome || caption.GetValue(System.Windows.Controls.Border.BackgroundProperty) is System.Windows.Media.SolidColorBrush { Color.A: < 255 }, "the live caption surface shows the new colour (same shared brush)");
+        SaveVisual(caption, "overshell-selftest-theme-light.png");
+
+        // ---- a skin's colour wins over the theme, and the theme change does not undo it ----
+        System.IO.Directory.CreateDirectory(AppPaths.SkinsDir);
+        var skin = System.IO.Path.Combine(AppPaths.SkinsDir, "selftest-theme.xaml");
+        System.IO.File.WriteAllText(skin, """<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><SolidColorBrush x:Key="Accent.Base" Color="#FF00AA55" /></ResourceDictionary>""");
+        System.IO.File.WriteAllText(settingsFile, """{ "theme": "light", "accent": "#C0392B", "skin": "selftest-theme" }""");
+        await Task.Delay(1800);
+        Check(BrushColor("Accent.Base") == Color.FromRgb(0x00, 0xAA, 0x55), "a skin's Accent.Base wins over the theme's accent");
+        System.IO.File.WriteAllText(settingsFile, """{ "theme": "dark", "accent": "palette", "skin": "selftest-theme" }""");
+        await Task.Delay(1800);
+        Check(Chrome.ThemeManager.Current.Theme == "dark" && BrushColor("Surface.Chrome") == darkChrome, "theme=dark brought the dark chrome back");
+        Check(BrushColor("Accent.Base") == Color.FromRgb(0x00, 0xAA, 0x55), "…and the skin's accent survived the theme change");
+        Check(BrushColor("Text.Primary") == Color.FromRgb(0xE8, 0xEA, 0xED), "…while unskinned keys went back to the dark palette");
+
+        // ---- skin off: the palette accent (not the system one) as asked ----
+        System.IO.File.WriteAllText(settingsFile, """{ "theme": "dark", "accent": "palette" }""");
+        await Task.Delay(1800);
+        Check(BrushColor("Accent.Base") == Color.FromRgb(0x4C, 0x8D, 0xFF), "accent=palette: the dark palette's own blue");
+
+        // restore
+        System.IO.File.Delete(skin);
+        if (previous is not null) { System.IO.File.WriteAllText(settingsFile, previous); } else { System.IO.File.Delete(settingsFile); }
+        await Task.Delay(1500);
+        Log($"  restored: theme={Chrome.ThemeManager.Current.Theme} accent={Chrome.ThemeManager.Current.Accent} from {Chrome.ThemeManager.Current.AccentSource}");
+        Check(Chrome.ThemeManager.Current.Theme == start.Theme, "the start state came back once the overrides were removed");
+
+        Log($"=== selftest (theme) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+
+        static double Luma(Color c) => ((0.2126 * c.R) + (0.7152 * c.G) + (0.0722 * c.B)) / 255.0;
+    }
+
+    /// <summary>
+    /// The jump list (§12.14): read back from the application after start, it carries the    /// three tasks, the seeded archived session and the seeded workspace, every entry an
     /// <c>overshell://</c> URL for this executable; the URLs are then handled by the running
     /// window the way a second instance would hand them over.
     /// </summary>

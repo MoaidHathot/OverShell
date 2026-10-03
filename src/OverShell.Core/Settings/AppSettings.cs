@@ -137,6 +137,11 @@ public sealed class AppSettings
     /// <summary>A skin under <c>skins\&lt;name&gt;.xaml</c>: a ResourceDictionary overriding theme keys. Null for none.</summary>
     public string? Skin { get; init; }
 
+    /// <summary><c>system</c> (follow the Windows app theme, the default), <c>dark</c> or <c>light</c>.</summary>
+    public string Theme { get; init; } = "system";
+
+    /// <summary><c>system</c> (the Windows accent colour, the default), <c>palette</c> (the theme's own blue) or a <c>#RRGGBB</c> colour.</summary>
+    public string? Accent { get; init; } = "system";
     public DetectionSettings Detection { get; init; } = new();
 
     public NotificationSettings Notifications { get; init; } = new();

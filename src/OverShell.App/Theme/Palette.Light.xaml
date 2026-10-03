@@ -1,0 +1,40 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ========================== Light palette ========================== -->
+    <!-- The dark palette's keys with light values (DESIGN.md 12.14). Applied as a base layer
+         through the same colour models a skin writes to, so a skin still wins and the switch
+         repaints live. Cool neutrals again; the accent is deeper than the dark theme's so it
+         holds contrast on white, and the state colours are darkened for the same reason. -->
+
+    <SolidColorBrush x:Key="Surface.Base" Color="#FFF6F7F9" />
+    <SolidColorBrush x:Key="Surface.Chrome" Color="#FFECEEF2" />
+    <SolidColorBrush x:Key="Surface.Raised" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Surface.Hover" Color="#FFDFE3E9" />
+    <SolidColorBrush x:Key="Surface.Pressed" Color="#FFD2D7DF" />
+    <SolidColorBrush x:Key="Surface.Border" Color="#FFD3D8E0" />
+
+    <SolidColorBrush x:Key="Surface.ChromeTranslucent" Color="#B8ECEEF2" />
+    <SolidColorBrush x:Key="Surface.StatusTranslucent" Color="#B8ECEEF2" />
+
+    <SolidColorBrush x:Key="Text.Primary" Color="#FF1A1E25" />
+    <SolidColorBrush x:Key="Text.Secondary" Color="#FF4B5461" />
+    <SolidColorBrush x:Key="Text.Disabled" Color="#FF8891A0" />
+
+    <SolidColorBrush x:Key="Accent.Base" Color="#FF1F6FEB" />
+    <SolidColorBrush x:Key="Accent.Muted" Color="#FF9DC0FF" />
+    <SolidColorBrush x:Key="Accent.OnAccent" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Danger.Base" Color="#FFD93025" />
+
+    <SolidColorBrush x:Key="Scroll.Thumb" Color="#40000000" />
+    <SolidColorBrush x:Key="Scroll.ThumbHover" Color="#66000000" />
+    <SolidColorBrush x:Key="Scroll.ThumbActive" Color="#88000000" />
+
+    <SolidColorBrush x:Key="State.Working" Color="#FF1F6FEB" />
+    <SolidColorBrush x:Key="State.Blocked" Color="#FFC97A00" />
+    <SolidColorBrush x:Key="State.Done" Color="#FF1A9E5C" />
+    <SolidColorBrush x:Key="State.Error" Color="#FFD93025" />
+    <SolidColorBrush x:Key="State.Idle" Color="#FF8891A0" />
+    <SolidColorBrush x:Key="State.Exited" Color="#FFB3BAC4" />
+
+</ResourceDictionary>

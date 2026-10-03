@@ -70,6 +70,13 @@
   // colours update live when the file is saved; fonts and metrics apply at the next start.
   "skin": null,
 
+  // Colours: theme is "system" (follow the Windows app theme), "dark" or "light"; accent is
+  // "system" (the Windows accent, in the variant that reads on the theme), "palette" (the
+  // theme's own blue) or a "#RRGGBB" colour. Both change live, with Windows and on save; a
+  // skin's colours still win over them.
+  "theme": "system",
+  "accent": "system",
+
   "notifications": {
     // Every enabled sink runs for every event its "when" allows. Kinds: blocked, done,
     // error, exited. Harnesses: opencode, copilot, claude, codex, generic, shell.

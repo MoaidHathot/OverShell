@@ -42,6 +42,12 @@
     <SolidColorBrush x:Key="Text.Disabled" Color="{StaticResource Text.DisabledColor}" />
 
     <SolidColorBrush x:Key="Accent.Base" Color="{StaticResource Accent.BaseColor}" />
+    <!-- Text or a glyph drawn on an accent-filled shape (the brand mark). -->
+    <SolidColorBrush x:Key="Accent.OnAccent" Color="#FF0B1020" />
+    <!-- Scrollbar thumbs: a translucent tint of the text colour, so they read on either theme. -->
+    <SolidColorBrush x:Key="Scroll.Thumb" Color="#40FFFFFF" />
+    <SolidColorBrush x:Key="Scroll.ThumbHover" Color="#70FFFFFF" />
+    <SolidColorBrush x:Key="Scroll.ThumbActive" Color="#90FFFFFF" />
     <SolidColorBrush x:Key="Accent.Muted" Color="{StaticResource Accent.MutedColor}" />
     <SolidColorBrush x:Key="Danger.Base" Color="{StaticResource Danger.BaseColor}" />
 
