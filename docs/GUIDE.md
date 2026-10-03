@@ -20,7 +20,7 @@ Contents
 10. [The prompt bar and snippets](#10-the-prompt-bar-and-snippets)
 11. [Sessions: restore, resume and history](#11-sessions-restore-resume-and-history)
 12. [`overshell://` and toast clicks](#12-overshell-and-toast-clicks)
-13. [Skins](#13-skins)
+13. [Themes and skins](#13-themes-and-skins)
 14. [Command line](#14-command-line)
 15. [Diagnostics and troubleshooting](#15-diagnostics-and-troubleshooting)
 
@@ -87,7 +87,8 @@ configuration root:
 | `snippets.jsonc` | Reusable prompts ([§10](#10-the-prompt-bar-and-snippets)) |
 | `agents\*.jsonc` | Per-harness detection rules ([§7](#7-agents-what-overshell-sees-and-how)) |
 | `layouts\*.jsonc` | Chrome arrangements ([§6](#6-views-and-layouts)) |
-| `skins\*.xaml` | Theme overrides ([§13](#13-skins)) |
+| `skins\*.xaml` | Colour overrides on top of the theme ([§13](#13-themes-and-skins)) |
+| `workspaces\*.jsonc` | Named sets of tabs to open together ([§11](#11-sessions-restore-resume-and-history)) |
 
 **Every one of them reloads live** when saved (a 400 ms debounce lets editors finish
 writing). A broken file is reported in the status bar and the trace log and the
@@ -114,6 +115,10 @@ init` gives you the full default file, commented, as a starting point.
     "zen":       { "layout": "zen",       "content": "terminal",  "title": "Zen" }
   },
 
+  // Chrome palette and accent (§13): system follows Windows, live.
+  "theme": "system",                 // system | dark | light
+  "accent": "system",                // system | palette | "#RRGGBB"
+
   // A ResourceDictionary under skins\<name>.xaml overriding theme keys; null for none.
   "skin": null,
 
@@ -121,7 +126,8 @@ init` gives you the full default file, commented, as a starting point.
     "snapshotDebounceMs": 300,       // wait for output to settle before reading the screen
     "snapshotMinIntervalMs": 300,    // never read one tab's screen more often than this
     "processProbeIntervalMs": 2500,  // how often the process tree below a shell is checked
-    "treatUnknownAsAgent": false     // true: every tab is an agent even when nothing is recognised
+    "treatUnknownAsAgent": false,    // true: every tab is an agent even when nothing is recognised
+    "cwdFromProcess": true           // learn the directory from the shell process / prompt line when it emits no OSC 9;9 (§15)
   },
 
   "git": {
@@ -135,6 +141,8 @@ init` gives you the full default file, commented, as a starting point.
     "resumeAgents": true,            // bring a tab's agent back: by session id when one is known
     "resumeWithoutId": true,         // ...else the tool's "most recent session" form (opencode --continue)
     "restoreWindows": true,          // main window and tear-offs back where they were
+    "showPreviousScreen": "interrupted", // after a crash, the last screen as a dim preamble: interrupted | always | never
+    "confirmCloseWithAgents": true,  // ask before closing while agents are working
     "restartWithWindows": false      // ask Windows to start OverShell again after a restart or sign-out
   },
 
@@ -154,9 +162,10 @@ categories and ids; the bound chord is shown on the right). The defaults:
 
 | Chord | Command | What |
 |---|---|---|
-| `Ctrl+T` | `tab.new` | New tab, default profile |
+| `Ctrl+Shift+T` | `tab.new` | New tab, default profile (`Ctrl+T` stays with the shell — PSReadLine uses it) |
 | `Ctrl+Shift+W` | `tab.close` | Close tab |
-| `Ctrl+Shift+T` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |
+| `Ctrl+Shift+D` | `tab.duplicate` | Another tab like this one: same profile, directory and group, next to it |
+| `Ctrl+Shift+Z` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | `tab.next` / `tab.previous` | Cycle |
 | `Ctrl+PgDn` / `Ctrl+PgUp` | same | Cycle |
 | `Alt+1` … `Alt+9` | `tab.switchTo.N` | Jump to the Nth visible tab |
@@ -165,9 +174,10 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+G` | `tab.moveToGroup` | Put the tab under a named header; empty removes |
 | `Alt+Shift+←` / `→` | `tab.moveLeft` / `tab.moveRight` | Reorder |
 | `Ctrl+Shift+E` | `tab.explain` | Why is this tab in this state |
-| `Ctrl+Shift+D` / `Ctrl+Shift+A` | `tab.detach` / `tab.attach` | Tear the tab off into its own window / bring it back |
+| `Ctrl+Shift+X` / `Ctrl+Shift+A` | `tab.detach` / `tab.attach` | Tear the tab off into its own window / bring it back |
 | `Ctrl+Shift+Space` | `palette.tabs` | Tab switcher with screen preview |
 | `Ctrl+Shift+P` | `palette.commands` | Command palette |
+| `Ctrl+Shift+F` | `terminal.find` | Find in this tab's buffer, scrollback included (below) |
 | `Ctrl+Shift+1` … `4` | `view.terminal` / `view.herd` / `view.dashboard` / `view.zen` | Views |
 | `` Ctrl+Shift+` `` | `view.toggle` | Back to the previous view |
 | `Ctrl+Shift+Enter` | `prompt.toggle` | Prompt bar |
@@ -182,7 +192,8 @@ explain / group / detach / close.
 
 Commands with no default chord, for the palette or your own bindings: `tab.resume`,
 `tab.markAgent`, `tab.markShell`, `prompt.blocked`, `layout.<name>`, `settings.reload`,
-`settings.open`, `settings.init`, `session.save`, `protocol.register`,
+`settings.open`, `settings.init`, `session.save`, `session.history`, `workspace.save`,
+`workspace.open.<name>`, `terminal.findUp`, `terminal.findDown`, `protocol.register`,
 `integrations.status`, `integrations.install.<id>`, `integrations.uninstall.<id>`,
 `snippet.<name>`.
 
@@ -191,7 +202,7 @@ Commands with no default chord, for the palette or your own bindings: `tab.resum
 ```jsonc
 [
   { "keys": "ctrl+shift+n", "command": "tab.new" },
-  { "keys": "ctrl+t",       "command": "unbound" },
+  { "keys": "ctrl+shift+t", "command": "unbound" },
   { "keys": "ctrl+alt+h",   "command": "view.herd" }
 ]
 ```
@@ -208,6 +219,16 @@ harness and state. `@blocked`, `@working`, `@done` filter by state; `#repo` filt
 project; `>` switches to commands. The pane on the right previews the selected tab's
 screen, refreshed while open. Tabs needing you come first when the box is empty.
 
+**Find in the tab** (`Ctrl+Shift+F`) opens a search box under the terminal. It searches
+the whole buffer, scrollback included, as you type: the match nearest the bottom of what
+you see is selected — it is the terminal's own selection, so `Ctrl+Shift+C` copies it —
+and the other matches on screen are tinted. **Enter** or **F3** goes to the previous match
+upwards, through older text, scrolling to it when needed; **Shift+Enter** / **Shift+F3**
+downwards; both wrap. `Aa` matches case; the counter reads *3 of 5*, *No matches*, or
+*500+*. **Esc** gives the keyboard back to the terminal and leaves the selection where it
+is. The box follows the active tab, and a tear-off window has one of its own. Plain text
+only — no regular expressions.
+
 ## 5. Tabs, groups, reorder, tear-off windows
 
 A tab item has two lines: the **label** (your name for it, else the harness, else the
@@ -222,11 +243,18 @@ An unread badge marks a state you have not seen; a thin bar shows OSC 9;4 progre
   Dragging a tab onto another group's tab joins that group; so does `Alt+Shift+←/→`.
 - **Reorder**: drag a tab along the strip — it changes place as the pointer crosses its
   neighbours. `Alt+N` always means what you see.
-- **Tear-off** (`Ctrl+Shift+D`): the live terminal moves into a window of its own; nothing
-  restarts, the scrollback stays, keys and clicks work there, and the tab keeps its place
-  in the sidebar, the dashboard and notifications (`⧉` in its detail). `Ctrl+Shift+A` in
-  either window, or closing the tear-off, brings it back. Chords pressed in a tear-off act
-  on its tab. After a restart a tear-off comes back as a tear-off, where it was.
+- **Duplicate** (`Ctrl+Shift+D`): another tab of the same profile in the same directory,
+  in the same group, right next to this one.
+- **Tear-off** (`Ctrl+Shift+X`): the live terminal moves into a window of its own — with
+  the same chrome as the main window and the tab's state in its caption; nothing restarts,
+  the scrollback stays, keys and clicks work there, and the tab keeps its place in the
+  sidebar, the dashboard and notifications (a small window glyph marks it). `Ctrl+Shift+A`
+  in either window, or the tear-off's close button, brings it back. Chords pressed in a
+  tear-off act on its tab. After a restart a tear-off comes back as a tear-off, where it
+  was.
+- **Many tabs**: the strip keeps every tab at least readable, scrolls with the wheel,
+  fades at the edges where more are hiding, and the `…` button at its end opens the
+  switcher.
 - **Explain** (`Ctrl+Shift+E`): state, why, who decided (detector or which integration),
   harness, session id, resume command, processes below the shell, the last transitions.
 
@@ -289,6 +317,14 @@ Two authorities, never both: while an integration reports for a tab its word is 
 otherwise the detector weighs the evidence. A tab "viewed" is the active tab in a
 focused window (or a focused tear-off) — that is what clears **done**.
 
+**The working directory** shown in the status bar, the cards and the sidebar is what the
+shell announces (OSC 9;9 / OSC 7, as Windows Terminal reads them). A shell that announces
+nothing is not left at its starting directory: for cmd and bash the directory is read from
+the shell process itself; for PowerShell, whose `Set-Location` does not move the process,
+it is read from the prompt line on screen (`PS C:\path>`). `OverShell integrations install
+shell` adds the OSC hook to both PowerShell profiles so it is announced exactly, inside
+OverShell and Windows Terminal only (§8). `Ctrl+Shift+E` names the source.
+
 Evidence the detector reads without any integration: the OSC 0/2 title, OSC 9;4
 progress, OSC 9/99/777 notifications, the bell, OSC 133 shell-integration marks, and
 the last rows of the screen (read through UI Automation, hidden tabs included). Rules
@@ -339,6 +375,7 @@ OverShell:
 | Copilot CLI | `copilot` | `~/.copilot/hooks/overshell.json` (`COPILOT_HOME` honoured) — hooks for session start/end, prompt, stop, permission and elicitation notifications |
 | Claude Code | `claude` | hook entries **merged into** `~/.claude/settings.json` (`CLAUDE_CONFIG_DIR` honoured) under a marker; `uninstall` removes only those. A file with comments is refused, not rewritten — `integrations show claude` prints the entries to add by hand |
 | Codex CLI | `codex` | a PowerShell script next to `~/.codex/config.toml` (`CODEX_HOME` honoured) and one marked `notify = […]` line among the top-level keys. A `notify` you wrote is never replaced — `integrations show codex` prints ours to combine |
+| PowerShell (the shell itself) | `shell` | a marked block at the end of both PowerShell profiles (`PowerShell\` and `WindowsPowerShell\` under Documents) that wraps your `prompt` and emits OSC 9;9 with the current directory — only inside OverShell or Windows Terminal, only for file-system locations. `uninstall shell` removes the block |
 
 `OverShell integrations status` shows what is installed and whether the harness is on
 PATH. Restart the harness inside an OverShell tab after installing. Codex's hook only
@@ -411,7 +448,16 @@ front.
 tabs from an interrupted session (saved HH:mm)* — the file never got its closing note, so
 OverShell knows. After a Windows sign-out or restart it says that instead. Start with
 `OverShell --fresh` to skip the restore once; the session is not lost, it is in the
-history below.
+history below. Each restored tab shows **what was on its screen** when the run was cut
+off — the last thirty rows, dimmed and in italics above a rule, so you can see where the
+agent was before you decide what to do (`"session": { "showPreviousScreen": "always" |
+"never" }` changes when). And if two runs in a row end interrupted within a minute, the
+restore is **held** — the tabs stay in the history, the status bar says so — rather than
+reopening whatever keeps bringing the window down.
+
+**Closing with agents working** asks first: *Close anyway — N agents working* or *Keep
+OverShell open*. A Windows sign-out does not ask. `"session": { "confirmCloseWithAgents":
+false }` turns the question off.
 
 **Agents come back too.** A tab whose agent was running gets it resumed:
 
@@ -433,12 +479,33 @@ any time; `session.save` writes the file now. Install the harness's integration
 even for a session that was itself resumed.
 
 **History.** A tab you close is remembered — directory, label, group, agent session —
-and `Ctrl+Shift+T` (`tab.reopenClosed`) brings the most recent one back, agent resumed.
+and `Ctrl+Shift+Z` (`tab.reopenClosed`) brings the most recent one back, agent resumed.
 Every clean close archives the whole session under `sessions\` in the state root (and a
 start after a crash archives the interrupted one first, so nothing overwrites it); the
 newest ten are kept. `session.history` (palette) lists recently closed tabs, then earlier
 sessions — *Session interrupted Fri 22:06 — 2 tabs · OpenCode ×2* — choose a tab to
 reopen it, a session to add all of its tabs next to the open ones.
+
+**Workspaces.** A workspace is a named set of tabs — profile, directory, label, group —
+kept as `workspaces\<name>.jsonc` in the configuration root, so it syncs with your
+dotfiles. `workspace.save` (palette) writes the open tabs under a name you give; each file
+is a `Workspace: <name>` command that opens its tabs next to the current one (`command`
+is typed once the shell is at its prompt; `view` switches the view; `detached` opens the
+tab in a tear-off); the files reload live. `overshell://workspace/<name>` opens one from outside (§12).
+
+```jsonc
+{
+  "name": "Blog", "description": "The site and an agent on it", "view": "herd",
+  "tabs": [
+    { "profile": "PowerShell", "cwd": "D:\\src\\blog", "label": "site", "command": "npm run dev" },
+    { "profile": "PowerShell", "cwd": "D:\\src\\blog", "label": "agent", "group": "blog", "command": "opencode" },
+    { "profile": "PowerShell", "cwd": "%USERPROFILE%", "detached": true }
+  ]
+}
+```
+
+**The taskbar jump list** (right-click the OverShell button) has *New tab*, *Reopen closed
+tab* and *Session history*, the five most recent sessions, and your workspaces.
 
 **Restart with Windows.** With `"session": { "restartWithWindows": true }` OverShell asks
 Windows to start it again after a restart or sign-out, when the Windows setting
@@ -447,6 +514,7 @@ Never after a crash. Off by default.
 
 `"session": { "restore": false }`, `"resumeAgents": false`, `"resumeWithoutId": false`
 or `"restoreWindows": false` turn each part off.
+
 ## 12. `overshell://` and toast clicks
 
 At start OverShell registers `overshell://` for your user (HKCU, no elevation; `"protocol":
@@ -457,9 +525,19 @@ to the first and exits. So:
 - `overshell://focus/<tabId>` brings the running window up on that tab — this is what the
   Palantir recipe's `--launch` and the native `toast` sink put on their toasts;
 - `overshell://view/<terminal|herd|dashboard|zen>` switches views;
-- `overshell://new?profile=<id or name>&cwd=<path>` opens a tab.
+- `overshell://new?profile=<id or name>&cwd=<path>` opens a tab;
+- `overshell://workspace/<name>` opens a workspace, `overshell://reopen` the last closed tab,
+  `overshell://history` the session picker and `overshell://history/<archive>` a whole
+  archived session — the jump list uses these (§11).
 
-## 13. Skins
+## 13. Themes and skins
+
+`"theme": "system" | "dark" | "light"` picks the chrome palette; `system` (default) follows the
+Windows *Choose your mode* setting and changes live when it does. `"accent": "system" |
+"palette" | "#RRGGBB"` picks the accent — `system` (default) is the Windows accent colour in
+the variant that suits the theme, `palette` the theme's own blue, or any colour. The
+terminal body keeps its colour scheme either way; the theme is the chrome around it, the
+tear-off windows included.
 
 `"skin": "mine"` loads `skins\mine.xaml`, a WPF `ResourceDictionary` whose keys override
 the theme's — brushes (`Surface.Chrome`, `Surface.Base`, `Accent.Base`, `Text.Primary`,
@@ -484,8 +562,8 @@ OverShell --fresh                           # the window without the last sessio
 OverShell overshell://focus/<tabId>         # same, with a request for the running window
 OverShell settings path|init|open
 OverShell integrations status
-OverShell integrations install   <opencode|copilot|claude|codex|all>
-OverShell integrations uninstall <opencode|copilot|claude|codex|all>
+OverShell integrations install   <opencode|copilot|claude|codex|shell|all>
+OverShell integrations uninstall <opencode|copilot|claude|codex|shell|all>
 OverShell integrations show      <claude|codex>
 OverShell protocol status|register|unregister
 OverShell version                           # also --version, -v: version, commit, path
@@ -505,7 +583,9 @@ a .NET tool the command is `overshell`; the wrapper returns at once for the wind
 | `OVERSHELL_TRACE_AGENTS=1` | `%TEMP%\overshell-agents.log`: detection, every state change with its reason, endpoint traffic, notifications, reloads |
 | `OVERSHELL_TRACE_KEYS=1` | `%TEMP%\overshell-keys.log`: every chord seen |
 | `OVERSHELL_TRACE_LINKS=1` | `%TEMP%\overshell-links.log`: link hover and click resolution |
-| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` / `opencode-resume` run it against the real OpenCode; `session1`/`session2` check restore across a restart, `sessionend` a sign-out, `history` the history, `icons` the icons. `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` / `opencode-resume` run it against the real OpenCode; `session1`/`session2` check restore across a restart, `sessionend` a sign-out, `history` the history, `icons` the icons; `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find` one feature each. `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_WT_SETTINGS` | read this Windows Terminal `settings.json` instead of the installed one |
+| `OVERSHELL_PROFILE_ROOT` | where `integrations install shell` looks for the PowerShell profile folders instead of Documents |
 
 Crashes always go to `%TEMP%\overshell-crash.log`. `tools\Show-LinkTestCard.ps1` prints
 the manual test card for everything a human should confirm.
@@ -515,9 +595,12 @@ pattern — by design OverShell never infers "needs you" from silence. Install t
 integration, or add the prompt's text to `screen.blocked` in that harness's rule file
 (`Ctrl+Shift+E` shows what the detector last saw and matched).
 
-**The working directory does not follow `cd`.** OverShell learns it from the shell's
-OSC 9;9 / OSC 7 prompt sequences, the same way Windows Terminal does; add the one-liner
-Windows Terminal documents to your profile and the branch, project and cards follow.
+**The working directory does not follow `cd`.** OverShell prefers what the shell announces
+(OSC 9;9 / OSC 7, as Windows Terminal reads it) and otherwise reads the shell process (cmd,
+bash) or the prompt line (PowerShell). A PowerShell prompt that does not print the path
+hides it: run `OverShell integrations install shell` so the prompt announces it, or add
+the one-liner Windows Terminal documents to your profile. `Ctrl+Shift+E` shows which source
+the tab is using.
 
 **A toast click opens a "choose an app" dialog.** `overshell://` is not registered for
 this executable (a moved build, or `protocol.register` off): `OverShell protocol

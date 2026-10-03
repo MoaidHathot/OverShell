@@ -47,7 +47,8 @@ backdrop). x64 only.
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each |
+| `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
 
@@ -85,6 +86,7 @@ OverShell integrations install opencode   # writes a plugin into OpenCode's plug
 OverShell integrations install copilot    # writes hooks into ~/.copilot/hooks
 OverShell integrations install claude     # merges hook entries into ~/.claude/settings.json
 OverShell integrations install codex      # a notify script + one line in ~/.codex/config.toml
+OverShell integrations install shell      # a prompt hook in both PowerShell profiles: the directory follows cd exactly
 OverShell integrations status
 ```
 
@@ -120,19 +122,26 @@ interrupted, and resumes each agent that was running - by session id when the
 integration reported one (`opencode --session <id>`, `copilot --resume=<id>`), else
 with the tool's "most recent session" form (`opencode --continue`); a profile whose
 program is the agent is relaunched with those arguments, a shell gets them typed.
-`Ctrl+Shift+T` reopens the tab you just closed, agent included; `session.history` lists
-recently closed tabs and the last ten sessions to bring back. `OverShell --fresh` starts
-without restoring. `Ctrl+Shift+G` puts a tab in a named group (headers in the strip and the list);
+`Ctrl+Shift+Z` reopens the tab you just closed, agent included; `session.history` lists
+recently closed tabs and the last ten sessions to bring back - so does the taskbar jump
+list. After a crash each restored tab shows the last screen it had, dimmed, above its new
+prompt; two crashes in a minute hold the restore instead of looping; closing with agents
+working asks first. Workspaces (`workspaces\<name>.jsonc`, `workspace.save`) are named
+sets of tabs to open together. `OverShell --fresh` starts without restoring. `Ctrl+Shift+G` puts a tab in a named group (headers in the strip and the list);
 drag a tab along the strip to reorder it, or use `Alt+Shift+←/→`. `Ctrl+Shift+E` opens
 the explain panel — why a tab is in its state, with the transition history.
-`Ctrl+Shift+D` detaches a tab into a window of its own (the terminal moves; nothing
-restarts) and `Ctrl+Shift+A`, or closing that window, brings it back.
+`Ctrl+Shift+X` detaches a tab into a window of its own with the same chrome (the terminal
+moves; nothing restarts) and `Ctrl+Shift+A`, or that window's close button, brings it back.
+`Ctrl+Shift+F` finds in the tab, scrollback included: Enter walks up through older text,
+Shift+Enter down; the match is the terminal's selection, the others on screen are tinted.
 
 `overshell://focus/<tab>` is registered for your user at start; a clicked toast (the
 Palantir recipe sets `--launch`) opens the running window on that tab. A second
 `OverShell.exe` hands its arguments to the first and exits — one window per user.
-`settings.skin` names a `skins\<name>.xaml` ResourceDictionary that overrides theme
-brushes, fonts and metrics; colours update live on save.
+`settings.theme` is `system` (follows Windows, live), `dark` or `light`, `settings.accent`
+the Windows accent, the palette's own or any colour; `settings.skin` names a
+`skins\<name>.xaml` ResourceDictionary that overrides theme brushes, fonts and metrics;
+colours update live on save.
 
 ## Views & layouts
 
@@ -167,7 +176,8 @@ Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.js
 `Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
 screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
 `Ctrl+Shift+1..4` views · `Ctrl+Shift+Enter` prompt bar · `Ctrl+Shift+G` group · `Ctrl+Shift+E` explain ·
-`Ctrl+T` / `Ctrl+Shift+W` / `Ctrl+Tab` / `Alt+1..9` tabs · `Alt+Shift+←/→` reorder ·
+`Ctrl+Shift+F` find · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Ctrl+Tab` / `Alt+1..9` tabs (Windows
+Terminal's chords; `Ctrl+T` stays with the shell) · `Alt+Shift+←/→` reorder ·
 `Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection).
 Right-click a tab, a sidebar row or a card for rename / treat as agent or shell / explain /
 close.
@@ -199,7 +209,11 @@ tab), the depth features (prompt bar and broadcast, session restore with agent
 resume, `overshell://` toast clicks, tab groups and drag reorder, explain panel, skins,
 tear-off windows), and resilience (two-second session saves, restore after a crash with
 window placement and tear-offs, agent resume with or without a session id, recently
-closed tabs and session history, opt-in restart with Windows).
+closed tabs and session history, opt-in restart with Windows), and the polish pass
+(Windows Terminal chords, an honest working directory with a shell hook, restore hold and
+close question, the previous screen after a crash, workspaces, tab-strip overflow, the jump
+list, light and dark themes with the Windows accent, tear-offs with the window's chrome,
+find in the buffer).
 
 Not yet confirmed by a human: see the test card (`tools\Show-LinkTestCard.ps1`) and
 [DESIGN.md 8](DESIGN.md#8-status).

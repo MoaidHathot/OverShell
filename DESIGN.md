@@ -262,9 +262,10 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_TRACE_KEYS` | `1` | Log every chord the router sees to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Log link hover/click resolution to `%TEMP%\overshell-links.log`, and run one UIA self-probe after the first tab is ready |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Log harness detection, state transitions with their evidence, endpoint traffic and notification dispatch to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SPIKES` | `1` | Run the §12.7 spikes in-process, log to `%TEMP%\overshell-spikes.log` |
+| `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
+| `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons` | Run the end-to-end self-test in-process (§12.9–12.13): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons. Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find` | Run the end-to-end self-test in-process (§12.9–12.14): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find. Log: `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -296,10 +297,10 @@ dotfiles repository is not littered with empty directories.
 ```
 OverShell                                   # the window; a second start hands over and exits
 OverShell --fresh                           # the window without the last session (it stays in the history, §12.13)
-OverShell overshell://focus/<tabId>         # handed to the running window (§12.11)
+OverShell overshell://focus/<tabId>         # handed to the running window (§12.11); also view/<id>, new?profile=&cwd=, workspace/<name>, reopen, history[/<archive>] (§12.14)
 OverShell integrations status
-OverShell integrations install   <opencode|copilot|claude|codex|all>
-OverShell integrations uninstall <opencode|copilot|claude|codex|all>
+OverShell integrations install   <opencode|copilot|claude|codex|shell|all>   # shell: the prompt hook in both PowerShell profiles (§12.14)
+OverShell integrations uninstall <opencode|copilot|claude|codex|shell|all>
 OverShell integrations show      <claude|codex>   # the entries, for adding by hand
 OverShell protocol status|register|unregister
 OverShell settings path|init|open           # roots and files; starter files from the defaults
@@ -318,7 +319,7 @@ foreground (§13.2).
 - `%TEMP%\overshell-crash.log` — every unhandled exception, always written
 - `%TEMP%\overshell-keys.log` — key trace, only when `OVERSHELL_TRACE_KEYS=1`
 - `%TEMP%\overshell-links.log` — link trace, only when `OVERSHELL_TRACE_LINKS=1`
-- `%TEMP%\overshell-agents.log` — agent trace, only when `OVERSHELL_TRACE_AGENTS=1`
+- `%TEMP%\overshell-agents.log` — agent trace, only when `OVERSHELL_TRACE_AGENTS=1` (also the directory probe, themes and find)
 - `GET %OVERSHELL_ENDPOINT%/v1/tabs?token=%OVERSHELL_TOKEN%` from inside any tab — every tab's harness, state and explain trail
 
 ### Build layout
@@ -785,9 +786,10 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Herd overseer P0** (§12.8) | `OverShell.Core` (WPF-free, 99 xunit tests): commands, `keybindings.jsonc`, agent rule files + `AgentStateMachine`, fuzzy search, notification policy, `settings.jsonc`, integration protocol + installer. App: every chord through `keybindings.jsonc` → `CommandRegistry`; palette / tab switcher / rename as an owned window (§12.7 spike 3); `TerminalStreamState` decodes BEL, OSC 9;4, 9/99/777, 133, DECSET 1004; detector fed by title, screen snapshot (UIA, 300 ms debounce), process tree probe (toolhelp), output activity; loopback endpoint with per-run token, environment injected into every child; Copilot hook shim + OpenCode plugin written by `integrations install`; two-line tab item with state dot / ring / pulse, unread badge, progress bar; `tab.jumpToAttention`; status-bar counts; sinks `overlay` (non-activating owned toast window), `taskbar` (badge + progress + flash), `sound`, `command` (Palantir recipe, flags verified); labels persisted per profile + directory. **Verified in-process** (§12.9) including the real OpenCode plugin end-to-end; ConPTY stdio bug found and fixed (§7.14) |
 | **Herd overseer P1 — views** (§12.10) | Layouts as JSONC regions (`layouts/*.jsonc`, 8 presets, user files replace by name); four views (`terminal`, `herd`, `dashboard`, `zen`) = layout + content, retunable in `settings.jsonc`; the tab strip in three shapes (strip / list / rail) moved between caption, bottom and side hosts — the terminal never re-parents; the **Herd sidebar** (grouped by project, attention → recency, rollups, activity age, context menu); the **Dashboard** (one card per tab, body = UIA screen text in the tab's colours, refreshed once a second while showing); view switch with attention badge; `view.*`, `view.toggle`, `layout.*` (per-session override), `settings.reload` commands; **hot reload** of `settings.jsonc`, `keybindings.jsonc`, `agents\`, `layouts\` (watcher, 400 ms debounce); switcher screen preview; git branch from `.git/HEAD` (+ optional dirty marker via `git status`); right-click tab menu. 110 unit tests; 60+ in-process checks incl. every preset rendered (§12.10) |
 | **Herd overseer P2 — depth** (§12.11) | **Session restore**: `session.json` written on close and every 30 s, tabs (profile, directory, label, group), view and layout overrides reopened at start, an agent that was running gets its **resume command typed** once the shell is quiet (`opencode --session <id>` etc., from the integration's report or the rule file). **`overshell://`** registered per user (HKCU) at start; a second instance hands its URL to the running one over a named pipe and exits, granting it the foreground — so a Palantir toast click (`--launch overshell://focus/{tab.id}`, now in the shipped recipe) lands on its tab. **Prompt bar** (`Ctrl+Shift+Enter`): send to the active tab, every agent, the agents needing you, or every tab; history; **snippets** from `snippets.jsonc` as commands and a menu. **Tab groups** (`tab.moveToGroup`, headers in strip and list) and **drag reorder** (live move as the pointer crosses neighbours; crossing a group joins it). **Explain panel** (`Ctrl+Shift+E`): harness, authority, session, processes, transitions. **XAML skins** (`skins\<name>.xaml`, `settings.skin`) with live recolour. **Claude Code hooks** merged into `~/.claude/settings.json` under a marker (refused, not rewritten, when the file has comments), `/v1/claude/{tab}/{event}`. 138 unit tests; 75 in-process checks + a restart pair; ConPTY-safe throughout |
-| **Herd overseer P3 — reach** (§12.12) | **Codex CLI `notify`**: `integrations install codex` writes a PowerShell shim next to `config.toml` and a marked `notify` line among its top-level keys (a `notify` of the user's is never replaced); the payload becomes an **advisory** report — the turn's end, the thread id for `codex resume`, the last message as summary — without taking authority, since Codex never says `working`. **Native toast sink** (`type: toast`): WinRT over hand-written COM, no CsWinRT (the output stays at 2 MB); AUMID under HKCU; click → `overshell://focus/<tab>`; verified by reading the shell's notification history back with Windows PowerShell. **Tear-off windows** (`Ctrl+Shift+D` / `Ctrl+Shift+A`): the live surface moves into a window of its own and back — same HWND, session alive — while the tab stays in the collection for detection, sidebar, dashboard, notifications and the session file; chords, right-click and link hover follow the window they happen in. 145 unit tests; 84 in-process checks + restart pair + OpenCode e2e |
+| **Herd overseer P3 — reach** (§12.12) | **Codex CLI `notify`**: `integrations install codex` writes a PowerShell shim next to `config.toml` and a marked `notify` line among its top-level keys (a `notify` of the user's is never replaced); the payload becomes an **advisory** report — the turn's end, the thread id for `codex resume`, the last message as summary — without taking authority, since Codex never says `working`. **Native toast sink** (`type: toast`): WinRT over hand-written COM, no CsWinRT (the output stays at 2 MB); AUMID under HKCU; click → `overshell://focus/<tab>`; verified by reading the shell's notification history back with Windows PowerShell. **Tear-off windows** (`Ctrl+Shift+X` / `Ctrl+Shift+A`): the live surface moves into a window of its own and back — same HWND, session alive — while the tab stays in the collection for detection, sidebar, dashboard, notifications and the session file; chords, right-click and link hover follow the window they happen in. 145 unit tests; 84 in-process checks + restart pair + OpenCode e2e |
 | **Distribution** (13) | Three channels from one tag: **winget** `MoaidHathot.OverShell` (framework-dependent zip as a portable, alias `overshell`, `Microsoft.DotNet.DesktopRuntime.10` as a dependency), the **.NET tool** `OverShell` (`dotnet tool install -g OverShell`, `dnx OverShell`; the window detaches from the wrapper), and the **GitHub Release** with both zips (self-contained too), the tool package and `SHA256SUMS.txt`. `build/Release.ps1` builds everything in two phases with a signing catalogue in between; `release.yml` signs the four OverShell assemblies in every layout with Azure Artifact Signing over OIDC, publishes, pushes to nuget.org and opens the winget-pkgs pull request. Verified locally: pack, install from the repacked package, shim and `dnx` return at once, `overshell://` handoff through the shim, self-contained zip with no shared runtime, `winget validate`. Not yet exercised: a signed run and the first winget review |
-| **Herd overseer P4 — resilience and history** (§12.13) | The session file is written every two seconds and says how the run ended; a start after a crash or power cut restores everything and says so; the main window and tear-offs come back where they were (clamped to the desktop that exists now); a restored agent resumes by id, or by the harness's "most recent session" form when no id is known, relaunched when the profile's program is the agent; **history**: closed tabs reopen (`Ctrl+Shift+T`), earlier sessions are archived and a picker (`session.history`) brings a tab or a whole session back; opt-in restart with Windows; vector harness icons. 169 unit tests; 85 + 16 + 16 + 17 + 5 in-process checks, OpenCode resume e2e |
+| **Herd overseer P4 — resilience and history** (§12.13) | The session file is written every two seconds and says how the run ended; a start after a crash or power cut restores everything and says so; the main window and tear-offs come back where they were (clamped to the desktop that exists now); a restored agent resumes by id, or by the harness's "most recent session" form when no id is known, relaunched when the profile's program is the agent; **history**: closed tabs reopen (`Ctrl+Shift+Z`), earlier sessions are archived and a picker (`session.history`) brings a tab or a whole session back; opt-in restart with Windows; vector harness icons. 169 unit tests; 85 + 16 + 16 + 17 + 5 in-process checks, OpenCode resume e2e |
+| **Herd overseer P5 — polish, honesty, depth** (§12.14) | Chords follow Windows Terminal (`Ctrl+T` back to the shell); `tab.duplicate`; atomic `state.json`; app icon + AUMID; the **working directory** probed from the shell process (cmd, bash) or read from the prompt line (PowerShell) with `integrations install shell` for the OSC hook; restore **held** after two interrupted runs in a minute; a **close question** when agents are working; the **previous screen** as a dim preamble after a crash; **workspaces** (`workspaces\*.jsonc`, `workspace.save`, `workspace.open.*`) and four more `overshell://` actions; tab-strip **overflow** (width band, wheel, fades, overflow button); taskbar **jump list**; **themes** `system`/`dark`/`light` with the Windows accent, live; **tear-offs** with the main window's chrome; **find in the buffer** (`Ctrl+Shift+F`, scrollback included, the current match as the terminal's selection, the rest tinted). Two pre-existing bugs fixed on the way (§12.14: the endpoint's disposed-listener retry, the `FindText` no-hit exception that hid the link probe's fallback). 207 unit tests; ten new self-test modes, 85-check still 85/85 |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -830,10 +832,11 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 ### Open — near term
 
-- [ ] **Verify shortcuts on real hardware.** `Ctrl+T`, `Ctrl+Shift+W`, `Ctrl+Tab`,
+- [ ] **Verify shortcuts on real hardware.** `Ctrl+Shift+T`, `Ctrl+Shift+W`, `Ctrl+Tab`,
       `Alt+1..9`, `Ctrl+C`/`Ctrl+V`, `Ctrl+Shift+C`/`V`, right-click copy-or-paste, and now
       `Ctrl+Shift+P` (commands), `Ctrl+Shift+Space` (tabs), `Ctrl+Shift+J` (jump),
-      `Ctrl+Shift+R` (rename), `Ctrl+Shift+1..4` (views), ``Ctrl+Shift+` `` (toggle).
+      `Ctrl+Shift+R` (rename), `Ctrl+Shift+1..4` (views), ``Ctrl+Shift+` `` (toggle),
+      `Ctrl+Shift+F` (find) with Enter / Shift+Enter / F3 / Esc inside the bar.
       Chord → command resolution is verified in-process; the Win32 pre-dispatch path with
       a real keyboard is not. The test card lists them all.
 - [ ] **Watch for double-Tab.** If one press yields two tabs, the terminal is receiving
@@ -843,8 +846,6 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 - [ ] Copilot CLI end-to-end with the real `copilot` (the shim is verified verbatim against
       the endpoint; the harness firing it is not — `~/.copilot/hooks` did not exist on the
       reference machine before `integrations install copilot`).
-- [ ] A new file under `layouts\` applies live through views and hot reload, but gets its
-      `layout.<name>` palette command only at the next start (commands are registered once).
 
 ### Open — the actual feature work
 
@@ -852,17 +853,16 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
       drag preview would draw in `OverlayHost`.
 - [ ] Codex `notify` against a live Codex CLI (not installed on the reference machine; the
       script, translator and `config.toml` edit are verified without it).
-- [ ] Tear-off polish: link underline over a tear-off (the overlay is owned by the main
-      window), detached state remembered across restarts (today they come back attached).
+- [ ] Link underline over a tear-off (that overlay is owned by the main window; the find
+      highlights already have one per window, §12.14).
 - [ ] Claude Code hooks against a live Claude Code (not installed on the reference
       machine; the shim, translator and settings.json merge are verified without it).
 - [ ] Split panes (our own splitter tree, independent of WT's panes).
 
 ### Open — later
 
-- [ ] Search. WT's search box is UWP-only; would have to be built over the buffer — the
-      UIA `ITextProvider` exposes `FindText` (§7.10), or it comes free with an xterm.js
-      surface (§11.4a).
+- [ ] Find: regular expressions (the UIA provider offers plain text only, §12.14) and a
+      results list; both come free with an xterm.js surface (§11.4a).
 - [ ] Import Windows Terminal's `actions` / `keybindings` into `keybindings.jsonc` (the
       object shape is already accepted).
 - [ ] Profile icons in the tab strip and new-tab menu (paths are already parsed).
@@ -883,8 +883,9 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | Scrollback lost when moving a session | ConPTY repaints viewport only (§7.1) | No |
 | WPF cannot draw over the terminal in-tree | Airspace — same as WebView2 | `OverlayHost` (§7.12); HTML overlays inside an xterm.js surface |
 | Chrome text is grayscale-antialiased | Transparent composition target disables ClearType | `OVERSHELL_BACKDROP=none` |
-| No search / shell-integration marks in the control | Not in the Hwnd C API | Marks: `TerminalStreamState` (§11.6). Search: UIA `FindText` (§7.10) or a second surface |
-| Working directory only updates when the shell says so | OSC 9;9 / OSC 7 come from the shell's prompt; the reference machine's pwsh profile emits neither, so `cd` is invisible and the status bar keeps the starting directory | Add the one-liner Windows Terminal documents to the profile; the branch, project and cards follow immediately |
+| No shell-integration marks in the control; find is plain text, no regex | Not in the Hwnd C API; find is built over the UIA text provider (§12.14), which searches literal text | Marks: `TerminalStreamState` (§11.6). Regex: a second surface |
+| Find highlights disappear while another window is in front | They are a separate click-through window over the terminal and would float over whatever covers it | By design; they return when OverShell is the foreground window again |
+| PowerShell's working directory is read from the prompt line on screen unless the shell emits OSC 9;9 / 7 | `Set-Location` does not change the process directory, so the PEB probe that serves cmd and bash is useless for pwsh; a prompt that does not show the path hides the directory | `integrations install shell` adds the OSC hook to both PowerShell profiles (§12.14) |
 | A URL ending in the last column of a non-wrapped row, or longer than 9 rows, gets approximate or no geometry | `FindText` off-by-one pushes such a match out of range (§7.10); the row walk is capped | Cosmetic; the link still opens |
 | A link whose text is not uniformly coloured is underlined in the scheme foreground | The colour attribute reports "mixed" for the range | Split by colour run if it ever matters |
 | x64 only | Native control not published AnyCPU | No |
@@ -1379,6 +1380,13 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
 5. `TERM_PROGRAM` for Claude Code — deferred; lowest priority.
 6. **Small-tile PTY reflow** ✅ confirmed — a 400×300 margin shrank the grid from 133×71
    to 1×39 and back. Cards use text, never live tiles.
+7. **The text provider as a search engine** ✅ 2026-10-03 (`OVERSHELL_SPIKES=find`) —
+   `FindText` over `DocumentRange` found 5 occurrences across viewport and scrollback in
+   4.6 ms; hidden matches report no bounding rectangles, visible ones exact cell runs;
+   `Select()` scrolled a hidden match into view and selected it, painted by the renderer;
+   `ScrollIntoView(true)` put the match's row at the top; `SupportedTextSelection=Single`.
+   Also found: a found range is one glyph too long, and with no hit `FindText` returns a
+   range that fails with E_FAIL on use rather than null (§12.14).
 
 ### 12.8 Phases
 
@@ -1392,6 +1400,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **P5 Polish, honesty, depth** ✅ 2026-10-03 — WT chords; honest working directory + shell hook; restore hold + close question; previous screen; workspaces; strip overflow; jump list; themes; tear-off chrome; find.
 - **P4 Resilience & history** ✅ 2026-10-03 — two-second session saves with a close reason; crash/sign-out aware restore; window placement; resume by id or by "most recent"; recently closed tabs + archived sessions + picker; restart with Windows (opt-in); vector harness icons.
 
 Each phase ends as §11 did: zero warnings, in-process verification where possible, a
@@ -1802,6 +1811,143 @@ both detected by the process probe); an OpenCode profile relaunched as
 The 85-check self-test still 85/85. Not exercised: a real sign-out or reboot (the
 `WM_QUERYENDSESSION` path is), Claude Code and Codex (`--continue` / `resume --last` are
 from their documentation).
+
+### 12.14 P5 - polish, honesty, depth
+
+Eleven items the user picked after living with P4, done in ten batches, one commit each,
+every batch verified in-process before the next. The theme is honesty: the window should
+not claim a directory it has not checked, should not restore into a crash loop, should
+say when it is about to kill an agent, and should look like one program whether a tab is
+in the main window or torn off.
+
+**1 - Polish** (`979a80b`). `state.json` written atomically (temp + replace) - a power cut
+mid-write had been able to lose every label. The detached mark is a Fluent glyph
+(`\uE8A7`) in the strip, list, rail and sidebar instead of a text arrow. `TitleText.ForDisplay`
+strips the state icons a harness puts at the front of its title (OpenCode's `●`, Copilot's
+`◐`) so the tab label and status detail do not show the dot twice. A status message with
+the status bar hidden (Zen) goes out as a toast through `NotificationPipeline.Announce`
+rather than nowhere. The app got an icon (`build/Make-Icon.ps1` → `Assets/OverShell.ico`,
+nine sizes, `>_`) and an explicit AUMID (`OverShell.Terminal`) so the taskbar groups the
+window, the toasts and the jump list under one entry. Archive de-duplication compares
+tabs only, not timestamps. **Chords follow Windows Terminal** where it has one:
+`Ctrl+Shift+T` new, `Ctrl+Shift+W` close, `Ctrl+Shift+D` duplicate (new: `tab.duplicate`,
+same profile, directory and group, placed next to its source), `Ctrl+Shift+Z` reopen,
+`Ctrl+Shift+X` detach, `Ctrl+Shift+A` attach; **`Ctrl+T` is the shell's again** (PSReadLine
+swaps characters on it). `.gitattributes` pins LF and marks binaries.
+
+**2 - Working directory, honestly** (`a976eb6`). The status bar used to keep the starting
+directory until the shell emitted OSC 9;9 / 7, which the reference machine's pwsh never
+did. Two sources were added, each named in the explain panel (`CwdSource.Process` /
+`Prompt`): the **process probe** reads the deepest shell descendant's current directory
+from its PEB (`Agents/ProcessCwd.cs`, x64 and WOW64, `ProcessTree.DescendantEntries`,
+`ShellCwdTarget.Pick`) - right for cmd and bash, useless for PowerShell, whose
+`Set-Location` does **not** change the process directory; for pwsh the **prompt line** on
+screen is read (`PromptPath.FromScreen`: `PS C:\path> `). Probes run 2 s after output
+settles and every 10 s; a probed directory is accepted only when it is about the root shell
+and the tab does not announce its own (`TerminalTab.AnnouncesDirectory`), so a shell that
+emits OSC 9;9 is never second-guessed. `integrations install shell` appends a marked block
+to **both** per-host PowerShell profiles (`shell-overshell-prompt.ps1`: wraps the existing
+`prompt`, emits OSC 9;9 only inside OverShell / Windows Terminal and only for FileSystem
+locations); `uninstall shell` removes it; `OVERSHELL_PROFILE_ROOT` stands in for Documents
+in tests. `detection.cwdFromProcess` turns the probe off.
+
+**3 - Resilience** (`e0c67db`). `RestorePolicy.ShouldHold`: two interrupted runs less than
+60 s apart hold the restore and say so in the status bar, so a session that crashes the
+window cannot loop (`SessionSnapshot.StartedAt` makes the gap measurable). A restored tab
+carries a `RestoreNote` explaining its `restored` line. Closing with agents working asks
+first - `PaletteWindow.Ask("Close OverShell?", …)` with "Close anyway - N agents working"
+/ "Keep OverShell open"; `session.confirmCloseWithAgents` turns it off, a Windows
+sign-out (`NoteSessionEnding`) and the self-tests (`AutoConfirmClose`) bypass it. On the
+way, `PaletteItem.GlyphFont` lets picker rows use the icon font for PUA glyphs.
+
+**4 - The previous screen** (`95f24d0`). After a crash the restored tab is a blank prompt;
+what was on it is gone. `SessionScreens` saves the last 30 rows of every tab to
+`session-screens.json` every 5 s when they changed; a restore after an interruption
+injects them as a dim, italic **preamble** (`SessionDescriptor.Preamble`, written by
+`WindowsTerminalSurface.Connect` before the session starts) with a rule under them - the
+ghost of the last screen, clearly not live. `session.showPreviousScreen`:
+`interrupted` (default), `always`, `never`.
+
+**5 - Workspaces** (`696f7d0`). `workspaces\<name>.jsonc` (`Workspace`, `WorkspaceTab`,
+`WorkspaceCatalog`): a named set of tabs - profile, directory, label, group - opened next
+to the current tab by `workspace.open.<slug>` (one command per file, re-registered on hot
+reload, as `layout.*` now is too - the "palette command only at next start" item is
+closed) and saved from the live tabs by `workspace.save`. New `overshell://` actions:
+`workspace/<name>`, `reopen`, `history[/<archive>]`, `new?profile=&cwd=`. **Bug found**:
+`IntegrationEndpoint.Start` retried a port range on a listener that `HttpListener.Start()`
+had already disposed on failure, so the second attempt threw `ObjectDisposedException` -
+the Hyper-V excluded range on the reference machine (50000-50059) is exactly what made it
+visible; a fresh listener per attempt now.
+
+**6 - Strip overflow** (`667d976`). Forty tabs used to shrink to unreadable slivers. Tabs
+have a width band (150-240 relaxed, equal widths down to a 104 px floor), the strip
+scrolls with the wheel, `EnsureVisible` brings the active tab into view, edge fades
+(`EdgeFadeBrush`, matched to the caption surface) show there is more, and an overflow
+button opens `palette.tabs`. The label row is a star-column grid so ellipsis works.
+
+**7 - Jump list** (`7b3db56`). The taskbar entry's jump list (`MainWindow.JumpList.cs`):
+tasks New tab / Reopen closed tab / Session history, categories Recent sessions (5) and
+Workspaces - all `overshell://` URLs to the registered exe, built at `Loaded` and when
+workspaces reload; written to `CustomDestinations` under the AUMID.
+
+**8 - Themes** (`6de0c5f`). `theme: "system" | "dark" | "light"` (default `system`,
+read from `AppsUseLightTheme`) and `accent: "system" | "palette" | "#RRGGBB"` (the
+Windows accent in the variant for the theme: light2 on dark, dark1 on light; DWM
+colourisation as fallback). `Theme/Palette.Light.xaml` beside the dark one; a skin still
+wins over the theme (`SkinLoader.SetBase` / `LoadPalette`); new keys `Accent.OnAccent`,
+`Scroll.Thumb/Hover/Active`. Live on reload and on `WM_SETTINGCHANGE "ImmersiveColorSet"`
+/ `WM_DWMCOLORIZATIONCOLORCHANGED`. **Bug found**: the active strip tab's text used a
+hard-coded light colour, invisible on a light theme; it follows the scheme foreground now.
+
+**9 - Tear-off chrome** (`b553727`). A tear-off had the stock frame beside a main window
+with its own caption. It now has the same `WindowChrome`, the same backdrop
+(`WindowChromeInterop.Apply`, whose dark-mode flag and frame border now follow the theme
+for both windows and are re-applied on theme change), and in the caption the tab's state
+dot, harness icon, label and state line; drag, double-click, restore-under-cursor and the
+maximized margin correction match the main window. The close button re-attaches, as
+closing a tear-off always has, and its tooltip says so.
+
+**10 - Find** (`9d2bc8a`). Windows Terminal's search box is UWP-only; the one channel to
+the buffer is the UI Automation text provider (§7.10). **Spike 7** (`OVERSHELL_SPIKES=find`)
+measured what it offers: `FindText` over `DocumentRange` reaches scrollback (5 matches in
+4.6 ms), an off-screen match reports **no bounding rectangles** - which is how a visible
+match is told from a hidden one - `Select()` on a found range does what the terminal's own
+search does (`Terminal::SelectNewRegion`: scrolls a hidden match into view, selects it,
+and the renderer paints it at once, checked with a screen capture), `ScrollIntoView` is
+exact. `Chrome/FindBar` sits under the terminal like the prompt bar: `Ctrl+Shift+F`
+(`terminal.find`), a box, arrows, a match-case toggle, "3 of 5" / "No matches" / "500+",
+Esc back to the terminal. **Enter and F3 walk upwards** through older text, as Windows
+Terminal's box does - what you look for just scrolled past - Shift+Enter / Shift+F3
+downwards; a fresh needle starts at the lowest match on screen. The current match is the
+terminal's own selection with an accent outline; the other visible matches are tinted by
+a second `OverlayHost` (`ShowCells`). `FindSession` **re-derives** matches rather than
+tracking them: output (polled at 200 ms), the viewport scrolling (new
+`ITerminalSurface.ViewportChanged`, read off the control's scroll bar - the package keeps
+the terminal's scroll events internal) and the window moving simply run the search again
+and keep the current match by its buffer position; only a step or a new needle moves the
+viewport. The open bar follows the active tab, a closing tab takes its session with it,
+and each tear-off has a bar of its own (`FindBarController` is the shared glue), so a
+chord pressed there searches the tab in front of the user. **Two provider behaviours
+found**, both handled in `TerminalTextProbe.TryFindText`: with **no hit, `FindText` hands
+back a range object anyway**, one that fails every call with E_FAIL - so "No matches" was
+an exception, and the link probe's `ApproximateCellRects` fallback for text the provider
+"cannot find" had been unreachable since §11.8, the exception having skipped it; and the
+known one-glyph-long range (`TrimToNeedle` now returns the trimmed text, which also keeps
+a match-case search exact against what the provider matched).
+
+**Verified** (all in-process, no synthetic input; 207 unit tests): one self-test mode per
+batch - `polish` 15-17/17 (the two focus checks skip when another process holds the
+foreground), `cwd` 13/13, `resilience` 12/12 (an archived interrupted run plus a live file
+→ the hold note; the close question answered through its command), `ghost` 8/8 with a
+PrintWindow capture of the preamble, `workspaces` 12/12, `overflow` 14/14 with strip
+renders at 3, 12 and 40 tabs, `jumplist` 9/9 (the `.customDestinations-ms` file read
+back), `theme` 12/12 with a full-window light capture, `tearoff` 10/10 with the caption
+rendered, `find` 27/27 with a true screen capture (BitBlt - PrintWindow cannot see the
+overlay window). After every batch the 85-check self-test still 85/85 and `session1`/
+`session2` across a real restart. Side effects on the reference machine: the shell hook is
+installed in both PowerShell profiles; the OpenCode plugin was updated to adopt the id of
+a resumed session. Not exercised: a real sign-out or reboot, Claude Code and Codex, a
+signed release run and the first winget review (§13.5).
 
 ---
 
