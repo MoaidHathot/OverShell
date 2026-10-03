@@ -1152,7 +1152,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // follows Windows live when settings.theme/accent say "system".
             if (msg == WmDwmColorizationColorChanged || (msg == WmSettingChange && lParam != IntPtr.Zero && Marshal.PtrToStringUni(lParam) is "ImmersiveColorSet"))
             {
-                Dispatcher.BeginInvoke(() => _trace.Write($"theme: Windows changed - {Chrome.ThemeManager.Apply(_settings)}"), DispatcherPriority.Background);
+                Dispatcher.BeginInvoke(() =>
+                {
+                    _trace.Write($"theme: Windows changed - {Chrome.ThemeManager.Apply(_settings)}");
+                    ApplyBackdrop();
+                    foreach (var tearOff in _tearOffs)
+                    {
+                        tearOff.ReapplyBackdrop();
+                    }
+                }, DispatcherPriority.Background);
             }
 
             return IntPtr.Zero;

@@ -512,6 +512,14 @@ public partial class MainWindow
         {
             _trace.Write($"theme: {ThemeManager.Apply(_settings)}");
             ApplySkinFromSettings();
+            if (IsLoaded)
+            {
+                ApplyBackdrop();
+                foreach (var tearOff in _tearOffs)
+                {
+                    tearOff.ReapplyBackdrop();
+                }
+            }
             if (skins && !settings)
             {
                 parts.Add($"skin{(_settings.Skin is null ? string.Empty : $" '{_settings.Skin}'")}");

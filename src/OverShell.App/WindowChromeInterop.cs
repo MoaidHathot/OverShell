@@ -103,11 +103,12 @@ internal static class WindowChromeInterop
             return false;
         }
 
-        Set(handle, Attribute.UseImmersiveDarkMode, 1);
+        // DWM tints acrylic/mica by the window's dark-mode flag, so the backdrop follows the
+        // theme (§12.14); the frame border matches the theme's Surface.Border (0x00BBGGRR).
+        var light = Chrome.SkinLoader.CurrentTheme == "light";
+        Set(handle, Attribute.UseImmersiveDarkMode, light ? 0 : 1);
         Set(handle, Attribute.WindowCornerPreference, (int)CornerPreference.Round);
-
-        // 0x00BBGGRR — matches Surface.Border (#262A33).
-        Set(handle, Attribute.BorderColor, 0x00332A26);
+        Set(handle, Attribute.BorderColor, light ? 0x00E0D8D3 : 0x00332A26);
 
         var wanted = requested;
         if (wanted != BackdropKind.None && !TransparencyEffectsEnabled())

@@ -22,7 +22,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -90,6 +90,9 @@ internal static class HerdSelfTest
                         break;
                     case "theme":
                         await RunThemeAsync(window, firstTab);
+                        break;
+                    case "tearoff":
+                        await RunTearOffChromeAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -311,8 +314,74 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Themes (§12.14): the start follows Windows (dark here) with the system accent; setting
-    /// theme=light recolours every theme brush live - the caption surface, text, the brand
+    /// Tear-off chrome (§12.14): a tear-off wears the main window's chrome - no system
+    /// caption, a caption surface with the tab's dot, icon, label and detail, the three
+    /// caption buttons; the terminal keeps working inside; the close button re-attaches
+    /// rather than ending the session; maximize and restore keep the margins right.
+    /// </summary>
+    private static async Task RunTearOffChromeAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (tearoff) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var second = window.AddTab(tab.Profile, activate: false);
+        await WaitForPromptAsync(second);
+        second.UserLabel = "torn off";
+        second.ApplyReport(new IntegrationReport(second.Id, "opencode", 1, AgentState.Working, "opencode", "thinking about chrome", null, null, null, Release: false));
+        var hwndBefore = second.TerminalHwnd;
+
+        var tearOff = window.Detach(second);
+        await Task.Delay(900);
+        Check(tearOff is not null && second.Detached, "the tab is detached into a tear-off");
+        if (tearOff is null)
+        {
+            Log("=== selftest (tearoff) result: FAILED ===");
+            return;
+        }
+
+        Check(tearOff.WindowStyle == System.Windows.WindowStyle.None && System.Windows.Shell.WindowChrome.GetWindowChrome(tearOff) is { CaptionHeight: 0, UseAeroCaptionButtons: false }, "no system caption: our WindowChrome, like the main window");
+        var captionTexts = FindAll<System.Windows.Controls.TextBlock>(tearOff.CaptionSurface).Select(t => t.Text).ToList();
+        var buttons = FindAll<System.Windows.Controls.Button>(tearOff.CaptionSurface).ToList();
+        var icons = FindAll<Chrome.HarnessIcon>(tearOff.CaptionSurface).ToList();
+        Log($"  caption: texts=[{string.Join(" | ", captionTexts)}] buttons={buttons.Count} icons={icons.Count} (visible {icons.Count(i => i.IsVisible)}) background={((System.Windows.Media.SolidColorBrush)((System.Windows.Controls.Border)tearOff.CaptionSurface).Background).Color}");
+        Check(captionTexts.Contains("torn off") && captionTexts.Any(t => t.Contains("working", StringComparison.Ordinal)), "the caption shows the tab's label and its state line");
+        Check(icons.Count == 1 && icons[0].IsVisible, "…and the harness icon");
+        Check(buttons.Count == 3 && buttons.Select(b => b.ToolTip as string).Any(t => t?.StartsWith("Back to the main window", StringComparison.Ordinal) == true), "three caption buttons; the close one says it re-attaches");
+        Check(second.TerminalHwnd == hwndBefore, "the same terminal HWND lives on in the tear-off");
+        SaveVisual(tearOff.CaptionSurface, "overshell-selftest-tearoff-caption.png");
+
+        second.SendText("Write-Host tearoff-chrome-alive\r");
+        await Task.Delay(1500);
+        second.RequestScreen();
+        await Task.Delay(400);
+        Check(second.ScreenRows.Any(r => r.Contains("tearoff-chrome-alive", StringComparison.Ordinal) && !r.Contains("Write-Host", StringComparison.Ordinal)), "the shell runs inside the tear-off");
+
+        tearOff.WindowState = System.Windows.WindowState.Maximized;
+        await Task.Delay(500);
+        var root = (System.Windows.Controls.Border)tearOff.Content;
+        var maxButton = buttons.First(b => (b.ToolTip as string) is "Restore" or "Maximize");
+        Check(root.Margin.Top > 0 && root.BorderThickness.Top == 0 && (string)maxButton.ToolTip == "Restore", "maximized: the root pulls in by the resize border and the button says Restore");
+        tearOff.WindowState = System.Windows.WindowState.Normal;
+        await Task.Delay(500);
+        Check(root.Margin.Top == 0 && root.BorderThickness.Top == 1 && (string)maxButton.ToolTip == "Maximize", "restored: margins and border back");
+
+        // The close button re-attaches.
+        var closeButton = buttons.First(b => ((string)b.ToolTip).StartsWith("Back to the main window", StringComparison.Ordinal));
+        closeButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+        await Task.Delay(700);
+        Check(!second.Detached && window.Tabs.Contains(second) && window.TearOffs.Count == 0 && second.IsRunning, "the close button brought the tab back into the main window; the session is alive");
+
+        window.CloseTab(second);
+        Log($"=== selftest (tearoff) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Themes (§12.14): the start follows Windows (dark here) with the system accent; setting    /// theme=light recolours every theme brush live - the caption surface, text, the brand
     /// mark's glyph; a skin's colour still wins over the theme; "palette" and "#RRGGBB" accents
     /// land; and dark comes back. PNGs of the caption in both themes.
     /// </summary>
