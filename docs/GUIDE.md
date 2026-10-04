@@ -127,7 +127,12 @@ init` gives you the full default file, commented, as a starting point.
     "snapshotMinIntervalMs": 300,    // never read one tab's screen more often than this
     "processProbeIntervalMs": 2500,  // how often the process tree below a shell is checked
     "treatUnknownAsAgent": false,    // true: every tab is an agent even when nothing is recognised
+    "injectShellIntegration": true,  // a plain PowerShell profile announces its directory, no profile edit (§7)
     "cwdFromProcess": true           // learn the directory from the shell process / prompt line when it emits no OSC 9;9 (§15)
+  },
+
+  "compatibility": {
+    "reloadEnvironmentVariables": true   // every tab's environment from the registry, as Windows Terminal does (§7)
   },
 
   "git": {
@@ -318,12 +323,27 @@ otherwise the detector weighs the evidence. A tab "viewed" is the active tab in 
 focused window (or a focused tear-off) — that is what clears **done**.
 
 **The working directory** shown in the status bar, the cards and the sidebar is what the
-shell announces (OSC 9;9 / OSC 7, as Windows Terminal reads them). A shell that announces
-nothing is not left at its starting directory: for cmd and bash the directory is read from
-the shell process itself; for PowerShell, whose `Set-Location` does not move the process,
-it is read from the prompt line on screen (`PS C:\path>`). `OverShell integrations install
-shell` adds the OSC hook to both PowerShell profiles so it is announced exactly, inside
-OverShell and Windows Terminal only (§8). `Ctrl+Shift+E` names the source.
+shell announces (OSC 9;9 / OSC 7, as Windows Terminal reads them). A plain PowerShell
+profile announces it from its first prompt without any setup: OverShell starts it with
+`-NoExit -Command ". '<script>'"` — the same way VS Code's terminal does — so a small
+script runs after your profile and wraps your prompt (starship, oh-my-posh, the default,
+whichever you ended up with). One visible difference: the tab starts at the prompt, without
+the "PowerShell 7.x" banner. A profile that runs its own command or file is left exactly as
+it is, and so is every other shell; `"detection": { "injectShellIntegration": false }` turns
+it off. A shell that announces nothing is still not left at its starting directory: for cmd
+and bash the directory is read from the shell process itself; for PowerShell, whose
+`Set-Location` does not move the process, from the prompt line on screen (`PS C:\path>`).
+`OverShell integrations install shell` (§8) is the fallback for those wrapped profiles.
+`Ctrl+Shift+E` shows whether the integration is injected and where the directory comes from.
+
+**The environment** of every tab is built from the registry — system and user variables,
+PATH as system;user — the way Windows Terminal builds it, not inherited from whatever
+started OverShell. So a tool installed after OverShell (or after the browser you clicked an
+`overshell://` link in) is on PATH in the next tab, and a variable that existed only in the
+shell you started OverShell from is not. `"compatibility": { "reloadEnvironmentVariables":
+false }` inherits OverShell's own environment instead, like Terminal's setting of the same
+name. `Ctrl+Shift+E` shows which. Inside WSL, `WSLENV` carries `WT_SESSION`, `WT_PROFILE_ID`
+and the `OVERSHELL_*` variables across.
 
 Evidence the detector reads without any integration: the OSC 0/2 title, OSC 9;4
 progress, OSC 9/99/777 notifications, the bell, OSC 133 shell-integration marks, and
@@ -375,7 +395,7 @@ OverShell:
 | Copilot CLI | `copilot` | `~/.copilot/hooks/overshell.json` (`COPILOT_HOME` honoured) — hooks for session start/end, prompt, stop, permission and elicitation notifications |
 | Claude Code | `claude` | hook entries **merged into** `~/.claude/settings.json` (`CLAUDE_CONFIG_DIR` honoured) under a marker; `uninstall` removes only those. A file with comments is refused, not rewritten — `integrations show claude` prints the entries to add by hand |
 | Codex CLI | `codex` | a PowerShell script next to `~/.codex/config.toml` (`CODEX_HOME` honoured) and one marked `notify = […]` line among the top-level keys. A `notify` you wrote is never replaced — `integrations show codex` prints ours to combine |
-| PowerShell (the shell itself) | `shell` | a marked block at the end of both PowerShell profiles (`PowerShell\` and `WindowsPowerShell\` under Documents) that wraps your `prompt` and emits OSC 9;9 with the current directory — only inside OverShell or Windows Terminal, only for file-system locations. `uninstall shell` removes the block |
+| PowerShell (the shell itself) | `shell` | **usually unnecessary** — a plain PowerShell profile gets the integration on its command line (§7). For a profile that runs its own command or file, or under a `Restricted` execution policy: a marked block at the end of both PowerShell profiles (`PowerShell\` and `WindowsPowerShell\` under Documents) that wraps your `prompt` and emits OSC 9;9 — only inside OverShell or Windows Terminal, only for file-system locations. `uninstall shell` removes the block |
 
 `OverShell integrations status` shows what is installed and whether the harness is on
 PATH. Restart the harness inside an OverShell tab after installing. Codex's hook only
@@ -583,7 +603,7 @@ a .NET tool the command is `overshell`; the wrapper returns at once for the wind
 | `OVERSHELL_TRACE_AGENTS=1` | `%TEMP%\overshell-agents.log`: detection, every state change with its reason, endpoint traffic, notifications, reloads |
 | `OVERSHELL_TRACE_KEYS=1` | `%TEMP%\overshell-keys.log`: every chord seen |
 | `OVERSHELL_TRACE_LINKS=1` | `%TEMP%\overshell-links.log`: link hover and click resolution |
-| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` / `opencode-resume` run it against the real OpenCode; `session1`/`session2` check restore across a restart, `sessionend` a sign-out, `history` the history, `icons` the icons; `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find` one feature each. `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` / `opencode-resume` run it against the real OpenCode; `session1`/`session2` check restore across a restart, `sessionend` a sign-out, `history` the history, `icons` the icons; `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env` one feature each. `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | read this Windows Terminal `settings.json` instead of the installed one |
 | `OVERSHELL_PROFILE_ROOT` | where `integrations install shell` looks for the PowerShell profile folders instead of Documents |
 
@@ -595,12 +615,21 @@ pattern — by design OverShell never infers "needs you" from silence. Install t
 integration, or add the prompt's text to `screen.blocked` in that harness's rule file
 (`Ctrl+Shift+E` shows what the detector last saw and matched).
 
-**The working directory does not follow `cd`.** OverShell prefers what the shell announces
-(OSC 9;9 / OSC 7, as Windows Terminal reads it) and otherwise reads the shell process (cmd,
-bash) or the prompt line (PowerShell). A PowerShell prompt that does not print the path
-hides it: run `OverShell integrations install shell` so the prompt announces it, or add
-the one-liner Windows Terminal documents to your profile. `Ctrl+Shift+E` shows which source
-the tab is using.
+**The working directory does not follow `cd`.** A plain PowerShell profile announces it
+(the integration rides on its command line, §7); OverShell otherwise reads the shell process
+(cmd, bash) or the prompt line (PowerShell). A PowerShell profile that runs its own command,
+with a prompt that does not print the path, hides it: `OverShell integrations install
+shell` makes the prompt announce it. `Ctrl+Shift+E` shows which source the tab is using.
+
+**A tool I just installed is not found in a new tab.** It should be — every tab's
+environment comes from the registry (§7). If `Ctrl+Shift+E` says `env  inherited`, the
+setting `compatibility.reloadEnvironmentVariables` is off, or Windows refused to build the
+block; otherwise the installer did not put the tool on the user or system PATH (check
+*Edit environment variables for your account*).
+
+**The PowerShell banner is gone.** `-Command`, which carries the shell integration,
+suppresses it — as in VS Code's terminal. `"detection": { "injectShellIntegration": false }`
+brings it back (the probe follows `cd` instead).
 
 **A toast click opens a "choose an app" dialog.** `overshell://` is not registered for
 this executable (a moved build, or `protocol.register` off): `OverShell protocol

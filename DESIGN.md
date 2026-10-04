@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find` | Run the end-to-end self-test in-process (§12.9–12.14): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find. Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env` | Run the end-to-end self-test in-process (§12.9–12.15): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15). Log: `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -790,6 +790,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Distribution** (13) | Three channels from one tag: **winget** `MoaidHathot.OverShell` (framework-dependent zip as a portable, alias `overshell`, `Microsoft.DotNet.DesktopRuntime.10` as a dependency), the **.NET tool** `OverShell` (`dotnet tool install -g OverShell`, `dnx OverShell`; the window detaches from the wrapper), and the **GitHub Release** with both zips (self-contained too), the tool package and `SHA256SUMS.txt`. `build/Release.ps1` builds everything in two phases with a signing catalogue in between; `release.yml` signs the four OverShell assemblies in every layout with Azure Artifact Signing over OIDC, publishes, pushes to nuget.org and opens the winget-pkgs pull request. Verified locally: pack, install from the repacked package, shim and `dnx` return at once, `overshell://` handoff through the shim, self-contained zip with no shared runtime, `winget validate`. Not yet exercised: a signed run and the first winget review |
 | **Herd overseer P4 — resilience and history** (§12.13) | The session file is written every two seconds and says how the run ended; a start after a crash or power cut restores everything and says so; the main window and tear-offs come back where they were (clamped to the desktop that exists now); a restored agent resumes by id, or by the harness's "most recent session" form when no id is known, relaunched when the profile's program is the agent; **history**: closed tabs reopen (`Ctrl+Shift+Z`), earlier sessions are archived and a picker (`session.history`) brings a tab or a whole session back; opt-in restart with Windows; vector harness icons. 169 unit tests; 85 + 16 + 16 + 17 + 5 in-process checks, OpenCode resume e2e |
 | **Herd overseer P5 — polish, honesty, depth** (§12.14) | Chords follow Windows Terminal (`Ctrl+T` back to the shell); `tab.duplicate`; atomic `state.json`; app icon + AUMID; the **working directory** probed from the shell process (cmd, bash) or read from the prompt line (PowerShell) with `integrations install shell` for the OSC hook; restore **held** after two interrupted runs in a minute; a **close question** when agents are working; the **previous screen** as a dim preamble after a crash; **workspaces** (`workspaces\*.jsonc`, `workspace.save`, `workspace.open.*`) and four more `overshell://` actions; tab-strip **overflow** (width band, wheel, fades, overflow button); taskbar **jump list**; **themes** `system`/`dark`/`light` with the Windows accent, live; **tear-offs** with the main window's chrome; **find in the buffer** (`Ctrl+Shift+F`, scrollback included, the current match as the terminal's selection, the rest tinted). Two pre-existing bugs fixed on the way (§12.14: the endpoint's disposed-listener retry, the `FindText` no-hit exception that hid the link probe's fallback). 207 unit tests; ten new self-test modes, 85-check still 85/85 |
+| **Terminal parity** (§12.15) | **Shell integration on the command line**: a plain PowerShell profile gets `-NoExit -Command ". '<script>'"` (VS Code's way), so the directory is announced exactly with no profile edit; profiles that run their own command, and other shells, are left alone; `detection.injectShellIntegration`. **Environment rebuilt per tab** from the registry with `CreateEnvironmentBlock`, as Terminal does (`compatibility.reloadEnvironmentVariables`), with `WT_SESSION`/`WT_PROFILE_ID`/`OVERSHELL_*` named in `WSLENV` - a tool installed after the launcher is on PATH in the next tab. One pre-existing bug fixed (a shell announcing its starting directory was not counted as announcing). 250 unit tests; `inject` 14/14, `env` 13/13 |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -885,7 +886,9 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | Chrome text is grayscale-antialiased | Transparent composition target disables ClearType | `OVERSHELL_BACKDROP=none` |
 | No shell-integration marks in the control; find is plain text, no regex | Not in the Hwnd C API; find is built over the UIA text provider (§12.14), which searches literal text | Marks: `TerminalStreamState` (§11.6). Regex: a second surface |
 | Find highlights disappear while another window is in front | They are a separate click-through window over the terminal and would float over whatever covers it | By design; they return when OverShell is the foreground window again |
-| PowerShell's working directory is read from the prompt line on screen unless the shell emits OSC 9;9 / 7 | `Set-Location` does not change the process directory, so the PEB probe that serves cmd and bash is useless for pwsh; a prompt that does not show the path hides the directory | `integrations install shell` adds the OSC hook to both PowerShell profiles (§12.14) |
+| A PowerShell profile that runs its own command (`-Command`, `-File`) has its directory read from the prompt line on screen unless the shell emits OSC 9;9 / 7 | The integration is only injected into a plain launch (§12.15); `Set-Location` does not change the process directory, so the PEB probe that serves cmd and bash is useless for pwsh; a prompt that does not show the path hides the directory | `integrations install shell` adds the OSC hook to both PowerShell profiles |
+| A PowerShell tab starts at its prompt, without the version banner | `-Command` suppresses the banner; the shell integration rides on `-Command` (§12.15) | `detection.injectShellIntegration: false` (the probe follows `cd` instead), or the profile block |
+| A variable set only in the shell that started OverShell is not in its tabs | The environment is rebuilt from the registry per tab, as Windows Terminal does (§12.15) | `compatibility.reloadEnvironmentVariables: false` |
 | A URL ending in the last column of a non-wrapped row, or longer than 9 rows, gets approximate or no geometry | `FindText` off-by-one pushes such a match out of range (§7.10); the row walk is capped | Cosmetic; the link still opens |
 | A link whose text is not uniformly coloured is underlined in the scheme foreground | The colour attribute reports "mixed" for the range | Split by colour run if it ever matters |
 | x64 only | Native control not published AnyCPU | No |
@@ -1400,6 +1403,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **Terminal parity** ✅ 2026-10-03 — shell integration injected into the command line (no profile edit); the environment rebuilt from the registry per tab (§12.15).
 - **P5 Polish, honesty, depth** ✅ 2026-10-03 — WT chords; honest working directory + shell hook; restore hold + close question; previous screen; workspaces; strip overflow; jump list; themes; tear-off chrome; find.
 - **P4 Resilience & history** ✅ 2026-10-03 — two-second session saves with a close reason; crash/sign-out aware restore; window placement; resume by id or by "most recent"; recently closed tabs + archived sessions + picker; restart with Windows (opt-in); vector harness icons.
 
@@ -1949,10 +1953,70 @@ installed in both PowerShell profiles; the OpenCode plugin was updated to adopt 
 a resumed session. Not exercised: a real sign-out or reboot, Claude Code and Codex, a
 signed release run and the first winget review (§13.5).
 
+### 12.15 Two things Windows Terminal gets right that OverShell had not copied
+
+Both surfaced by the user in the same afternoon, both about what a tab *inherits*.
+
+**Shell integration without a profile edit** (`2f064a3`). §12.14's `integrations install
+shell` worked, but asking people to put a block into their PowerShell profile is a chore,
+and the block only wraps the prompt defined *above* it. VS Code solved this years ago: it
+launches `pwsh -NoExit -Command ". '<script>'"`. Profiles run first (they run unless
+`-NoProfile`), then the script - so it wraps whatever prompt the user ends up with, in
+the right order, which a profile edit cannot promise. `ShellLaunch.Inject` (Core, pure)
+does that for a plain `pwsh` / `powershell` launch and leaves everything else alone: a
+command line that already runs a command, a file or an encoded command - PowerShell
+accepts unique prefixes (`-c`, `-com`) and short aliases (`-wd`, `-ep`), both matched - a
+positional script, `--`, `-`, and any other program. An unquoted path with spaces
+resolves as `CreateProcess` resolves it (the shortest run of tokens ending in `.exe`).
+The script is written once per start under the state root (`shell\overshell-prompt.ps1`);
+the detector keeps looking at the profile's own command line; the explain panel says
+"injected" or why not, and whether the directory is announced or probed.
+`detection.injectShellIntegration` (default true). `integrations install shell` stays
+for profiles that wrap a command and for Windows PowerShell under `Restricted` policy (a
+dot-sourced file is refused there; the `catch` keeps the shell usable, the probe stands in).
+**Measured:** `-Command` suppresses PowerShell's version banner - a tab starts at its
+prompt, as VS Code's terminal does; PSReadLine, the profile and the title are unchanged.
+**Bug found:** `_cwdFromShell` was set only when the announced directory *differed* from
+the current one, so a shell announcing the directory it started in was not counted as an
+announcing shell - the probe kept guessing beside an exact source. It counts from the
+first announcement now.
+
+**The environment, rebuilt per tab** (`c2f2be4`). A tab inherited OverShell's process
+environment, so its PATH was whatever *launched OverShell* had. Explorer refreshes its
+block on `WM_SETTINGCHANGE`; a browser or a long-running app does not; a start through
+`overshell://` from such an app gets its stale block. On the reference machine Copilot's
+folder joined the user PATH on 2 Oct 22:43; Explorer had it, Edge (running since 1 Oct)
+did not - and a URL opened from Edge started OverShell without it, while every Windows
+Terminal tab had it. Terminal rebuilds the environment for every tab
+(`compatibility.reloadEnvironmentVariables`, default true) from the registry - system and
+user variables, the volatile per-session ones, the ProgramFiles family, PATH as
+system;user, `%X%` expanded against the block being built, **process-only variables
+dropped** (`til/env.h`, `regenerate()` on an empty map; only fifteen seeds such as
+`USERPROFILE` and `APPDATA` come from the process). `CreateEnvironmentBlock` is the userenv
+API the logon path uses for the same thing; `UserEnvironment.FromRegistry` calls it on our
+own token and `ConPtySession` starts from that block, then adds `WT_SESSION`,
+`WT_PROFILE_ID`, the integration variables, and - as Terminal does - names them in
+`WSLENV` so a shell inside WSL sees them (never PATH). The setting carries Terminal's
+name and default; `false` inherits as before, for a start from a shell with variables of
+its own. The explain panel shows the source (`env  registry (86 variables)`).
+
+**Verified** (in-process, 250 unit tests): `inject` 14/14 - the command line, the script
+on disk, the announcement from the first prompt, `cd` followed in 0.2 s, PSReadLine and
+the guard variable read back from inside the shell, the explain lines, a `-Command`
+profile and `cmd` left alone with the probe at work, the setting off and on live; `env`
+13/13 - the harness starts OverShell with a PATH stripped of all 44 user-registry entries
+and a variable of its own, the tab's shell prints its environment back: all 44 present,
+the variable gone, the Terminal and integration variables set and in `WSLENV`, the
+logon-time variables there; the setting off live inherits the stripped PATH and the
+variable, back on returns to the registry. `cwd` 12/12 (its "never announces" shell now
+carries `-Command`), 85-check 85/85, `session1`/`session2`, OpenCode e2e 7/7 (its plugin
+lives on the carried variables). Side effect undone on the reference machine: the profile
+block from §12.14 was uninstalled; the empty `WindowsPowerShell` profile that install had
+created was removed.
+
 ---
 
 ## 13. Distribution
-
 ### 13.1 Channels - and why each artefact is what it is
 
 One tag `vX.Y.Z` produces three ways in, all from the same `build/Release.ps1` run:

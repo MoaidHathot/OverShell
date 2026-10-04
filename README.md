@@ -47,7 +47,7 @@ backdrop). x64 only.
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
@@ -86,7 +86,7 @@ OverShell integrations install opencode   # writes a plugin into OpenCode's plug
 OverShell integrations install copilot    # writes hooks into ~/.copilot/hooks
 OverShell integrations install claude     # merges hook entries into ~/.claude/settings.json
 OverShell integrations install codex      # a notify script + one line in ~/.codex/config.toml
-OverShell integrations install shell      # a prompt hook in both PowerShell profiles: the directory follows cd exactly
+OverShell integrations install shell      # only for profiles that run their own command: a prompt hook in the PowerShell profiles
 OverShell integrations status
 ```
 
@@ -213,7 +213,9 @@ closed tabs and session history, opt-in restart with Windows), and the polish pa
 (Windows Terminal chords, an honest working directory with a shell hook, restore hold and
 close question, the previous screen after a crash, workspaces, tab-strip overflow, the jump
 list, light and dark themes with the Windows accent, tear-offs with the window's chrome,
-find in the buffer).
+find in the buffer), and Terminal parity (the shell integration injected into a plain
+PowerShell launch, no profile edit; every tab's environment rebuilt from the registry, so
+a freshly installed tool is on PATH in the next tab).
 
 Not yet confirmed by a human: see the test card (`tools\Show-LinkTestCard.ps1`) and
 [DESIGN.md 8](DESIGN.md#8-status).
