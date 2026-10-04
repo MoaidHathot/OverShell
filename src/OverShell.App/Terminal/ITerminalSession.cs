@@ -26,6 +26,9 @@ public interface ITerminalSession : IDisposable
     /// <summary>The root process's id once it exists; the agent detector walks its descendants.</summary>
     int? ProcessId { get; }
 
+    /// <summary>Where the child's environment came from - the registry, or this process and why (§12.15). For the explain panel.</summary>
+    string EnvironmentSource { get; }
+
     /// <summary>Raised on a background thread once the child process exists.</summary>
     event EventHandler? Started;
 

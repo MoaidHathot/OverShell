@@ -98,6 +98,7 @@ public partial class MainWindow
         {
             Rules = _rules,
             Detection = _settings.Detection,
+            Compatibility = _settings.Compatibility,
             EnvironmentFor = _endpoint is { } ep ? ep.EnvironmentFor : null,
         };
 

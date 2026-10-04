@@ -31,6 +31,12 @@ public sealed record SessionDescriptor
     /// <summary>The Windows Terminal profile this came from, if any.</summary>
     public string? ProfileId { get; init; }
 
+    /// <summary>
+    /// Build the child's environment from the registry, as a fresh logon would, instead of
+    /// inheriting this process's - what Windows Terminal does for every tab (§12.15).
+    /// </summary>
+    public bool ReloadEnvironment { get; init; } = true;
+
     /// <summary>VT text the surface paints before the child's first output - a restored tab's previous screen (§12.14). Null for none.</summary>
     public string? Preamble { get; init; }
 

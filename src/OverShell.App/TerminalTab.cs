@@ -99,6 +99,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
             WorkingDirectory = startingDirectory,
             ProfileId = profile.Id,
             Environment = environment,
+            ReloadEnvironment = agents.Compatibility.ReloadEnvironmentVariables,
             Preamble = preamble,
         };
 

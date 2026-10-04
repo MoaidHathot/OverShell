@@ -15,6 +15,9 @@ internal sealed class AgentServices
 
     public required DetectionSettings Detection { get; set; }
 
+    /// <summary>Windows Terminal-compatible behaviours; read when a tab is created, so a reload applies to the next tab.</summary>
+    public CompatibilitySettings Compatibility { get; set; } = new();
+
     public ScreenReader Screen { get; } = new();
 
     /// <summary>Environment a tab's child process gets so integrations can find the endpoint; null when there is none.</summary>

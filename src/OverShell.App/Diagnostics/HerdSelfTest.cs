@@ -22,7 +22,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -99,6 +99,9 @@ internal static class HerdSelfTest
                         break;
                     case "inject":
                         await RunInjectAsync(window, firstTab);
+                        break;
+                    case "env":
+                        await RunEnvAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -320,8 +323,129 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Shell integration without a profile edit (§12.15): a plain PowerShell profile gets the
-    /// script on its command line and announces its directory from the first prompt; a
+    /// The tab's environment (§12.15): built from the registry as Windows Terminal builds it,
+    /// so a PATH entry the launcher never had is there and a variable that lived only in the
+    /// launcher's process is not; WT_SESSION, WT_PROFILE_ID and the integration variables
+    /// present and carried into WSL through WSLENV; the setting turns it back into plain
+    /// inheritance, live. The harness starts OverShell with a PATH stripped of the user's
+    /// registry entries and a variable of its own.
+    /// </summary>
+    private static async Task RunEnvAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (env) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        static async Task<string> ReadInsideAsync(TerminalTab tab)
+        {
+            // One line the shell prints about its own environment; read back from the screen.
+            tab.SendText("Write-Host \"ENV|path=$($env:PATH)|stale=[$env:OVERSHELL_SELFTEST_STALE]|wt=$([bool]$env:WT_SESSION)|pid=$([bool]$env:WT_PROFILE_ID)|ep=$([bool]$env:OVERSHELL_ENDPOINT)|tab=$env:OVERSHELL_TAB_ID|wslenv=$env:WSLENV|user=$env:USERNAME|appdata=$env:APPDATA|temp=$env:TEMP|END\"\r");
+            await Task.Delay(1500);
+            tab.RequestScreen();
+            await Task.Delay(400);
+
+            // The line may wrap across rows; stitch from the ENV| row to the END marker.
+            var rows = tab.ScreenRows;
+            var start = rows.ToList().FindLastIndex(r => r.StartsWith("ENV|", StringComparison.Ordinal));
+            if (start < 0)
+            {
+                return string.Empty;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            for (var i = start; i < rows.Count; i++)
+            {
+                sb.Append(rows[i]);
+                if (rows[i].Contains("|END", StringComparison.Ordinal))
+                {
+                    break;
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        static string Field(string line, string name)
+        {
+            var key = "|" + name + "=";
+            var i = line.IndexOf(key, StringComparison.Ordinal);
+            if (i < 0)
+            {
+                return string.Empty;
+            }
+
+            var from = i + key.Length;
+            var to = line.IndexOf('|', from);
+            return to < 0 ? line[from..] : line[from..to];
+        }
+
+        // What the registry says the user's PATH is - the entries the harness stripped.
+        var userPath = (Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Environment", "Path", null) as string) ?? string.Empty;
+        var userEntries = userPath.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(e => Environment.ExpandEnvironmentVariables(e).TrimEnd('\\')).Where(e => e.Length > 0).ToList();
+        var processPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        var processEntries = processPath.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(e => e.TrimEnd('\\')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var stripped = userEntries.Where(e => !processEntries.Contains(e)).ToList();
+        var stale = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST_STALE");
+        Log($"  launcher: PATH entries={processEntries.Count} user-registry entries={userEntries.Count} stripped from the launcher={stripped.Count} stale='{stale}'");
+        Check(stripped.Count > 0 && stale is not null, "precondition: the harness started OverShell with a PATH missing the user's registry entries and a variable of its own");
+
+        await WaitForPromptAsync(first);
+        Log($"  first tab: env source '{first.Session.EnvironmentSource}'");
+        Check(first.Session.EnvironmentSource.StartsWith("registry (", StringComparison.Ordinal), "the default builds the environment from the registry");
+
+        var line = await ReadInsideAsync(first);
+        var tabEntries = Field(line, "path").Split(';', StringSplitOptions.RemoveEmptyEntries).Select(e => e.TrimEnd('\\')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = stripped.Where(e => !tabEntries.Contains(e)).ToList();
+        Log($"  inside: path entries={tabEntries.Count} stripped-but-present={stripped.Count - missing.Count}/{stripped.Count} stale={Field(line, "stale")} wt={Field(line, "wt")} pid={Field(line, "pid")} ep={Field(line, "ep")} tab={Field(line, "tab")} wslenv={Field(line, "wslenv")} user={Field(line, "user")} appdata={Field(line, "appdata")} temp={Field(line, "temp")}");
+        Check(line.Length > 0 && missing.Count == 0, "the user's registry PATH entries are in the tab although the launcher lacked them (WT semantics)");
+        Check(Field(line, "stale") == "[]", "a variable that lived only in the launcher's process is not in the tab (WT semantics)");
+        Check(Field(line, "wt") == "True" && Field(line, "pid") == "True", "WT_SESSION and WT_PROFILE_ID are set, as Terminal sets them");
+        Check(Field(line, "ep") == "True" && Field(line, "tab") == first.Id, "the integration variables are set on top");
+        var wslenv = Field(line, "wslenv").Split(':', StringSplitOptions.RemoveEmptyEntries).Select(e => e.Split('/')[0]).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Check(wslenv.IsSupersetOf(["WT_SESSION", "WT_PROFILE_ID", "OVERSHELL_ENDPOINT", "OVERSHELL_TOKEN", "OVERSHELL_TAB_ID"]) && !wslenv.Contains("PATH"), "WSLENV carries Terminal's two variables and ours into WSL, never PATH");
+        Check(Field(line, "user") == Environment.UserName && Field(line, "appdata").Length > 0 && Field(line, "temp").Length > 0, "USERNAME, APPDATA and TEMP are there (the logon-time variables)");
+        Check(first.AnnouncesDirectory || first.ShellIntegration.Injected, "the shell integration still rides along");
+
+        // ---- the setting off: inherit, live ----
+        var settingsFile = AppPaths.SettingsFile;
+        var hadSettings = System.IO.File.Exists(settingsFile);
+        var previous = hadSettings ? System.IO.File.ReadAllText(settingsFile) : null;
+        System.IO.File.WriteAllText(settingsFile, """{ "compatibility": { "reloadEnvironmentVariables": false } }""");
+        await Task.Delay(1800);
+        var inherited = window.AddTab(first.Profile, activate: true);
+        await WaitForPromptAsync(inherited);
+        Log($"  setting off: env source '{inherited.Session.EnvironmentSource}'");
+        var inheritedLine = await ReadInsideAsync(inherited);
+        var inheritedEntries = Field(inheritedLine, "path").Split(';', StringSplitOptions.RemoveEmptyEntries).Select(e => e.TrimEnd('\\')).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Log($"  inside (inherited): path entries={inheritedEntries.Count} stripped-present={stripped.Count(e => inheritedEntries.Contains(e))} stale={Field(inheritedLine, "stale")}");
+        Check(inherited.Session.EnvironmentSource.StartsWith("inherited (compatibility", StringComparison.Ordinal), "reloadEnvironmentVariables=false inherits OverShell's environment, live");
+        Check(inheritedLine.Length > 0 && Field(inheritedLine, "stale") == $"[{stale}]" && stripped.All(e => !inheritedEntries.Contains(e)), "...so the tab sees the launcher's variable and its stripped PATH");
+        window.CloseTab(inherited);
+        if (hadSettings)
+        {
+            System.IO.File.WriteAllText(settingsFile, previous);
+        }
+        else
+        {
+            System.IO.File.WriteAllText(settingsFile, "{ }");
+        }
+
+        await Task.Delay(1500);
+        var again = window.AddTab(first.Profile, activate: true);
+        await WaitForPromptAsync(again);
+        Check(again.Session.EnvironmentSource.StartsWith("registry (", StringComparison.Ordinal), "...and back to the registry when the setting goes");
+        Check(Chrome.ExplainWindow.Describe(again).Contains("env        registry (", StringComparison.Ordinal), "the explain panel names the source");
+        window.CloseTab(again);
+
+        Log($"=== selftest (env) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Shell integration without a profile edit (§12.15): a plain PowerShell profile gets the    /// script on its command line and announces its directory from the first prompt; a
     /// profile that runs its own command, and a non-PowerShell shell, are left alone and the
     /// probe follows them instead; the setting turns it off live; PSReadLine and the profile
     /// still load; the explain panel says which is which.

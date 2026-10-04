@@ -371,19 +371,37 @@ public sealed unsafe class ConPtySession : ITerminalSession
     }
 
     /// <summary>
-    /// OverShell's own environment plus what Windows Terminal would add, plus the
+    /// The child's environment, built the way Windows Terminal builds it: regenerated from
+    /// the registry so a new tab sees today's PATH (12.15) - or, when the descriptor says
+    /// so, inherited from this process - plus what Terminal adds (<c>WT_SESSION</c>,
+    /// <c>WT_PROFILE_ID</c>, the <c>WSLENV</c> entries that carry them into WSL), plus the
     /// descriptor's overrides. Sorted case-insensitively as <c>CreateProcess</c> requires.
     /// </summary>
     private string BuildEnvironmentBlock()
     {
         var variables = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        var regenerated = Descriptor.ReloadEnvironment ? UserEnvironment.FromRegistry() : null;
+        if (regenerated is not null)
         {
-            if (entry.Key is string key && key.Length > 0)
+            foreach (var (key, value) in regenerated)
             {
-                variables[key] = entry.Value as string ?? string.Empty;
+                variables[key] = value;
             }
+
+            EnvironmentSource = $"registry ({regenerated.Count} variables)";
+        }
+        else
+        {
+            foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables())
+            {
+                if (entry.Key is string key && key.Length > 0)
+                {
+                    variables[key] = entry.Value as string ?? string.Empty;
+                }
+            }
+
+            EnvironmentSource = Descriptor.ReloadEnvironment ? "inherited (the registry block could not be built)" : "inherited (compatibility.reloadEnvironmentVariables is off)";
         }
 
         variables["WT_SESSION"] = _sessionId.ToString("D");
@@ -393,6 +411,7 @@ public sealed unsafe class ConPtySession : ITerminalSession
             variables["WT_PROFILE_ID"] = Descriptor.ProfileId;
         }
 
+        var carried = new List<string> { "WT_SESSION", "WT_PROFILE_ID" };
         foreach (var (key, value) in Descriptor.Environment)
         {
             if (value is null)
@@ -402,7 +421,19 @@ public sealed unsafe class ConPtySession : ITerminalSession
             else
             {
                 variables[key] = value;
+                carried.Add(key);
             }
+        }
+
+        // WSLENV names the Windows variables WSL should see. Terminal adds its own two; the
+        // integration variables ride along the same way, so a harness inside WSL can report.
+        // Never PATH: that would replace WSL's own computed PATH.
+        var wslEnv = variables.GetValueOrDefault("WSLENV") ?? string.Empty;
+        var present = new HashSet<string>(wslEnv.Split(':', StringSplitOptions.RemoveEmptyEntries).Select(e => e.Split('/')[0]), StringComparer.OrdinalIgnoreCase) { "PATH" };
+        var additional = string.Join(':', carried.Where(present.Add));
+        if (additional.Length > 0)
+        {
+            variables["WSLENV"] = wslEnv.Length == 0 ? additional : additional + (wslEnv.StartsWith(':') ? string.Empty : ":") + wslEnv;
         }
 
         var block = new StringBuilder();
@@ -413,6 +444,9 @@ public sealed unsafe class ConPtySession : ITerminalSession
 
         return block.Append('\0').ToString();
     }
+
+    /// <summary>Where the child's environment came from, for the explain panel: the registry, or this process and why.</summary>
+    public string EnvironmentSource { get; private set; } = "not started";
 
     private void ReadToEnd()
     {

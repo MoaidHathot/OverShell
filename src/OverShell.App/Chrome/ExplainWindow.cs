@@ -121,6 +121,7 @@ public sealed class ExplainWindow : Window
         }
 
         sb.AppendLine($"where      {tab.ProjectAndBranch}   {tab.WorkingDirectory}");
+        sb.AppendLine($"env        {tab.Session.EnvironmentSource}");
         sb.AppendLine($"shell      integration {(tab.ShellIntegration.Injected ? "injected into the command line" : "not injected - " + tab.ShellIntegration.Reason)}; directory {(tab.AnnouncesDirectory ? "announced by the shell" : "from the probe")}");
         if (tab.RestoreNote is not null)
         {

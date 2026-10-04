@@ -483,6 +483,7 @@ public partial class MainWindow
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
             _agents.Detection = _settings.Detection;
+        _agents.Compatibility = _settings.Compatibility;
             TerminalTab.TabSettings = _settings.Tabs;
             foreach (var tab in Tabs)
             {

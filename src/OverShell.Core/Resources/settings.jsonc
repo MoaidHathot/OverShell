@@ -62,6 +62,14 @@
     "restartWithWindows": false
   },
 
+  // Matched to Windows Terminal, under its names. reloadEnvironmentVariables builds every
+  // tab's environment from the registry, as a fresh logon would, so a tool installed after
+  // OverShell (or after whatever launched it) is on PATH in the next tab; false inherits
+  // OverShell's own environment instead - for a start from a shell with variables of its own.
+  "compatibility": {
+    "reloadEnvironmentVariables": true
+  },
+
   // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked
   // toast (--launch overshell://focus/<tab>) lands on its tab in the running window.
   "protocol": {

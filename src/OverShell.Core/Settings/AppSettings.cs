@@ -119,9 +119,20 @@ public sealed class SessionSettings
     public bool RestartWithWindows { get; init; }
 }
 
-/// <summary>The <c>overshell://</c> URL protocol.</summary>
-public sealed class ProtocolSettings
+/// <summary>Behaviours matched to Windows Terminal's, under its names (§12.15).</summary>
+public sealed class CompatibilitySettings
 {
+    /// <summary>
+    /// Build every tab's environment from the registry, as a fresh logon would, instead of
+    /// inheriting OverShell's own - so a tool installed after OverShell (or after whatever
+    /// launched it) is on PATH in the next tab. Off: tabs inherit the process environment,
+    /// which is what you want when you start OverShell from a shell with variables of its own.
+    /// </summary>
+    public bool ReloadEnvironmentVariables { get; init; } = true;
+}
+
+/// <summary>The <c>overshell://</c> URL protocol.</summary>
+public sealed class ProtocolSettings{
     /// <summary>Register <c>overshell://</c> for this user at start (HKCU, no elevation), so toast clicks find their tab.</summary>
     public bool Register { get; init; } = true;
 }
@@ -160,6 +171,8 @@ public sealed class AppSettings
     public SessionSettings Session { get; init; } = new();
 
     public ProtocolSettings Protocol { get; init; } = new();
+
+    public CompatibilitySettings Compatibility { get; init; } = new();
 
     public List<string> Problems { get; } = [];
 
