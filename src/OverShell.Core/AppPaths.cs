@@ -61,6 +61,9 @@ public static class AppPaths
     /// <summary>The last rows of every open tab (§12.14), beside the session file; what a restore after a crash paints first.</summary>
     public static string SessionScreensFile => Path.Combine(StateRoot, "session-screens.json");
 
+    /// <summary>The shell integration script a PowerShell launch dot-sources when it is injected (§12.15).</summary>
+    public static string ShellIntegrationScript => Path.Combine(StateRoot, "shell", "overshell-prompt.ps1");
+
     /// <summary>
     /// Creates the two roots if they do not exist yet. Only the roots: the sub-folders
     /// (<c>agents\</c>, <c>layouts\</c>, <c>skins\</c>) are optional and are made when

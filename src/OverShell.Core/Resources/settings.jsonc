@@ -19,14 +19,17 @@
     "zen":       { "layout": "zen",       "content": "terminal",  "title": "Zen" }
   },
 
+  // injectShellIntegration makes a plain PowerShell profile announce its directory (OSC 9;9)
+  // by running a small script after the profile - the command line gets `-NoExit -Command`,
+  // no profile file is touched; a profile that runs its own command or file is left alone.
   // cwdFromProcess reads the shell's current directory from the process itself when the
-  // shell does not announce it (OSC 7 / 9;9), so `cd` is followed without any prompt setup;
-  // `OverShell integrations install shell` adds the announcement for an instant, exact path.
+  // shell does not announce it, so `cd` is followed in cmd, bash and wrapped shells too.
   "detection": {
     "snapshotDebounceMs": 300,
     "snapshotMinIntervalMs": 300,
     "processProbeIntervalMs": 2500,
     "treatUnknownAsAgent": false,
+    "injectShellIntegration": true,
     "cwdFromProcess": true
   },
 

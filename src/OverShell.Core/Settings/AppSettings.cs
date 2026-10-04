@@ -23,6 +23,13 @@ public sealed class DetectionSettings
     /// ten seconds otherwise. A shell that does announce it is believed instead.
     /// </summary>
     public bool CwdFromProcess { get; init; } = true;
+
+    /// <summary>
+    /// Put the shell integration into a plain PowerShell launch (`-NoExit -Command`, the way
+    /// VS Code does) so the shell announces its directory exactly, with no profile edit. A
+    /// profile that runs a command or a file of its own is left alone (§12.15).
+    /// </summary>
+    public bool InjectShellIntegration { get; init; } = true;
 }
 
 public sealed class NotificationSettings

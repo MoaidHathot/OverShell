@@ -22,7 +22,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -96,6 +96,9 @@ internal static class HerdSelfTest
                         break;
                     case "find":
                         await RunFindAsync(window, firstTab);
+                        break;
+                    case "inject":
+                        await RunInjectAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -317,8 +320,121 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Find in the buffer (§12.14): Ctrl+Shift+F opens the bar over the active tab; typing
-    /// finds every occurrence, scrollback included, starting from the lowest one on screen;
+    /// Shell integration without a profile edit (§12.15): a plain PowerShell profile gets the
+    /// script on its command line and announces its directory from the first prompt; a
+    /// profile that runs its own command, and a non-PowerShell shell, are left alone and the
+    /// probe follows them instead; the setting turns it off live; PSReadLine and the profile
+    /// still load; the explain panel says which is which.
+    /// </summary>
+    private static async Task RunInjectAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (inject) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        static async Task<bool> WaitForAsync(Func<bool> condition, int seconds)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(seconds);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (condition())
+                {
+                    return true;
+                }
+
+                await Task.Delay(200);
+            }
+
+            return condition();
+        }
+
+        var windows = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+        var script = AppPaths.ShellIntegrationScript;
+
+        // ---- the default profile: injected ----
+        await WaitForPromptAsync(first);
+        Log($"  default profile: injected={first.ShellIntegration.Injected} reason='{first.ShellIntegration.Reason}' commandline='{first.ShellIntegration.CommandLine}'");
+        Check(first.ShellIntegration.Injected && first.ShellIntegration.CommandLine.Contains($"-NoExit -Command \"try {{ . '{script}' }} catch {{ }}\"", StringComparison.Ordinal), "a plain pwsh profile gets -NoExit -Command with the script");
+        Check(System.IO.File.Exists(script) && System.IO.File.ReadAllText(script) == IntegrationInstaller.ShellPromptContent(), "the script is on disk under the state root, current");
+        Check(await WaitForAsync(() => first.AnnouncesDirectory, 5), "the shell announces its directory from the first prompt (OSC 9;9), no profile edit");
+        first.RequestScreen();
+        await Task.Delay(400);
+        var rows = first.ScreenRows;
+        var banner = rows.FirstOrDefault(r => r.Contains("PowerShell 7", StringComparison.Ordinal));
+        Log($"  screen: rows={rows.Count} first='{rows.FirstOrDefault()}' banner={(banner is null ? "absent" : $"'{banner.Trim()}'")} title='{first.Title}'");
+
+        var sw = Stopwatch.StartNew();
+        first.SendText($"cd '{windows}'\r");
+        var followed = await WaitForAsync(() => string.Equals(first.WorkingDirectory?.TrimEnd('\\'), windows, StringComparison.OrdinalIgnoreCase), 6);
+        Log($"  after cd: cwd='{first.WorkingDirectory}' in {sw.Elapsed.TotalSeconds:F1}s");
+        Check(followed && sw.Elapsed < TimeSpan.FromSeconds(2.5), "cd is followed at once - the prompt announced it, no probe cycle");
+
+        await WaitForPromptAsync(first);
+        first.SendText("Write-Host \"psrl=$([bool](Get-Module PSReadLine)) profile=$([bool]$global:__OverShellPromptWrapped) wrapped=$([bool]$global:__OverShellInnerPrompt) host=$($Host.Name) interactive=$([Environment]::UserInteractive)\"\r");
+        await Task.Delay(1500);
+        first.RequestScreen();
+        await Task.Delay(400);
+        var status = first.ScreenRows.LastOrDefault(r => r.StartsWith("psrl=", StringComparison.Ordinal)) ?? string.Empty;
+        Log($"  inside: {status}");
+        Check(status.Contains("psrl=True", StringComparison.Ordinal), "PSReadLine is loaded - an interactive session, not a script host");
+        Check(status.Contains("profile=True", StringComparison.Ordinal), "the integration ran (its guard variable is set)");
+
+        var explain = Chrome.ExplainWindow.Describe(first);
+        Check(explain.Contains("shell      integration injected into the command line; directory announced by the shell", StringComparison.Ordinal), "the explain panel says the integration is injected and the directory announced");
+
+        // ---- a profile that runs a command: left alone, probe at work ----
+        var wrapped = window.AddTab(first.Profile with { CommandLine = "pwsh.exe -NoLogo -NoProfile -NoExit -Command $null" }, activate: true);
+        await WaitForPromptAsync(wrapped);
+        Log($"  -Command profile: injected={wrapped.ShellIntegration.Injected} reason='{wrapped.ShellIntegration.Reason}' announces={wrapped.AnnouncesDirectory}");
+        Check(!wrapped.ShellIntegration.Injected && wrapped.ShellIntegration.Reason == "the profile runs a command" && wrapped.ShellIntegration.CommandLine == "pwsh.exe -NoLogo -NoProfile -NoExit -Command $null", "a profile with its own -Command is not touched");
+        Check(!wrapped.AnnouncesDirectory, "...and announces nothing");
+        wrapped.SendText($"cd '{windows}'\r");
+        followed = await WaitForAsync(() => string.Equals(wrapped.WorkingDirectory?.TrimEnd('\\'), windows, StringComparison.OrdinalIgnoreCase), 8);
+        Check(followed, "...so the probe follows its cd (prompt line)");
+        Check(Chrome.ExplainWindow.Describe(wrapped).Contains("not injected - the profile runs a command; directory from the probe", StringComparison.Ordinal), "the explain panel says why not, and that the probe is at work");
+        window.CloseTab(wrapped);
+
+        // ---- cmd: not PowerShell ----
+        var cmd = window.AddTab(first.Profile with { CommandLine = "cmd.exe", Name = "cmd" }, activate: true);
+        await Task.Delay(2500);
+        Check(!cmd.ShellIntegration.Injected && cmd.ShellIntegration.Reason == "cmd is not PowerShell", "cmd is left alone (its cd moves the process; the probe is exact there)");
+        window.CloseTab(cmd);
+
+        // ---- the setting, live ----
+        var settingsFile = AppPaths.SettingsFile;
+        var hadSettings = System.IO.File.Exists(settingsFile);
+        var previous = hadSettings ? System.IO.File.ReadAllText(settingsFile) : null;
+        System.IO.File.WriteAllText(settingsFile, """{ "detection": { "injectShellIntegration": false } }""");
+        await Task.Delay(1800);
+        var off = window.AddTab(first.Profile, activate: true);
+        await WaitForPromptAsync(off);
+        Log($"  setting off: injected={off.ShellIntegration.Injected} reason='{off.ShellIntegration.Reason}' announces={off.AnnouncesDirectory}");
+        Check(!off.ShellIntegration.Injected && off.ShellIntegration.Reason == "off (detection.injectShellIntegration)" && !off.AnnouncesDirectory, "detection.injectShellIntegration=false leaves the command line alone, live");
+        window.CloseTab(off);
+        if (hadSettings)
+        {
+            System.IO.File.WriteAllText(settingsFile, previous);
+        }
+        else
+        {
+            System.IO.File.Delete(settingsFile);
+        }
+
+        await Task.Delay(1500);
+        var on = window.AddTab(first.Profile, activate: true);
+        await WaitForPromptAsync(on);
+        Check(on.ShellIntegration.Injected && await WaitForAsync(() => on.AnnouncesDirectory, 5), "...and back on when the setting goes");
+        window.CloseTab(on);
+
+        Log($"=== selftest (inject) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Find in the buffer (§12.14): Ctrl+Shift+F opens the bar over the active tab; typing    /// finds every occurrence, scrollback included, starting from the lowest one on screen;
     /// the current match is the terminal's own selection and stepping to a hidden one scrolls
     /// it into view; the other visible matches are tinted by the overlay; match case; new
     /// output is picked up; the open bar follows the active tab; a tear-off has its own.
@@ -1094,7 +1210,8 @@ internal static class HerdSelfTest
         var temp = System.IO.Path.GetTempPath().TrimEnd('\\');
 
         // ---- A: a shell that never announces ----
-        var bare = window.AddTab(first.Profile with { CommandLine = "pwsh.exe -NoLogo -NoProfile", StartingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) }, activate: true);
+        // -Command keeps the shell integration from being injected (§12.15): a shell with nothing to announce.
+        var bare = window.AddTab(first.Profile with { CommandLine = "pwsh.exe -NoLogo -NoProfile -NoExit -Command $null", StartingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) }, activate: true);
         await WaitForPromptAsync(bare);
         Log($"  A start: cwd='{bare.WorkingDirectory}' announces={bare.AnnouncesDirectory}");
 

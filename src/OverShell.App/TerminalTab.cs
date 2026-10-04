@@ -10,7 +10,9 @@ using OverShell.App.Agents;
 using OverShell.App.Terminal;
 using OverShell.App.Terminal.Hyperlinks;
 using OverShell.Config;
+using OverShell.Core;
 using OverShell.Core.Agents;
+using OverShell.Core.Integrations;
 
 namespace OverShell.App;
 
@@ -73,6 +75,14 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
         var commandLine = Expand(profile.CommandLine) ?? "powershell.exe";
 
+        // A plain PowerShell launch takes the shell integration along (12.15); the detector
+        // keeps looking at the profile's own command line, not at what was added to it.
+        ShellIntegration = agents.Detection.InjectShellIntegration
+            ? InjectedScript.Value is { } script
+                ? ShellLaunch.Inject(commandLine, script)
+                : new ShellLaunchPlan(commandLine, false, "the integration script could not be written")
+            : new ShellLaunchPlan(commandLine, false, "off (detection.injectShellIntegration)");
+
         // Integrations inside the child find their way back by these variables (§12.4).
         var environment = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         if (agents.EnvironmentFor?.Invoke(Id) is { } endpoint)
@@ -85,7 +95,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
         var descriptor = new SessionDescriptor
         {
-            CommandLine = commandLine,
+            CommandLine = ShellIntegration.CommandLine,
             WorkingDirectory = startingDirectory,
             ProfileId = profile.Id,
             Environment = environment,
@@ -342,6 +352,9 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
 
     public (int Columns, int Rows) Grid => Surface.Grid;
 
+    /// <summary>Whether the shell integration rode along on the command line, and if not, why (§12.15).</summary>
+    public ShellLaunchPlan ShellIntegration { get; }
+
     /// <summary>Stops the surface from writing any further input into the session.</summary>
     public void SuppressInput() => Session.CloseInput();
 
@@ -370,6 +383,9 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
     }
 
     // ------------------------------------------------------------ internals
+
+    /// <summary>The script a PowerShell launch dot-sources for its shell integration; written once per process.</summary>
+    private static readonly Lazy<string?> InjectedScript = new(() => IntegrationInstaller.EnsureInjectedScript(AppPaths.ShellIntegrationScript));
 
     /// <summary>Runs on the session's I/O thread — keep it cheap and marshal anything UI-facing.</summary>
     private void OnOutput(object? sender, string chunk)
@@ -406,7 +422,17 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         var titleChanged = title is not null && title != _shellTitle;
         var cwdChanged = cwd is not null && cwd != _workingDirectory;
 
-        if (!titleChanged && !cwdChanged)
+        // The shell told us itself: from here on the process probe defers to it (the
+        // sequence is exact and immediate; the probe is a guess every few seconds). That
+        // holds from the first announcement - usually the directory the shell started in,
+        // so nothing "changed" - not only from the first cd (§12.15).
+        var announced = cwd is not null && !_cwdFromShell;
+        if (announced)
+        {
+            _cwdFromShell = true;
+        }
+
+        if (!titleChanged && !cwdChanged && !announced)
         {
             return;
         }
@@ -419,10 +445,6 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
         if (cwdChanged)
         {
             _workingDirectory = cwd;
-
-            // The shell told us itself: from here on the process probe defers to it (the
-            // sequence is exact and immediate; the probe is a guess every few seconds).
-            _cwdFromShell = true;
         }
 
         _dispatcher.BeginInvoke(() =>

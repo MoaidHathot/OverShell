@@ -87,7 +87,16 @@ public sealed class ExplainWindow : Window
 
     private void Refresh()
     {
-        var tab = _tab;
+        var text = Describe(_tab);
+        if (_body.Text != text)
+        {
+            _body.Text = text;
+        }
+    }
+
+    /// <summary>The panel's text for a tab - also what the self-test reads without opening a window.</summary>
+    public static string Describe(TerminalTab tab)
+    {
         var agent = tab.Agent;
         var sb = new StringBuilder();
 
@@ -112,6 +121,7 @@ public sealed class ExplainWindow : Window
         }
 
         sb.AppendLine($"where      {tab.ProjectAndBranch}   {tab.WorkingDirectory}");
+        sb.AppendLine($"shell      integration {(tab.ShellIntegration.Injected ? "injected into the command line" : "not injected - " + tab.ShellIntegration.Reason)}; directory {(tab.AnnouncesDirectory ? "announced by the shell" : "from the probe")}");
         if (tab.RestoreNote is not null)
         {
             sb.AppendLine($"restored   {tab.RestoreNote[(tab.RestoreNote.IndexOf(' ') + 1)..]}");
@@ -138,11 +148,7 @@ public sealed class ExplainWindow : Window
             }
         }
 
-        var text = sb.ToString().TrimEnd();
-        if (_body.Text != text)
-        {
-            _body.Text = text;
-        }
+        return sb.ToString().TrimEnd();
     }
 
     private void CloseOnce()

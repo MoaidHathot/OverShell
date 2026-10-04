@@ -86,6 +86,32 @@ public static class IntegrationInstaller
     public static string ShellPromptContent() => EmbeddedResources.Read("integrations/shell-overshell-prompt.ps1");
 
     /// <summary>
+    /// Makes sure the injected copy of the shell integration script (§12.15) is on disk and
+    /// current, and returns its path - or null when it cannot be written, in which case the
+    /// launch goes out untouched and the directory probe stands in. Written once per start;
+    /// the content is embedded, so a new build brings a new script.
+    /// </summary>
+    public static string? EnsureInjectedScript(string path)
+    {
+        try
+        {
+            var content = ShellPromptContent();
+            if (File.Exists(path) && string.Equals(File.ReadAllText(path), content, StringComparison.Ordinal))
+            {
+                return path;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, content);
+            return path;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The per-host profiles of PowerShell 7 and Windows PowerShell (<c>$PROFILE</c>, i.e.
     /// CurrentUserCurrentHost) under the user's Documents folder - wherever that is redirected
     /// to. The per-host file rather than <c>profile.ps1</c> because it runs last: a prompt the
