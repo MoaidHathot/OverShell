@@ -549,7 +549,14 @@ where the WPF control is larger than the character grid.
 
 **What we do instead:** a Windows 11 system backdrop behind the title bar and status bar
 only, with the terminal body opaque. This matches `useAcrylicInTabRow: true` but *not*
-per-profile `useAcrylic` / `opacity`, which stay unreproducible.
+per-profile `useAcrylic` / `opacity`, which stay unreproducible with the control as shipped.
+
+**What would work** (spike 8, §12.7, 2026-10-04): the terminal drawn into a composition
+swapchain with premultiplied alpha and composed as a DirectComposition visual on the
+**top-level** window blends with the acrylic every time — Windows Terminal's look —
+whereas the same visual bound to a child HWND blends with white three runs in four. That
+fixes the shape of a fork: no child HWND in the rendering path, the swapchain handle and
+input exported through the C API, OverShell composing on its own window.
 
 A transparent composition target also makes WPF **drop ClearType**; chrome text is
 explicitly set to `Grayscale` so it degrades predictably instead of fringing.
@@ -864,6 +871,10 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 - [ ] Find: regular expressions (the UIA provider offers plain text only, §12.14) and a
       results list; both come free with an xterm.js surface (§11.4a).
+- [ ] Terminal-body transparency through a fork of the control: composition swapchain +
+      exported handle + input through the API, composed on the top-level window (spike 8,
+      §12.7 — the host side is verified; the C++ side and a Windows Terminal build in CI
+      are the work). Until then `OVERSHELL_BACKDROP` covers the chrome only.
 - [ ] Import Windows Terminal's `actions` / `keybindings` into `keybindings.jsonc` (the
       object shape is already accepted).
 - [ ] Profile icons in the tab strip and new-tab menu (paths are already parsed).
@@ -879,7 +890,7 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 | Limitation | Cause | Recoverable? |
 |---|---|---|
-| No terminal-body transparency | HWND swapchain cannot alpha-blend (§7.6) | Only with a different surface (§11.4) |
+| No terminal-body transparency | HWND swapchain cannot alpha-blend (§7.6) | A fork rendering through a composition swapchain composed on the top-level window (spike 8, §12.7), or a different surface (§11.4) |
 | No acrylic / background image / retro effect | Same | Same |
 | Scrollback lost when moving a session | ConPTY repaints viewport only (§7.1) | No |
 | WPF cannot draw over the terminal in-tree | Airspace — same as WebView2 | `OverlayHost` (§7.12); HTML overlays inside an xterm.js surface |
@@ -1390,6 +1401,40 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
    `ScrollIntoView(true)` put the match's row at the top; `SupportedTextSelection=Single`.
    Also found: a found range is one glyph too long, and with no hit `FindText` returns a
    range that fails with E_FAIL on use rather than null (§12.14).
+8. **Transparency: can a DirectX surface in a WPF window blend with the system backdrop?**
+   ✅ 2026-10-04, `spikes/dcomp-transparency` (a WPF window with the frame extended over
+   the client and an acrylic backdrop; an 800x450 frame of 45 % black, opaque white bars,
+   an opaque orange block and an alpha-0 hole, drawn four ways; the window captures itself
+   with BitBlt and samples pixels). Results, six runs:
+   - `child-hwnd` — a swapchain created for a child HWND, what `HwndTerminal` does today:
+     alpha ignored, black background, black hole. Confirms §7.6.
+   - `child-dcomp` — composition swapchain with premultiplied alpha, DirectComposition
+     target bound to the **child** HWND: **non-deterministic**. One run in four blended with
+     the acrylic (hole `#2576A7`, the backdrop); three blended with **white** (hole
+     `#FFFFFF`, 45 % black → `#8C8C8C`) — the child''s share of the parent''s redirection
+     surface is sometimes initialised opaque before the visual is committed, and the
+     visual composes over it. `WS_EX_NOREDIRECTIONBITMAP` on the child changes nothing
+     (children do not own a surface).
+   - `parent-dcomp` — the same swapchain as a DirectComposition visual on the **top-level**
+     window, offset to the terminal''s rectangle, no child HWND: **blends with the backdrop
+     every time** (5/5): 45 % black over the acrylic, hole = pure backdrop, white and orange
+     opaque and crisp — Windows Terminal''s look. Identical with `topmost` true or false.
+   - WPF content under the visual''s rectangle is **covered** by it in both `topmost` modes
+     (a WPF banner there is dimmed by the 45 % black and crossed by the bars; outside the
+     rectangle it is bright). WPF''s own rendering is a DWM visual too, and the DComp visual
+     lands above it. So the airspace rule stays: overlays keep their own window (§7.12).
+   - Acrylic (`DWMSBT_TRANSIENTWINDOW`) is painted only for the **active** window; an
+     inactive one gets the solid fallback colour. Mica tints and stays.
+   **Consequence for a transparent terminal** (§7.6): a fork of the control must not render
+   through its child HWND. The renderer already supports composition swapchains (the
+   WinUI path: `AtlasEngine` creates one when no HWND is set and hands out the handle for
+   `SwapChainPanel`); the patch is to take that path in `HwndTerminal`, export the handle
+   and `EnableTransparentBackground`, and route input through the API (`TerminalSendKeyEvent`
+   / `TerminalSendCharEvent` exist; mouse and wheel would be added) with the child HWND
+   hidden or gone — OverShell then composes the swapchain on its top-level window as the
+   spike does and extends the frame over the whole client. A child HWND kept for input over
+   the terminal area would reintroduce the white race. Cost: a Windows Terminal build in CI
+   and our own signed `Microsoft.Terminal.Control.dll` / `Microsoft.Terminal.Wpf.dll`.
 
 ### 12.8 Phases
 
