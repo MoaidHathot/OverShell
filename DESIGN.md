@@ -2045,6 +2045,22 @@ own token and `ConPtySession` starts from that block, then adds `WT_SESSION`,
 name and default; `false` inherits as before, for a start from a shell with variables of
 its own. The explain panel shows the source (`env  registry (86 variables)`).
 
+**The harness icon, a second time.** §12.13 replaced the text glyphs with vectors and the
+user still saw a smudge on the OpenCode tab - rightly: the icon was a *thin diamond ring*
+with diagonal edges, drawn through a `Path` at 11 DIP, which at 150 % is 16.5 device
+pixels - every edge on a half pixel, anti-aliased to grey. Two fixes. `HarnessIcon` now
+draws in `OnRender` through one transform into a box that is a whole number of **device**
+pixels with its origin on a pixel (12 DIP → 18 px at 150 %, not 16.5); a geometry on a
+grid of at most 8 units is treated as **pixel art** and gets a whole number of pixels per
+unit, so its edges are exact. And the OpenCode icon is OpenCode's own mark (its favicon,
+MIT): a 4×5 frame one unit thick with a 2×2 block in the lower part of the hole - all
+axis-aligned, so at 150 % it is a 12×15 px shape with three colours and no in-betweens;
+the block is drawn as a second tone (`Harness.Icon.opencode.Muted`, same brush at 40 %).
+The other marks were made solid: a fatter sparkle, the asterisk as four 2.6-unit bars
+(a `GeometryGroup` of rotated rectangles), a thicker ring. The `icons` self-test now
+renders the OpenCode mark at 150 % and checks the box is 12×15 px and the bitmap holds
+three colours, and the vector box 18×18.
+
 **Verified** (in-process, 250 unit tests): `inject` 14/14 - the command line, the script
 on disk, the announcement from the first prompt, `cd` followed in 0.2 s, PSReadLine and
 the guard variable read back from inside the shell, the explain lines, a `-Command`
@@ -2053,7 +2069,8 @@ profile and `cmd` left alone with the probe at work, the setting off and on live
 and a variable of its own, the tab's shell prints its environment back: all 44 present,
 the variable gone, the Terminal and integration variables set and in `WSLENV`, the
 logon-time variables there; the setting off live inherits the stripped PATH and the
-variable, back on returns to the registry. `cwd` 12/12 (its "never announces" shell now
+variable, back on returns to the registry. `icons` 17/17 with the live strip at 150 %
+captured and zoomed: the mark pixel-exact. `cwd` 12/12 (its "never announces" shell now
 carries `-Command`), 85-check 85/85, `session1`/`session2`, OpenCode e2e 7/7 (its plugin
 lives on the carried variables). Side effect undone on the reference machine: the profile
 block from §12.14 was uninstalled; the empty `WindowsPowerShell` profile that install had

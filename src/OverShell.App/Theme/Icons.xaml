@@ -2,24 +2,47 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ========================= Harness icons ========================= -->
-    <!-- One vector per harness (DESIGN.md 12.13), on a 16x16 grid, filled shapes only:
-         crisp at the 11 px the tab item draws them at, coloured by the theme brush of the
-         text next to them, and overridable by a skin (same key) or by a rule file
-         ("icon": "<path data>"). They replaced text glyphs (U+25C8 and friends), which
-         WPF's default font fallback rendered from Segoe UI Symbol with Display-mode
-         hinting at 11 px - a grey smudge rather than a shape. -->
+    <!-- One vector per harness (DESIGN.md 12.13, 12.15), coloured by the theme brush of the
+         text next to them, overridable by a skin (same key) or by a rule file
+         ("icon": "<path data>"). HarnessIcon draws them at a whole number of device pixels.
 
-    <!-- OpenCode: a diamond inside a diamond outline. -->
-    <Geometry x:Key="Harness.Icon.opencode">M8,0 L16,8 L8,16 L0,8 Z M8,2.6 L2.6,8 L8,13.4 L13.4,8 Z M8,5.2 L10.8,8 L8,10.8 L5.2,8 Z</Geometry>
+         Two kinds, told apart by the geometry's bounds:
+         - pixel art, on a grid of at most 8 units: every unit becomes a whole number of
+           device pixels, so axis-aligned edges are razor sharp at any scale;
+         - vectors on a 16-unit grid: the box is a whole number of pixels, the shape is
+           anti-aliased - so they are solid and chunky, never thin outlines, which at 16 px
+           read as a grey smudge (the first vector icons were, and the text glyphs before them).
 
-    <!-- Copilot CLI: a four-pointed star. -->
-    <Geometry x:Key="Harness.Icon.copilot">M8,0 C8.6,4.4 11.6,7.4 16,8 C11.6,8.6 8.6,11.6 8,16 C7.4,11.6 4.4,8.6 0,8 C4.4,7.4 7.4,4.4 8,0 Z</Geometry>
+         A "<key>.Muted" geometry, when present, is drawn with the same brush at reduced
+         opacity through the same transform: a second tone for a two-tone mark. -->
 
-    <!-- Claude Code: an eight-spoke asterisk. -->
-    <Geometry x:Key="Harness.Icon.claude">M7,0 L9,0 L9,5.6 L13,1.6 L14.4,3 L10.4,7 L16,7 L16,9 L10.4,9 L14.4,13 L13,14.4 L9,10.4 L9,16 L7,16 L7,10.4 L3,14.4 L1.6,13 L5.6,9 L0,9 L0,7 L5.6,7 L1.6,3 L3,1.6 L7,5.6 Z</Geometry>
+    <!-- OpenCode: its own mark (packages/ui/src/assets/favicon/favicon.svg, MIT), a 4x5
+         frame one unit thick with a 2x2 block in the lower part of the hole, drawn in a
+         second tone; the slot above the block is what makes it the OpenCode mark. -->
+    <Geometry x:Key="Harness.Icon.opencode">F0 M0,0 H4 V5 H0 Z M1,1 V4 H3 V1 Z</Geometry>
+    <Geometry x:Key="Harness.Icon.opencode.Muted">M1,2 H3 V4 H1 Z</Geometry>
 
-    <!-- Codex: a ring with a dot. -->
-    <Geometry x:Key="Harness.Icon.codex">M8,0 A8,8 0 1 1 7.99,0 Z M8,2.2 A5.8,5.8 0 1 0 8.01,2.2 Z M8,5 A3,3 0 1 1 7.99,5 Z</Geometry>
+    <!-- Copilot CLI: a four-pointed sparkle with a solid body. -->
+    <Geometry x:Key="Harness.Icon.copilot">M8,0 C9.4,4 12,6.6 16,8 C12,9.4 9.4,12 8,16 C6.6,12 4,9.4 0,8 C4,6.6 6.6,4 8,0 Z</Geometry>
+
+    <!-- Claude Code: an eight-spoke asterisk, each spoke a 2.6-unit bar. -->
+    <GeometryGroup x:Key="Harness.Icon.claude" FillRule="Nonzero">
+        <RectangleGeometry Rect="6.7,0,2.6,16" />
+        <RectangleGeometry Rect="0,6.7,16,2.6" />
+        <RectangleGeometry Rect="6.7,0.8,2.6,14.4">
+            <RectangleGeometry.Transform>
+                <RotateTransform Angle="45" CenterX="8" CenterY="8" />
+            </RectangleGeometry.Transform>
+        </RectangleGeometry>
+        <RectangleGeometry Rect="6.7,0.8,2.6,14.4">
+            <RectangleGeometry.Transform>
+                <RotateTransform Angle="-45" CenterX="8" CenterY="8" />
+            </RectangleGeometry.Transform>
+        </RectangleGeometry>
+    </GeometryGroup>
+
+    <!-- Codex: a thick ring with a dot. -->
+    <Geometry x:Key="Harness.Icon.codex">F0 M8,0 A8,8 0 1 1 7.99,0 Z M8,2.8 A5.2,5.2 0 1 0 8.01,2.8 Z M8,5.4 A2.6,2.6 0 1 1 7.99,5.4 Z</Geometry>
 
     <!-- Any other agent: a filled diamond. -->
     <Geometry x:Key="Harness.Icon.generic">M8,0 L16,8 L8,16 L0,8 Z</Geometry>

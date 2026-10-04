@@ -368,6 +368,12 @@ wholesale by yours. Shape:
 `tab.markAgent` / `tab.markShell` override detection for one tab; `"detection":
 { "treatUnknownAsAgent": true }` makes every tab an agent.
 
+An `icon` is WPF path data drawn with the brush of the text beside it, at a whole number
+of screen pixels. Draw it on a 16-unit grid as a solid shape (thin outlines turn to grey
+fuzz at that size), or - for a blocky mark - on a grid of at most 8 units, where every
+unit becomes whole pixels and the edges stay exact at any scale; OpenCode's own mark is
+drawn that way.
+
 ## 8. Harness integrations
 
 An integration makes the harness itself tell OverShell what it is doing — exact, and

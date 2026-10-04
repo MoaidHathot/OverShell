@@ -1554,7 +1554,7 @@ internal static class HerdSelfTest
             Check(geometry is not null && !t.ShowsTextGlyph, $"{t.Harness}: a vector icon resolved from the theme");
         }
 
-        // Draw each icon alone on the theme's chrome colour, at the tab item's 11 px and at 3x,
+        // Draw each icon alone on the theme's chrome colour, at the tab item's 12 DIP and at 3x,
         // and count the pixels that differ from the background - the shape's footprint.
         var fill = (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("Text.Secondary");
         var background = (System.Windows.Media.Brush)System.Windows.Application.Current.FindResource("Surface.Chrome");
@@ -1563,15 +1563,28 @@ internal static class HerdSelfTest
         foreach (var t in tabs)
         {
             var cell = new System.Windows.Controls.Border { Width = 24, Height = 24, Background = background };
-            var icon = new Chrome.HarnessIcon { Tab = t, Size = 11, Fill = fill, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = System.Windows.VerticalAlignment.Center };
+            var icon = new Chrome.HarnessIcon { Tab = t, Size = 12, Fill = fill, HorizontalAlignment = System.Windows.HorizontalAlignment.Center, VerticalAlignment = System.Windows.VerticalAlignment.Center };
             cell.Child = icon;
             strip.Children.Add(cell);
-            footprints[t.Harness!] = CountInk(icon, 11, 3);
-            Log($"  {t.Harness,-9} footprint at 3x: {footprints[t.Harness!]} px (11 px icon drawn at 33 px)");
-            Check(footprints[t.Harness!] is > 120 and < 1000, $"{t.Harness}: the icon draws a shape, not a dot or a blob");
+            footprints[t.Harness!] = CountInk(icon, 12, 3);
+            Log($"  {t.Harness,-9} footprint at 3x: {footprints[t.Harness!]} px (12 DIP icon drawn at 36 px)");
+            Check(footprints[t.Harness!] is > 150 and < 1200, $"{t.Harness}: the icon draws a shape, not a dot or a blob");
         }
 
         Check(footprints.Values.Distinct().Count() == footprints.Count, "the five icons have distinct footprints");
+
+        // Crispness (12.15): OpenCode's mark is pixel art - rendered at 150 % every edge must
+        // sit on a device pixel, so the bitmap holds only two colours (fill and background;
+        // the muted block makes three) and no anti-aliased in-betweens; a vector icon at the
+        // same scale has a whole-pixel box.
+        var opencode = tabs.First(t => t.Harness == "opencode");
+        var (colours, box) = RenderColours(new Chrome.HarnessIcon { Tab = opencode, Size = 12, Fill = System.Windows.Media.Brushes.White }, 1.5);
+        Log($"  opencode at 150%: box {box.Width * 1.5:F1}x{box.Height * 1.5:F1} px ({box.Width:F2}x{box.Height:F2} DIP), {colours} distinct colours");
+        Check(Math.Abs(box.Width * 1.5 - 12) < 0.01 && Math.Abs(box.Height * 1.5 - 15) < 0.01, "opencode: 12 DIP at 150 % becomes a 12x15 px box - 3 px per unit of its 4x5 grid, never a half pixel");
+        Check(colours <= 3, $"opencode: no anti-aliased edges at 150 % ({colours} colours: background, frame, muted block)");
+        var (_, vectorBox) = RenderColours(new Chrome.HarnessIcon { Tab = tabs.First(t => t.Harness == "copilot"), Size = 12, Fill = System.Windows.Media.Brushes.White }, 1.5);
+        Check(Math.Abs(vectorBox.Width * 1.5 - 18) < 0.01 && Math.Abs(vectorBox.Height * 1.5 - 18) < 0.01, "copilot: 12 DIP at 150 % is an 18x18 px box, not 16.5");
+        Check(opencode.IconMutedGeometry is not null && tabs.First(t => t.Harness == "copilot").IconMutedGeometry is null, "the OpenCode mark has its second tone; the others have one");
 
         strip.Measure(new System.Windows.Size(1000, 100));
         strip.Arrange(new System.Windows.Rect(strip.DesiredSize));
@@ -1642,8 +1655,34 @@ internal static class HerdSelfTest
     }
 
     /// <summary>Pixels of <paramref name="element"/> at <paramref name="scale"/> that are not fully transparent, after a layout at <paramref name="size"/>.</summary>
-    private static int CountInk(System.Windows.FrameworkElement element, double size, int scale)
+    /// <summary>Renders an icon at a DPI scale and returns how many distinct colours the bitmap holds and the icon's drawn box.</summary>
+    private static (int Colours, System.Windows.Size Box) RenderColours(Chrome.HarnessIcon icon, double scale)
     {
+        // Top-left, so the off-tree (96 dpi) centring cannot land the box on a half pixel of the scaled render.
+        icon.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        icon.VerticalAlignment = System.Windows.VerticalAlignment.Top;
+        var holder = new System.Windows.Controls.Border { Background = System.Windows.Media.Brushes.Black, Child = icon };
+        holder.Measure(new System.Windows.Size(40, 40));
+        holder.Arrange(new System.Windows.Rect(0, 0, 40, 40));
+        holder.UpdateLayout();
+
+        // Off-tree there is no PresentationSource, so the icon assumes 96 dpi; render the
+        // 96-dpi layout at the scale and check the box the icon would use at that DPI.
+        var px = (int)Math.Ceiling(40 * scale);
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(px, px, 96 * scale, 96 * scale, System.Windows.Media.PixelFormats.Pbgra32);
+        bitmap.Render(holder);
+        var pixels = new byte[px * px * 4];
+        bitmap.CopyPixels(pixels, px * 4, 0);
+        var colours = new HashSet<int>();
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            colours.Add(pixels[i] | (pixels[i + 1] << 8) | (pixels[i + 2] << 16));
+        }
+
+        return (colours.Count, icon.BoxAt(scale));
+    }
+
+    private static int CountInk(System.Windows.FrameworkElement element, double size, int scale)    {
         element.Measure(new System.Windows.Size(size, size));
         element.Arrange(new System.Windows.Rect(0, 0, size, size));
         element.UpdateLayout();

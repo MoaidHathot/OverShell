@@ -157,7 +157,7 @@ public sealed class TearOffWindow : Window
         Grid.SetColumn(dot, 0);
 
         var text = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
-        var icon = new HarnessIcon { Tab = tab, Size = 11, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+        var icon = new HarnessIcon { Tab = tab, Size = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
         icon.SetResourceReference(HarnessIcon.FillProperty, "Text.Secondary");
         icon.SetBinding(VisibilityProperty, new Binding(nameof(TerminalTab.ShowsHarnessIcon)) { Source = tab, Converter = new BooleanToVisibilityConverter() });
         var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };

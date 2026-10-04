@@ -262,6 +262,24 @@ public sealed partial class TerminalTab
         }
     }
 
+    /// <summary>
+    /// The second tone of a two-tone theme icon (<c>Harness.Icon.&lt;id&gt;.Muted</c>, drawn
+    /// through the same transform at reduced opacity - the grey block of OpenCode's mark);
+    /// null for a rule file's own icon, which has one tone, and for everything else.
+    /// </summary>
+    public Geometry? IconMutedGeometry
+    {
+        get
+        {
+            if (!IsAgent || !string.IsNullOrWhiteSpace(Agent.Rules.Icon))
+            {
+                return null;
+            }
+
+            return Application.Current?.TryFindResource($"Harness.Icon.{Agent.Rules.Id}.Muted") as Geometry;
+        }
+    }
+
     /// <summary>True when the text glyph should show: an agent tab without a usable vector icon.</summary>
     public bool ShowsTextGlyph => IsAgent && IconGeometry is null;
 

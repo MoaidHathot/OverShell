@@ -43,7 +43,7 @@
                                 </Grid>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal">
-                                        <chrome:HarnessIcon x:Name="Glyph" Tab="{Binding}" Size="11" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
+                                        <chrome:HarnessIcon x:Name="Glyph" Tab="{Binding}" Size="12" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                                         <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" FontWeight="SemiBold" Foreground="{StaticResource Text.Primary}" />
                                         <Border x:Name="UnreadBadge" Width="6" Height="6" Margin="6,0,0,0" CornerRadius="3" VerticalAlignment="Center" Background="{Binding StateBrush}" Visibility="Collapsed" />
                                     </StackPanel>
