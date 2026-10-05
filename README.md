@@ -47,7 +47,7 @@ backdrop). x64 only.
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
@@ -176,8 +176,11 @@ Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.js
 `Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
 screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
 `Ctrl+Shift+1..4` views · `Ctrl+Shift+Enter` prompt bar · `Ctrl+Shift+G` group · `Ctrl+Shift+E` explain ·
-`Ctrl+Shift+F` find · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Ctrl+Tab` / `Alt+1..9` tabs (Windows
-Terminal's chords; `Ctrl+T` stays with the shell) · `Alt+Shift+←/→` reorder ·
+`Ctrl+Shift+F` find · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Alt+1..9` tabs (Windows
+Terminal's chords; `Ctrl+T` stays with the shell) · `Ctrl+Tab` most-recent switcher (hold, tap,
+release) · `Ctrl+Shift+K` then a key: **herd mode** (`j`/`k` tabs, `b` the tab waiting longest,
+`1-9`, `l` last, `s`/`c` a cursor into the sidebar / cards, `?` the keys) · `` Win+` `` summon from
+anywhere · `@3 ...` / `#group ...` / `@blocked ...` in the prompt bar address it · `Alt+Shift+←/→` reorder ·
 `Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection).
 Right-click a tab, a sidebar row or a card for rename / treat as agent or shell / explain /
 close.
@@ -213,9 +216,12 @@ closed tabs and session history, opt-in restart with Windows), and the polish pa
 (Windows Terminal chords, an honest working directory with a shell hook, restore hold and
 close question, the previous screen after a crash, workspaces, tab-strip overflow, the jump
 list, light and dark themes with the Windows accent, tear-offs with the window's chrome,
-find in the buffer), and Terminal parity (the shell integration injected into a plain
+find in the buffer), Terminal parity (the shell integration injected into a plain
 PowerShell launch, no profile edit; every tab's environment rebuilt from the registry, so
-a freshly installed tool is on PATH in the next tab).
+a freshly installed tool is on PATH in the next tab), and an **extension API** (`IShell`,
+`ITab`, `IExtension`: the shell is the engine, features sit on top) with the keyboard
+features built on it (herd mode with a which-key bar, MRU `Ctrl+Tab`, global summon,
+prompt addressing, a cursor in the sidebar and dashboard, waiting tabs by age).
 
 Not yet confirmed by a human: see the test card (`tools\Show-LinkTestCard.ps1`) and
 [DESIGN.md 8](DESIGN.md#8-status).

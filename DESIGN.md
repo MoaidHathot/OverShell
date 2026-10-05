@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env` | Run the end-to-end self-test in-process (§12.9–12.15): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15). Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav` | Run the end-to-end self-test in-process (§12.9–12.16): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16). Log: `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -798,6 +798,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Herd overseer P4 — resilience and history** (§12.13) | The session file is written every two seconds and says how the run ended; a start after a crash or power cut restores everything and says so; the main window and tear-offs come back where they were (clamped to the desktop that exists now); a restored agent resumes by id, or by the harness's "most recent session" form when no id is known, relaunched when the profile's program is the agent; **history**: closed tabs reopen (`Ctrl+Shift+Z`), earlier sessions are archived and a picker (`session.history`) brings a tab or a whole session back; opt-in restart with Windows; vector harness icons. 169 unit tests; 85 + 16 + 16 + 17 + 5 in-process checks, OpenCode resume e2e |
 | **Herd overseer P5 — polish, honesty, depth** (§12.14) | Chords follow Windows Terminal (`Ctrl+T` back to the shell); `tab.duplicate`; atomic `state.json`; app icon + AUMID; the **working directory** probed from the shell process (cmd, bash) or read from the prompt line (PowerShell) with `integrations install shell` for the OSC hook; restore **held** after two interrupted runs in a minute; a **close question** when agents are working; the **previous screen** as a dim preamble after a crash; **workspaces** (`workspaces\*.jsonc`, `workspace.save`, `workspace.open.*`) and four more `overshell://` actions; tab-strip **overflow** (width band, wheel, fades, overflow button); taskbar **jump list**; **themes** `system`/`dark`/`light` with the Windows accent, live; **tear-offs** with the main window's chrome; **find in the buffer** (`Ctrl+Shift+F`, scrollback included, the current match as the terminal's selection, the rest tinted). Two pre-existing bugs fixed on the way (§12.14: the endpoint's disposed-listener retry, the `FindText` no-hit exception that hid the link probe's fallback). 207 unit tests; ten new self-test modes, 85-check still 85/85 |
 | **Terminal parity** (§12.15) | **Shell integration on the command line**: a plain PowerShell profile gets `-NoExit -Command ". '<script>'"` (VS Code's way), so the directory is announced exactly with no profile edit; profiles that run their own command, and other shells, are left alone; `detection.injectShellIntegration`. **Environment rebuilt per tab** from the registry with `CreateEnvironmentBlock`, as Terminal does (`compatibility.reloadEnvironmentVariables`), with `WT_SESSION`/`WT_PROFILE_ID`/`OVERSHELL_*` named in `WSLENV` - a tool installed after the launcher is on PATH in the next tab. One pre-existing bug fixed (a shell announcing its starting directory was not counted as announcing). 250 unit tests; `inject` 14/14, `env` 13/13 |
+| **P6 — an engine with an API, and the keyboard on top** (§12.16) | `OverShell.Core/Extensibility`: `IExtension`, `IShell`, `ITab` (with a per-tab `Properties` bag saved in the session), `IKeyBindings`, `IHostUi`; `ShellHost` adapts the window, `ExtensionHost` loads the built-ins (each disable-able, a failing one skipped). **Key sequences** (`ctrl+shift+k j`, `stay`, shadowing reported, a pure dispatcher that swallows strays). Built on the API: **herd mode** (`Ctrl+Shift+K` + a which-key bar), **MRU switching** on `Ctrl+Tab` (hold, tap, release), **global summon** (`` Win+` ``, on the tab that waited longest), **prompt addressing** (`@3 #group @label @blocked ...` with a live echo), **keyboard cursor** in the sidebar and the dashboard, waiting tabs **by age**, `tab.last`. One bug fixed (a summon of a minimized window minimized it again: `IsActive` vs the foreground window). 281 unit tests; five new self-test modes |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -840,7 +841,8 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 ### Open — near term
 
-- [ ] **Verify shortcuts on real hardware.** `Ctrl+Shift+T`, `Ctrl+Shift+W`, `Ctrl+Tab`,
+- [ ] **Verify shortcuts on real hardware.** `Ctrl+Shift+T`, `Ctrl+Shift+W`, `Ctrl+Tab` (hold / tap / release),
+      `Ctrl+Shift+K` + a key (herd mode), `` Win+` `` (summon),
       `Alt+1..9`, `Ctrl+C`/`Ctrl+V`, `Ctrl+Shift+C`/`V`, right-click copy-or-paste, and now
       `Ctrl+Shift+P` (commands), `Ctrl+Shift+Space` (tabs), `Ctrl+Shift+J` (jump),
       `Ctrl+Shift+R` (rename), `Ctrl+Shift+1..4` (views), ``Ctrl+Shift+` `` (toggle),
@@ -1448,6 +1450,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **P6 An engine with an API** ✅ 2026-10-05 — IShell / IExtension; key sequences; herd mode; MRU Ctrl+Tab; global summon; prompt addressing; keyboard cursor; waiting tabs by age (§12.16).
 - **Terminal parity** ✅ 2026-10-03 — shell integration injected into the command line (no profile edit); the environment rebuilt from the registry per tab (§12.15).
 - **P5 Polish, honesty, depth** ✅ 2026-10-03 — WT chords; honest working directory + shell hook; restore hold + close question; previous screen; workspaces; strip overflow; jump list; themes; tear-off chrome; find.
 - **P4 Resilience & history** ✅ 2026-10-03 — two-second session saves with a close reason; crash/sign-out aware restore; window placement; resume by id or by "most recent"; recently closed tabs + archived sessions + picker; restart with Windows (opt-in); vector harness icons.
@@ -2076,10 +2079,106 @@ lives on the carried variables). Side effect undone on the reference machine: th
 block from §12.14 was uninstalled; the empty `WindowsPowerShell` profile that install had
 created was removed.
 
+### 12.16 P6 - an engine with an API, and the keyboard on top of it
+
+**The shape.** The user asked for OverShell to be extensible: an engine kept generic, with
+features added on top through an API - eventually from C#, PowerShell or Lua, for now at
+least modular. So P6 began by drawing that line. `OverShell.Core/Extensibility` is the
+contract: `IExtension` (an id, `Initialize(IShell)`, `Dispose`); `IShell` - the tabs, the
+active and target tab, events for open / close / activation / state / attention, the
+window's own 500 ms heartbeat (so extensions need no timers), `Ready` (the HWND exists),
+`SettingsChanged`, the command registry, key bindings, per-extension settings bound from
+`settings.extensions.<id>`, the host UI, open / activate / close, trace, post; `ITab` -
+what a tab is to a feature, plus a `Properties` bag saved with the session and restored
+with the tab; `IKeyBindings` - hints, defaults layered **beneath** the user's file (so
+`keybindings.jsonc` overrides or unbinds anything an extension brings), the pending
+sequence, Ctrl-release, and `Intercept` for an extension that owns the keyboard for a
+moment; `IHostUi` - status line, notifications, prompt / pick / ask as tasks, a slot for
+a bar under the terminal, global hotkeys, front / minimize / foreground. `ShellHost`
+adapts `MainWindow` to it; `ExtensionHost` loads the built-ins, each one off with
+`extensions.<id>.enabled: false`, a failing one skipped and traced rather than fatal. The
+window keeps what only it can do (tabs, surfaces, sessions, the key dispatcher, the
+panes' cursor); every feature below is an extension using the API and nothing else. A
+script host later is a second implementation of the same interfaces, not a new design.
+
+**Key sequences** (engine). `KeySequence` - chords separated by spaces, `ctrl+shift+k j`,
+the VS Code / Zed notation - and a `KeybindingMap` keyed by sequence: `Resolve` says
+command / prefix / nothing, `Continuations` lists what can follow a prefix, `"stay": true`
+keeps the prefix after a command so the last chord repeats, and a chord that is both
+bound and the start of a longer sequence is reported (the longer one can never fire).
+`KeySequenceDispatcher` is the pure state machine: while a sequence is pending every
+chord is taken - one that completes a binding runs it, a longer prefix keeps waiting,
+anything else ends the sequence **without reaching the terminal** (a leader key that
+leaks half a sequence into the shell is worse than none); Esc cancels; the timeout
+(`keys.sequenceTimeoutMs`, 3 s) is the heartbeat's. `MainWindow.OnChord` feeds it instead
+of a flat lookup; a chord that ran inside a sequence is always consumed, even by a command
+that declined.
+
+**Herd mode** (`herd.mode`). `Ctrl+Shift+K`, then: `j`/`k` next / previous (stay), `J`/`K`
+move, `b`/`B` next / previous waiting (stay), `d` next finished unseen, `1-9`, `l` last tab,
+`n` new, `x` close, `r` rename, `g` group, `e` explain, `p` prompt bar, `f` find, `/`
+switcher, `t`/`a` detach / attach, `s`/`c` cursor into the sidebar / cards, `?` the keys. A
+which-key bar built from the key map shows while the leader is pending - navigation
+first, digits as one chip, a repeat mark on stay keys - so a user's own sequences appear
+in it. `tab.last` bounces between the two most recent tabs.
+
+**Waiting tabs by age.** `HerdOrdering.NextWaiting`: the tab that has waited longest
+(`attention.order: age`, the default; `strip` keeps the old next-in-order), blocked before
+unseen-done. `tab.jumpToAttention` uses it; `tab.nextBlocked` / `previousBlocked` /
+`nextDone` are new.
+
+**MRU switching** (`tabs.mru`). Windows Terminal's default (`tabSwitcherMode: mru`): hold
+Ctrl, tap Tab through the tabs in the order you last used them, release to land - an
+Alt+Tab for tabs. The overlay is a non-activating owned window over the terminal (the
+terminal keeps the keyboard, which is what lets Ctrl's release be seen) listing the tabs
+with the selected one's screen rows; Tab / Shift+Tab step through `Intercept`, release
+commits through `ControlReleased`, Esc cancels, a quick tap bounces to the previous tab.
+`Ctrl+PgUp/PgDn` still walk the strip in order; `switcherMode: "inOrder"` or a user
+`ctrl+tab` binding restores cycling. The embedded `ctrl+tab` default is gone.
+
+**Global summon** (`summon`). `extensions.summon.keys` (default Win+`) registered with
+`RegisterHotKey` once the window has its handle: from any application the window comes to
+the front on the tab that has waited longest (`to: attention`) or stays on its tab
+(`current`); pressed in front, it minimizes (`toggle`). A key another program holds is
+reported in the trace and the status line - on the reference machine the tiling window
+manager has Win+`, so that is what the note says there. **Bug found:** "in front" has to
+be the foreground window as Windows sees it, visible and not minimized; `Window.IsActive`
+stays true for a minimized window that was active, so a summon of a minimized window
+minimized it "again".
+
+**Prompt addressing** (engine, `PromptAddress`). Address words at the front of a prompt
+choose its tabs from the keyboard, in the grammar the switcher already uses: `@3` by
+number, `@label` (exact, else prefix), `#group` (prefix), `@blocked` / `@working` / `@done`
+/ `@idle` by state, `@agents` / `@all` / `@active`; several combine; the rest is sent. A
+word that names nothing is reported and **nothing is sent**. The bar echoes the route
+under the box while typing (→ api, web). The combobox gains "This tab's group".
+
+**Keyboard cursor** (`keynav`). A cursor separate from the active tab in the sidebar and
+the dashboard (`TerminalTab.IsCursor`, an accent outline): the view's own chord pressed
+again - or herd mode `s` / `c` - puts it on the active tab; arrows and `j`/`k` move it in
+the pane's own order, Home/End jump, Enter activates (a card also opens the terminal
+view), Space activates and keeps the cursor, Esc returns to the terminal; a chord leaves
+the cursor and runs.
+
+**Verified** (in-process, no synthetic input; 281 unit tests): 32 new unit tests
+(sequences, the map with shadowing and extension defaults beneath the user file, the
+dispatcher's stay / stray / Esc / timeout, every address kind and the echo); self-test
+modes `herdmode` 24/24 (the extension loaded, 28 sequences, the leader swallowed, the bar's
+content with a render, stay and leave, a stray key swallowed then passed outside the
+mode, Esc, the timeout, `tab.last`, oldest-first for the three waiting commands), `mru`
+15/15 (order after activations, the overlay with a render, stepping both ways through the
+interceptor, the commit landing and reordering, the quick bounce, Esc, a tab closed while
+open, Ctrl+PgDn in order, Tab alone reaching the terminal - the Win32 Ctrl key-up is not
+synthesised, the test calls the method the release handler calls), `summon` 8/8 with one
+skip (the harness cannot give the window the foreground; the WM_HOTKEY handler is
+invoked, not the keypress), `address` 12/12 (the echo, @api reaching one tab with the
+word not sent, @3, #group reaching two tabs and not the third, a miss sending nothing,
+the Group target), `keynav` 17/17 (renders of the outlined sidebar row and the cards).
+85-check 85/85 and `session1`/`session2` after every batch.
+
 ---
 
-## 13. Distribution
-### 13.1 Channels - and why each artefact is what it is
+## 13. Distribution### 13.1 Channels - and why each artefact is what it is
 
 One tag `vX.Y.Z` produces three ways in, all from the same `build/Release.ps1` run:
 

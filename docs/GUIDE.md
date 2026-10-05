@@ -11,7 +11,7 @@ Contents
 1. [Install, or build and run](#1-install-or-build-and-run)
 2. [Where configuration lives](#2-where-configuration-lives)
 3. [`settings.jsonc`](#3-settingsjsonc)
-4. [Keys and the command palette](#4-keys-and-the-command-palette)
+4. [Keys and the command palette](#4-keys-and-the-command-palette) — with [herd mode, MRU switching, summon, addressing](#herd-mode-the-keyboard-way-around-many-tabs)
 5. [Tabs, groups, reorder, tear-off windows](#5-tabs-groups-reorder-tear-off-windows)
 6. [Views and layouts](#6-views-and-layouts)
 7. [Agents: what OverShell sees and how](#7-agents-what-overshell-sees-and-how)
@@ -135,6 +135,15 @@ init` gives you the full default file, commented, as a starting point.
     "reloadEnvironmentVariables": true   // every tab's environment from the registry, as Windows Terminal does (§7)
   },
 
+  "attention": { "order": "age" },     // which waiting tab a jump goes to: age (waited longest) | strip (next in order)
+  "keys": { "sequenceTimeoutMs": 3000, "hints": true },   // key sequences and the hint bar (§4)
+
+  // Features built on top of the shell, each under its id: "enabled" turns one off, the rest
+  // is its own (§4). herd.mode: { leader }; tabs.mru: { switcherMode }; summon: { keys, toggle, to }.
+  "extensions": {
+    "summon": { "keys": "win+backtick", "toggle": true, "to": "attention" }
+  },
+
   "git": {
     "branch": true,                  // from .git/HEAD, no process spawned
     "dirty": false,                  // `git status --porcelain` per repository for a "*" marker
@@ -171,10 +180,12 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+W` | `tab.close` | Close tab |
 | `Ctrl+Shift+D` | `tab.duplicate` | Another tab like this one: same profile, directory and group, next to it |
 | `Ctrl+Shift+Z` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | `tab.next` / `tab.previous` | Cycle |
-| `Ctrl+PgDn` / `Ctrl+PgUp` | same | Cycle |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | `tab.mruNext` / `tab.mruPrevious` | Most recently used first: hold Ctrl, tap Tab, release to land (below) |
+| `Ctrl+PgDn` / `Ctrl+PgUp` | `tab.next` / `tab.previous` | Cycle in strip order |
+| `Ctrl+Shift+K` then a key | herd mode | One leader, then single keys for everything you do to the herd (below) |
+| `` Win+` `` | `window.summon` | From any application: OverShell to the front, on the tab that needs you; again puts it away |
 | `Alt+1` … `Alt+9` | `tab.switchTo.N` | Jump to the Nth visible tab |
-| `Ctrl+Shift+J` | `tab.jumpToAttention` | Next tab that needs you: blocked first, then finished-unseen |
+| `Ctrl+Shift+J` | `tab.jumpToAttention` | The tab that needs you: blocked first, then finished-unseen; the one that has waited longest (`attention.order`) |
 | `Ctrl+Shift+R` | `tab.rename` | Label the tab (persisted per profile + directory) |
 | `Ctrl+Shift+G` | `tab.moveToGroup` | Put the tab under a named header; empty removes |
 | `Alt+Shift+←` / `→` | `tab.moveLeft` / `tab.moveRight` | Reorder |
@@ -195,22 +206,33 @@ Right-click in the terminal copies a selection, else pastes. Right-click on a ta
 the strip, the list, the rail, the sidebar) opens a menu with rename / agent or shell /
 explain / group / detach / close.
 
-Commands with no default chord, for the palette or your own bindings: `tab.resume`,
-`tab.markAgent`, `tab.markShell`, `prompt.blocked`, `layout.<name>`, `settings.reload`,
-`settings.open`, `settings.init`, `session.save`, `session.history`, `workspace.save`,
-`workspace.open.<name>`, `terminal.findUp`, `terminal.findDown`, `protocol.register`,
-`integrations.status`, `integrations.install.<id>`, `integrations.uninstall.<id>`,
-`snippet.<name>`.
+Commands with no default chord of their own, for the palette or your own bindings:
+`tab.resume`, `tab.markAgent`, `tab.markShell`, `tab.last`, `tab.nextBlocked`,
+`tab.previousBlocked`, `tab.nextDone`, `sidebar.focus`, `dashboard.focus`, `prompt.blocked`,
+`layout.<name>`, `settings.reload`, `settings.open`, `settings.init`, `session.save`,
+`session.history`, `workspace.save`, `workspace.open.<name>`, `terminal.findUp`,
+`terminal.findDown`, `protocol.register`, `integrations.status`,
+`integrations.install.<id>`, `integrations.uninstall.<id>`, `snippet.<name>` (most of them
+have a key in herd mode).
 
-`keybindings.jsonc` is an array; later entries win, `"unbound"` removes a default:
+`keybindings.jsonc` is an array; later entries win, `"unbound"` removes a default. Keys
+may be a **sequence** — chords separated by spaces — and `"stay": true` keeps the sequence
+open after the command so the last key repeats:
 
 ```jsonc
 [
   { "keys": "ctrl+shift+n", "command": "tab.new" },
   { "keys": "ctrl+shift+t", "command": "unbound" },
-  { "keys": "ctrl+alt+h",   "command": "view.herd" }
+  { "keys": "ctrl+alt+h",   "command": "view.herd" },
+  { "keys": "ctrl+shift+k w", "command": "workspace.save" },        // a sequence of your own
+  { "keys": "ctrl+shift+k j", "command": "tab.mruNext", "stay": true }
 ]
 ```
+
+While a sequence is pending every key is OverShell's: one that completes a binding runs
+it, one that is not in the sequence ends it without reaching the shell, Esc cancels, and
+after `keys.sequenceTimeoutMs` (3 s) it lapses. A chord that is both bound and the start
+of a longer sequence is reported as a problem — the longer one could never fire.
 
 Key names follow Windows Terminal: `ctrl`, `shift`, `alt`, `win`; letters, digits,
 `f1`–`f24`, `tab`, `esc`, `enter`, `space`, `backspace`, `del`, `ins`, `home`, `end`,
@@ -218,6 +240,56 @@ Key names follow Windows Terminal: `ctrl`, `shift`, `alt`, `win`; letters, digit
 `semicolon`, `quote`, `backtick`, `[`, `]`. A name that is not a key is reported, not
 guessed. The Windows Terminal object shape (`{ "keybindings": [ { "command": { "action":
 "…" }, "keys": "…" } ] }`) is accepted too.
+
+### Herd mode: the keyboard way around many tabs
+
+Press `Ctrl+Shift+K`, then one key. A hint bar under the terminal lists what the next key
+can be (your own sequences included); keys marked ↻ *repeat* - the mode stays on, so
+`Ctrl+Shift+K j j j` walks three tabs - the others leave it.
+
+| Key | What |
+|---|---|
+| `j` / `k` ↻ | next / previous tab |
+| `J` / `K` ↻ | move the tab right / left |
+| `b` / `B` ↻ | next / previous tab **waiting for you** - the one that has waited longest first |
+| `d` ↻ | next tab that finished unseen |
+| `1`-`9` | jump to a tab |
+| `l` | the last tab you were in (bounce between two) |
+| `n` `x` `r` `g` `e` | new, close, rename, group, explain |
+| `p` `f` `/` | prompt bar, find, tab switcher |
+| `t` / `a` | detach into a window / bring back |
+| `s` / `c` | move the **cursor** into the sidebar / the dashboard cards |
+| `?` | show the keys |
+
+**MRU switching.** `Ctrl+Tab` is Windows Terminal's most-recently-used switcher: hold
+Ctrl, tap Tab to walk the tabs in the order you last used them (an overlay shows the list
+with the selected tab's screen), release Ctrl to land; Shift+Tab walks back, Esc cancels.
+A quick `Ctrl+Tab` bounces to the previous tab. `Ctrl+PgUp`/`PgDn` still cycle in strip
+order; `"extensions": { "tabs.mru": { "switcherMode": "inOrder" } }` makes Ctrl+Tab cycle
+too.
+
+**Summon.** `` Win+` `` from anywhere brings OverShell to the front on the tab that has
+waited longest; pressed while it is in front, it goes away. `"extensions": { "summon":
+{ "keys": "ctrl+alt+t", "to": "current", "toggle": false } }` changes the key (any chord;
+empty for none), lands on the current tab instead, and never minimizes. A key another
+program already holds is reported in the status bar.
+
+**The cursor.** In the Herd view, press `Ctrl+Shift+2` again (or herd mode `s`): a cursor
+outline appears on the active tab's row; `↑`/`↓` or `j`/`k` move it, Home/End jump,
+**Enter** switches to that tab, **Space** switches but keeps the cursor, **Esc** returns to
+the terminal. The same on the Dashboard with `Ctrl+Shift+3` (or `c`); Enter there opens
+the tab in the terminal view. A chord pressed with the cursor up leaves it and runs.
+
+**Addressing a prompt.** In the prompt bar, start with where it should go: `@3 run the
+tests` (tab 3), `@api ...` (a tab by label, a prefix is enough), `#backend ...` (a group),
+`@blocked ...` / `@working ...` / `@done ...` (by state), `@agents` / `@all`. Several
+combine: `@2 #backend ...`. The bar echoes the route under the box before you press Enter
+(→ api, web); a word that names nothing sends nothing. Without an address the combobox
+target applies, which now includes *This tab's group*.
+
+**Waiting tabs by age.** `Ctrl+Shift+J`, herd mode `b`, and the summon pick the tab that
+has waited longest; `"attention": { "order": "strip" }` goes back to the next in tab
+order.
 
 **The tab switcher** (`Ctrl+Shift+Space`) searches label, title, project, directory,
 harness and state. `@blocked`, `@working`, `@done` filter by state; `#repo` filters by
