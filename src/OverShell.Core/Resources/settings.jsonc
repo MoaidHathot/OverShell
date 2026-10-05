@@ -70,8 +70,24 @@
     "reloadEnvironmentVariables": true
   },
 
-  // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked
-  // toast (--launch overshell://focus/<tab>) lands on its tab in the running window.
+  // Which waiting tab a jump goes to: "age" (waited longest first) or "strip" (the next in tab order).
+  "attention": {
+    "order": "age"
+  },
+
+  // Key sequences (ctrl+shift+k j): how long the next chord may take, and whether a hint bar
+  // lists the possible continuations while a sequence is pending.
+  "keys": {
+    "sequenceTimeoutMs": 3000,
+    "hints": true
+  },
+
+  // Extensions: features built on top of the shell. Each has a section under its id with
+  // "enabled" and its own settings; see the guide for the built-in ones.
+  "extensions": {
+  },
+
+  // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked  // toast (--launch overshell://focus/<tab>) lands on its tab in the running window.
   "protocol": {
     "register": true
   },

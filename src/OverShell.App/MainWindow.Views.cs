@@ -451,7 +451,7 @@ public partial class MainWindow
         if (all || keybindings)
         {
             LoadKeybindings();
-            parts.Add($"keybindings ({_keybindings.Bindings.Count} chords{(_keybindings.Problems.Count > 0 ? $", {_keybindings.Problems.Count} problem(s)" : string.Empty)})");
+            parts.Add($"keybindings ({_keybindings.Bindings.Count} bindings{(_keybindings.Problems.Count > 0 ? $", {_keybindings.Problems.Count} problem(s)" : string.Empty)})");
         }
 
         if (all || agents)
@@ -530,6 +530,17 @@ public partial class MainWindow
         if (all || settings || layouts)
         {
             ApplyView(_viewId);
+        }
+
+        if (all || settings || keybindings || agents)
+        {
+            // The settings in the sequence dispatcher's timeout changed with them.
+            if (settings && !keybindings && !all)
+            {
+                LoadKeybindings();
+            }
+
+            _shell?.RaiseSettingsChanged();
         }
 
         foreach (var problem in _settings.Problems.Concat(_keybindings.Problems).Concat(_rules.Problems).Concat(_layouts.Problems))

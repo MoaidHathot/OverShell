@@ -341,7 +341,7 @@ public partial class MainWindow
             profile = profile with { CommandLine = plan.Command };
         }
 
-        var tab = AddTab(profile, activate, PreambleFor(savedTab));
+        var tab = AddTab(profile, activate, PreambleFor(savedTab), savedTab.Extra);
         if (!string.IsNullOrWhiteSpace(savedTab.Label))
         {
             tab.UserLabel = savedTab.Label;
@@ -387,6 +387,7 @@ public partial class MainWindow
         Detached = t.Detached,
         Window = t.Detached ? CaptureWindow(_tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, t)), WindowState.Normal) : null,
         ClosedAt = closedAt,
+        Extra = t.Properties.Count > 0 ? new Dictionary<string, string>(t.Properties, StringComparer.OrdinalIgnoreCase) : null,
     };
 
     /// <summary>A window's placement in DIPs, or null before it has been laid out.</summary>

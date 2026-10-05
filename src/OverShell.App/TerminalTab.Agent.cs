@@ -405,6 +405,24 @@ public sealed partial class TerminalTab
 
     public TabSummary Summarize() => new(Id, Label, Harness, State.ToString(), Project, Agent.Explain);
 
+    // ------------------------------------------------------------ ITab (12.16)
+
+    /// <summary>The rule set in force: the harness's, or the generic one for a shell.</summary>
+    public AgentRuleSet Rules => Agent.Rules;
+
+    public DateTimeOffset? AttentionSince => Agent.AttentionSince;
+
+    public DateTimeOffset? LastActivity => Agent.LastActivity;
+
+    public string Explain => Agent.Explain;
+
+    public string? SessionId => Agent.SessionId;
+
+    /// <summary>Extension state carried by the tab and saved with the session (<see cref="Core.Extensibility.ITab.Properties"/>).</summary>
+    public IDictionary<string, string> Properties { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    void Core.Extensibility.ITab.RequestScreen() => RequestScreen();
+
     // ------------------------------------------------------------- lifecycle
 
     private void InitializeAgent(AgentServices agents, string commandLine)

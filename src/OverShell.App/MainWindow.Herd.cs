@@ -8,6 +8,7 @@ using OverShell.App.Diagnostics;
 using OverShell.App.Notifications;
 using OverShell.Core;
 using OverShell.Core.Agents;
+using OverShell.Core.Herd;
 using OverShell.Core.Commands;
 using OverShell.Core.Input;
 using OverShell.Core.Integrations;
@@ -24,7 +25,6 @@ namespace OverShell.App;
 public partial class MainWindow
 {
     private readonly CommandRegistry _commands = new();
-    private readonly Dictionary<(Key Key, ModifierKeys Modifiers), string> _chords = [];
     private readonly Dictionary<string, TerminalTab> _tabsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly TraceLog _trace = TraceLog.Agents;
     private AppSettings _settings = null!;
@@ -138,7 +138,10 @@ public partial class MainWindow
         c.Register("tab.close", "Close tab", "Tabs", () => { if (TargetTab is { } t) CloseTab(t); }, () => TargetTab is not null);
         c.Register("tab.next", "Next tab", "Tabs", () => ActivateRelative(1), () => Tabs.Count > 1);
         c.Register("tab.previous", "Previous tab", "Tabs", () => ActivateRelative(-1), () => Tabs.Count > 1);
-        c.Register("tab.jumpToAttention", "Jump to the tab that needs you", "Tabs", JumpToAttention, description: "Blocked first, then finished-unseen");
+        c.Register("tab.jumpToAttention", "Jump to the tab that needs you", "Tabs", JumpToAttention, description: "Blocked first, then finished-unseen; the one waiting longest (attention.order)");
+        c.Register("tab.nextBlocked", "Next tab waiting for you", "Tabs", () => JumpWaiting(1, blockedOnly: true, doneOnly: false, "No tab is waiting for you"), () => Tabs.Any(t => t.State is AgentState.Blocked or AgentState.Error), "Blocked or errored; the one waiting longest first");
+        c.Register("tab.previousBlocked", "Previous tab waiting for you", "Tabs", () => JumpWaiting(-1, blockedOnly: true, doneOnly: false, "No tab is waiting for you"), () => Tabs.Any(t => t.State is AgentState.Blocked or AgentState.Error));
+        c.Register("tab.nextDone", "Next tab that finished unseen", "Tabs", () => JumpWaiting(1, blockedOnly: false, doneOnly: true, "Nothing finished unseen"), () => Tabs.Any(t => t.State == AgentState.Done && t.Unread));
         c.Register("tab.rename", "Rename tab", "Tabs", RenameActiveTab, () => TargetTab is not null);
         c.Register("tab.markAgent", "Treat this tab as an agent", "Agents", () => TargetTab?.MarkAsAgent(), () => TargetTab is { IsAgent: false });
         c.Register("tab.markShell", "Treat this tab as a shell", "Agents", () => TargetTab?.MarkAsShell(), () => TargetTab is { IsAgent: true });
@@ -184,69 +187,6 @@ public partial class MainWindow
             ShowStatusMessage(changed ? $"overshell:// now opens {exe}" : "overshell:// was already registered for this executable");
         }, description: "HKCU only; toast clicks then focus their tab");
     }
-
-    private void LoadKeybindings()
-    {
-        _keybindings = KeybindingMap.Load(System.IO.File.Exists(AppPaths.KeybindingsFile) ? AppPaths.KeybindingsFile : null);
-        foreach (var problem in _keybindings.Problems)
-        {
-            _trace.Write($"keybindings: {problem}");
-        }
-
-        // Resolve chord names to WPF keys once; Key has aliases (Return/Enter, Next/PageDown)
-        // so comparing enum values rather than names is what makes both spellings work.
-        _chords.Clear();
-        foreach (var (chord, command) in _keybindings.Bindings)
-        {
-            if (Enum.TryParse<Key>(chord.Key, ignoreCase: true, out var key))
-            {
-                _chords[(key, ToModifiers(chord.Modifiers))] = command;
-            }
-            else
-            {
-                _trace.Write($"keybindings: '{chord}' names no WPF key");
-            }
-        }
-    }
-
-    private static ModifierKeys ToModifiers(ChordModifiers m)
-    {
-        var result = ModifierKeys.None;
-        if (m.HasFlag(ChordModifiers.Control)) result |= ModifierKeys.Control;
-        if (m.HasFlag(ChordModifiers.Shift)) result |= ModifierKeys.Shift;
-        if (m.HasFlag(ChordModifiers.Alt)) result |= ModifierKeys.Alt;
-        if (m.HasFlag(ChordModifiers.Win)) result |= ModifierKeys.Windows;
-        return result;
-    }
-
-    /// <summary>The router saw a chord: run the bound command; swallow the key only when the command took it.</summary>
-    private bool OnChord(Key key, ModifierKeys modifiers)
-    {
-        if (!_chords.TryGetValue((key, modifiers), out var command))
-        {
-            return false;
-        }
-
-        // Ctrl+C / Ctrl+V while typing in the prompt bar edit the prompt, not the terminal.
-        if (TextInputHasFocus() && command.StartsWith("clipboard.", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        // A chord from a tear-off aims at that window's tab.
-        _commandTarget = TearOffForRoot(_shortcuts.CurrentRoot)?.Tab;
-        try
-        {
-            return _commands.TryExecute(command);
-        }
-        finally
-        {
-            _commandTarget = null;
-        }
-    }
-
-    /// <summary>What the router would do with a chord — for in-process diagnostics, which inject no keys.</summary>
-    internal bool DispatchChord(Key key, ModifierKeys modifiers) => OnChord(key, modifiers);
 
     internal PaletteWindow? Palette => _palette;
 
@@ -538,39 +478,31 @@ public partial class MainWindow
     }
 
     /// <summary>Blocked or errored first (after the current tab, wrapping), then finished-unseen.</summary>
-    private void JumpToAttention()
-    {
-        if (Tabs.Count == 0)
-        {
-            return;
-        }
+    private void JumpToAttention() => JumpWaiting(direction: 1, blockedOnly: false, doneOnly: false, "Nothing needs you");
 
-        var start = ActiveTab is { } active ? Tabs.IndexOf(active) : -1;
-        TerminalTab? Find(Func<TerminalTab, bool> predicate)
+    /// <summary>
+    /// Goes to a tab that waits for the user (§12.16): by default the one that has waited
+    /// longest (<c>attention.order: age</c>), else the next in strip order. Blocked and error
+    /// tabs come before unseen-done ones. Returns false when nothing waits.
+    /// </summary>
+    internal bool JumpWaiting(int direction, bool blockedOnly, bool doneOnly, string? nothingMessage = null)
+    {
+        var waiting = Tabs.Select((t, i) => new HerdOrdering.Waiting(t.Id, t.State, t.Unread, t.Agent.AttentionSince, i)).ToList();
+        var currentIndex = ActiveTab is { } active ? Tabs.IndexOf(active) : -1;
+        var target = HerdOrdering.NextWaiting(waiting, currentIndex, _settings.Attention.ByAge, direction, blockedOnly, doneOnly);
+        if (target is null)
         {
-            for (var step = 1; step <= Tabs.Count; step++)
+            if (nothingMessage is not null)
             {
-                var candidate = Tabs[(start + step) % Tabs.Count];
-                if (predicate(candidate))
-                {
-                    return candidate;
-                }
+                ShowStatusMessage(nothingMessage);
             }
 
-            return null;
+            return false;
         }
 
-        var target = Find(t => t.State is AgentState.Blocked or AgentState.Error) ?? Find(t => t.State == AgentState.Done && t.Unread);
-        if (target is not null)
-        {
-            ActiveTab = target;
-        }
-        else
-        {
-            ShowStatusMessage("Nothing needs you");
-        }
+        ActiveTab = Tabs[target.Index];
+        return true;
     }
-
     private void FocusTabById(string tabId)
     {
         if (_tabsById.TryGetValue(tabId, out var tab))
@@ -610,7 +542,7 @@ public partial class MainWindow
     /// working directory. When the layout has no status bar (Zen), the line goes to an
     /// in-window toast instead — a message nobody can see is not a message.
     /// </summary>
-    private void ShowStatusMessage(string message)
+    internal void ShowStatusMessage(string message)
     {
         if (!_statusVisible)
         {

@@ -36,6 +36,60 @@ public static class HerdOrdering
 
     public static bool NeedsAttention(AgentState state, bool unread) => AttentionRank(state, unread) <= 1;
 
+    /// <summary>A tab waiting for the user, with how long it has waited, for <see cref="NextWaiting"/>.</summary>
+    public sealed record Waiting(string TabId, AgentState State, bool Unread, DateTimeOffset? Since, int Index);
+
+    /// <summary>
+    /// The tab to jump to among those waiting (§12.16): the one that has waited longest when
+    /// <paramref name="byAge"/>, else the next after <paramref name="currentIndex"/> in strip
+    /// order, wrapping. Blocked and error tabs come before unseen-done ones in both modes;
+    /// <paramref name="direction"/> -1 walks the other way (the newest, or the previous).
+    /// Returns null when nothing waits; the current tab is skipped unless it is the only one.
+    /// </summary>
+    public static Waiting? NextWaiting(IReadOnlyList<Waiting> waiting, int currentIndex, bool byAge, int direction = 1, bool blockedOnly = false, bool doneOnly = false)
+    {
+        var candidates = waiting
+            .Where(w => NeedsAttention(w.State, w.Unread))
+            .Where(w => !blockedOnly || w.State is AgentState.Blocked or AgentState.Error)
+            .Where(w => !doneOnly || w.State == AgentState.Done)
+            .ToList();
+        if (candidates.Count == 0)
+        {
+            return null;
+        }
+
+        var others = candidates.Where(w => w.Index != currentIndex).ToList();
+        if (others.Count == 0)
+        {
+            return candidates[0];
+        }
+
+        if (byAge)
+        {
+            var ordered = others
+                .OrderBy(w => AttentionRank(w.State, w.Unread))
+                .ThenBy(w => w.Since ?? DateTimeOffset.MaxValue)
+                .ThenBy(w => w.Index)
+                .ToList();
+            return direction >= 0 ? ordered[0] : ordered[^1];
+        }
+
+        var count = waiting.Count == 0 ? 1 : waiting.Max(w => w.Index) + 1;
+        for (var rank = 0; rank <= 1; rank++)
+        {
+            for (var step = 1; step <= count; step++)
+            {
+                var index = ((currentIndex + step * direction) % count + count) % count;
+                var hit = others.FirstOrDefault(w => w.Index == index && AttentionRank(w.State, w.Unread) == rank);
+                if (hit is not null)
+                {
+                    return hit;
+                }
+            }
+        }
+
+        return others[0];
+    }
     public static IReadOnlyList<HerdGroup> Group(IEnumerable<HerdEntry> entries)
     {
         var groups = new List<HerdGroup>();

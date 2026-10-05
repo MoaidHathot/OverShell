@@ -29,7 +29,7 @@ namespace OverShell.App;
 /// properties. Keep it that way — it is what makes a second surface a local change.
 /// </para>
 /// </summary>
-public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable
+public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, Core.Extensibility.ITab
 {
     // OSC 0 / OSC 2 -> window title. OSC 9;9 -> working directory (shell integration).
     [GeneratedRegex("\u001b\\][02];([^\u0007\u001b]*)(?:\u0007|\u001b\\\\)", RegexOptions.Compiled)]

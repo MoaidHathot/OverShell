@@ -119,9 +119,26 @@ public sealed class SessionSettings
     public bool RestartWithWindows { get; init; }
 }
 
-/// <summary>Behaviours matched to Windows Terminal's, under its names (§12.15).</summary>
-public sealed class CompatibilitySettings
+/// <summary>How the tabs that need you are walked (§12.16).</summary>
+public sealed class AttentionSettings
 {
+    /// <summary><c>age</c>: the tab that has waited longest first (default); <c>strip</c>: the next one in tab order.</summary>
+    public string Order { get; init; } = "age";
+
+    public bool ByAge => !string.Equals(Order, "strip", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>Key handling (§12.16).</summary>
+public sealed class KeySettings{
+    /// <summary>How long a key sequence waits for its next chord before it is dropped.</summary>
+    public int SequenceTimeoutMs { get; init; } = 3000;
+
+    /// <summary>Show the hint bar listing what the next chord of a pending sequence can be.</summary>
+    public bool Hints { get; init; } = true;
+}
+
+/// <summary>Behaviours matched to Windows Terminal's, under its names (§12.15).</summary>
+public sealed class CompatibilitySettings{
     /// <summary>
     /// Build every tab's environment from the registry, as a fresh logon would, instead of
     /// inheriting OverShell's own - so a tool installed after OverShell (or after whatever
@@ -174,8 +191,44 @@ public sealed class AppSettings
 
     public CompatibilitySettings Compatibility { get; init; } = new();
 
+    public KeySettings Keys { get; init; } = new();
+
+    public AttentionSettings Attention { get; init; } = new();
+
+    /// <summary>
+    /// Per-extension settings (§12.16): <c>"extensions": { "&lt;id&gt;": { "enabled": true, ... } }</c>.
+    /// Kept as JSON so an extension binds its own shape with <see cref="ExtensionSettings{T}"/>.
+    /// </summary>
+    public Dictionary<string, System.Text.Json.Nodes.JsonNode?> Extensions { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
     public List<string> Problems { get; } = [];
 
+    /// <summary>Whether an extension is turned on: <c>extensions.&lt;id&gt;.enabled</c>, default true.</summary>
+    public bool ExtensionEnabled(string id) =>
+        !(Extensions.GetValueOrDefault(id) is System.Text.Json.Nodes.JsonObject o
+          && o["enabled"] is System.Text.Json.Nodes.JsonValue v
+          && v.TryGetValue<bool>(out var enabled)
+          && !enabled);
+
+    /// <summary>An extension's section bound to <typeparamref name="T"/>; a fresh instance when absent or malformed.</summary>
+    public T ExtensionSettings<T>(string id, out string? problem) where T : class, new()
+    {
+        problem = null;
+        var node = Extensions.GetValueOrDefault(id);
+        if (node is null)
+        {
+            return new T();
+        }
+
+        var bound = Jsonc.To<T>(node, out var error);
+        if (bound is null)
+        {
+            problem = error;
+            return new T();
+        }
+
+        return bound;
+    }
     /// <summary>The view's definition, else a terminal view on the default layout.</summary>
     public ViewDefinition ViewFor(string id) => Views.GetValueOrDefault(id) ?? new ViewDefinition();
 

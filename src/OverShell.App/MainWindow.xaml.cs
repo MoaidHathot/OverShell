@@ -84,6 +84,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeTearOff();
         InitializeWorkspaces();
         InitializeSession();
+        InitializeExtensions();
 
         // The saved session, else a single terminal — panes and extra tabs are opt-in.
         var initialView = RestoreOrOpenDefault();
@@ -166,6 +167,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             // An open find bar searches whatever the window shows.
             _findBar?.Retarget(_activeTab);
+            _shell?.RaiseActiveTabChanged(_activeTab);
 
             Raise();
             UpdateViewed();
@@ -177,10 +179,19 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ------------------------------------------------------------ tab model
 
-    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null)
+    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null)
     {
         var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher, _agents, preamble: preamble);
         tab.UserLabel = _state.LabelFor(profile.Id, tab.WorkingDirectory);
+
+        // Extension state restored with the tab, before any extension hears of it.
+        if (extra is not null)
+        {
+            foreach (var (key, value) in extra)
+            {
+                tab.Properties[key] = value;
+            }
+        }
 
         tab.PropertyChanged += (_, e) =>
         {
@@ -190,7 +201,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         };
         tab.AttentionRequested += OnAttention;
-        tab.StateChanged += (_, _) => RefreshAttention();
+        tab.AttentionRequested += (t, a) => _shell?.RaiseAttention(t, a);
+        tab.StateChanged += (t, transition) =>
+        {
+            RefreshAttention();
+            _shell?.RaiseStateChanged(t, transition);
+        };
 
         // A dashboard or an open switcher wants this tab's screen from the start.
         tab.ScreenWatched = _settings.ViewFor(_viewId).Content == ViewContent.Dashboard || _palette is not null;
@@ -203,6 +219,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ActiveTab = tab;
         }
+
+        _shell?.RaiseTabOpened(tab);
 
         if (Tabs.Count == 1)
         {
@@ -231,6 +249,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // Remembered while its directory and session id are still readable.
         RememberClosed(tab);
         _findBar.Forget(tab);
+        _shell?.RaiseTabClosed(tab);
 
         // Dispose first: it suppresses further input, so the focus and key messages
         // generated while the HwndHost is unloaded can't reach a closed pseudoconsole.
@@ -1197,6 +1216,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void UpdateStatus()
     {
         var now = DateTimeOffset.Now;
+        if (_sequences is not null)
+        {
+            ExpireSequences(now);
+            _shell.RaiseHeartbeat(now);
+        }
 
         // Only a tab that actually started can have died. The PTY starts on a background
         // thread, so a plain !IsRunning check would fire on every healthy new tab.

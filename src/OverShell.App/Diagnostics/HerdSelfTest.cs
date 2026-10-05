@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using OverShell.Core;
 using OverShell.Core.Agents;
+using OverShell.Core.Input;
 using OverShell.Core.Integrations;
 using OverShell.Core.Search;
 using OverShell.Core.Settings;
@@ -22,7 +23,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -102,6 +103,9 @@ internal static class HerdSelfTest
                         break;
                     case "env":
                         await RunEnvAsync(window, firstTab);
+                        break;
+                    case "herdmode":
+                        await RunHerdModeAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -323,8 +327,114 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// The tab's environment (§12.15): built from the registry as Windows Terminal builds it,
-    /// so a PATH entry the launcher never had is there and a variable that lived only in the
+    /// Key sequences and herd mode (§12.16): the leader chord makes the next keys the mode's -
+    /// navigation keys stay, actions leave, a stray key is swallowed rather than reaching the
+    /// shell, Esc and the timeout end it; the hint bar lists what the key map says; tab.last
+    /// bounces; waiting tabs are walked oldest first; the mode is an extension that can be
+    /// turned off.
+    /// </summary>
+    private static async Task RunHerdModeAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (herdmode) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        bool Chord(string text)
+        {
+            if (!KeyChord.TryParse(text, out var chord))
+            {
+                throw new InvalidOperationException($"bad chord {text}");
+            }
+
+            var key = Enum.Parse<System.Windows.Input.Key>(chord.Key, ignoreCase: true);
+            var modifiers = System.Windows.Input.ModifierKeys.None;
+            if (chord.Modifiers.HasFlag(ChordModifiers.Control)) modifiers |= System.Windows.Input.ModifierKeys.Control;
+            if (chord.Modifiers.HasFlag(ChordModifiers.Shift)) modifiers |= System.Windows.Input.ModifierKeys.Shift;
+            if (chord.Modifiers.HasFlag(ChordModifiers.Alt)) modifiers |= System.Windows.Input.ModifierKeys.Alt;
+            return window.DispatchChord(key, modifiers);
+        }
+
+        var extension = window.Extensions.Loaded.OfType<Extensions.HerdModeExtension>().FirstOrDefault();
+        Check(extension is not null, "the herd-mode extension loaded through the extension host");
+        Check(window.Keybindings.Bindings.Keys.Count(k => k.Length == 2) >= 20 && window.Keybindings.Problems.Count == 0, $"its default sequences are in the key map ({window.Keybindings.Bindings.Keys.Count(k => k.Length == 2)} sequences, {window.Keybindings.Problems.Count} problems)");
+
+        var second = window.AddTab(first.Profile, activate: false);
+        var third = window.AddTab(first.Profile, activate: false);
+        await Task.Delay(800);
+        window.ActiveTab = first;
+
+        // ---- leader, then stay keys ----
+        Check(Chord("ctrl+shift+k"), "the leader chord is swallowed and starts a sequence");
+        await Task.Delay(100);
+        Check(window.PendingChords.Count == 1, "...the sequence is pending");
+        var bar = extension?.Bar;
+        Check(bar is not null && bar.IsVisible && bar.Prefix == "Ctrl+Shift+K" && bar.Keys.Contains("J") && bar.Keys.Contains("N") && bar.Keys.Contains("1-9") && bar.Keys.IndexOf("J") < bar.Keys.IndexOf("N"), $"the hint bar shows the leader and its continuations, navigation first, digits as one chip ({bar?.Keys.Count} chips)");
+        if (bar is not null)
+        {
+            SaveVisual(bar, "overshell-selftest-herdmode-hints.png");
+        }
+
+        Check(Chord("j") && ReferenceEquals(window.ActiveTab, second), "j: next tab, and the key was taken");
+        Check(window.PendingChords.Count == 1, "...a stay key keeps the mode pending");
+        Check(Chord("j") && ReferenceEquals(window.ActiveTab, third), "j again: the next tab, no leader needed");
+        Check(Chord("k") && ReferenceEquals(window.ActiveTab, second), "k: back one");
+        Check(Chord("2") && ReferenceEquals(window.ActiveTab, second) && window.PendingChords.Count == 0, "2: jump to tab 2 and leave the mode (an action)");
+        Check(bar is not null && !bar.IsVisible, "...the hint bar is gone");
+
+        // ---- a stray key is swallowed, the mode ends ----
+        Chord("ctrl+shift+k");
+        var swallowed = Chord("q");
+        Check(swallowed && window.PendingChords.Count == 0, "a key that is not in the mode is swallowed and ends it (nothing reaches the shell)");
+        Check(!Chord("q"), "...and the same key outside the mode goes to the terminal");
+
+        // ---- Esc cancels ----
+        Chord("ctrl+shift+k");
+        Check(Chord("esc") && window.PendingChords.Count == 0, "Esc cancels a pending sequence");
+
+        // ---- timeout ----
+        Chord("ctrl+shift+k");
+        await Task.Delay(3600);
+        Check(window.PendingChords.Count == 0, "a pending sequence lapses after keys.sequenceTimeoutMs");
+        Check(bar is not null && !bar.IsVisible, "...and the bar hides with it");
+
+        // ---- tab.last ----
+        window.ActiveTab = first;
+        window.ActiveTab = third;
+        Check(window.Commands.TryExecute("tab.last") && ReferenceEquals(window.ActiveTab, first), "tab.last bounces to the tab active before this one");
+        Check(window.Commands.TryExecute("tab.last") && ReferenceEquals(window.ActiveTab, third), "...and back");
+
+        // ---- attention by age ----
+        second.ApplyReport(new IntegrationReport(second.Id, "selftest", 1, AgentState.Blocked, "selftest", "older question", null, null, null, Release: false));
+        await Task.Delay(300);
+        third.ApplyReport(new IntegrationReport(third.Id, "selftest", 1, AgentState.Blocked, "selftest", "newer question", null, null, null, Release: false));
+        await Task.Delay(300);
+        window.ActiveTab = first;
+        Check(window.Commands.TryExecute("tab.nextBlocked") && ReferenceEquals(window.ActiveTab, second), "tab.nextBlocked goes to the tab that has waited longest, not the next in strip order");
+        Check(window.Commands.TryExecute("tab.nextBlocked") && ReferenceEquals(window.ActiveTab, third), "...then to the next oldest");
+        Check(window.Commands.TryExecute("tab.previousBlocked") && ReferenceEquals(window.ActiveTab, second), "tab.previousBlocked walks the other way");
+        window.ActiveTab = first;
+        Check(window.Commands.TryExecute("tab.jumpToAttention") && ReferenceEquals(window.ActiveTab, second), "tab.jumpToAttention uses the same order (attention.order: age)");
+
+        // ---- the mode through the leader + b ----
+        window.ActiveTab = first;
+        Chord("ctrl+shift+k");
+        Check(Chord("b") && ReferenceEquals(window.ActiveTab, second) && window.PendingChords.Count == 1, "leader b: next waiting tab, mode stays");
+        Chord("esc");
+
+        // ---- extension settings: a user leader ----
+        Check(window.Shell.Settings.ExtensionEnabled("herd.mode"), "extensions.herd.mode is enabled by default");
+
+        window.CloseTab(second);
+        window.CloseTab(third);
+        Log($"=== selftest (herdmode) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// The tab's environment (§12.15): built from the registry as Windows Terminal builds it,    /// so a PATH entry the launcher never had is there and a variable that lived only in the
     /// launcher's process is not; WT_SESSION, WT_PROFILE_ID and the integration variables
     /// present and carried into WSL through WSLENV; the setting turns it back into plain
     /// inheritance, live. The harness starts OverShell with a PATH stripped of the user's
