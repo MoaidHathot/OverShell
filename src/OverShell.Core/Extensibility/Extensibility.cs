@@ -69,8 +69,25 @@ public interface IShell
 
     IHostUi Ui { get; }
 
-    ITab? OpenTab(TabRequest request);
+    /// <summary>The current view's id (<c>terminal</c>, <c>herd</c>, <c>dashboard</c>, <c>zen</c>) and whether its sidebar is showing.</summary>
+    string ViewId { get; }
 
+    bool SidebarVisible { get; }
+
+    bool DashboardVisible { get; }
+
+    /// <summary>The tabs in the order the sidebar lists them (groups by attention, rows by attention then recency); empty when the sidebar is hidden.</summary>
+    IReadOnlyList<ITab> SidebarOrder { get; }
+
+    /// <summary>Puts the keyboard cursor of the sidebar / dashboard on a tab (its row or card outlines itself), or nowhere with null.</summary>
+    void SetCursor(ITab? tab);
+
+    ITab? Cursor { get; }
+
+    /// <summary>Switches to a view by id.</summary>
+    void ShowView(string viewId);
+
+    ITab? OpenTab(TabRequest request);
     void Activate(ITab tab);
 
     void Close(ITab tab);

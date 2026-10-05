@@ -97,6 +97,11 @@
                                             <DataTrigger Binding="{Binding IsActive}" Value="True">
                                                 <Setter TargetName="Row" Property="Background" Value="{StaticResource Surface.Raised}" />
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsCursor}" Value="True">
+                                                <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Accent.Base}" />
+                                                <Setter TargetName="Row" Property="BorderThickness" Value="1" />
+                                                <Setter TargetName="Row" Property="Padding" Value="7,5" />
+                                            </DataTrigger>
                                             <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Row" Property="Background" Value="{StaticResource Surface.Hover}" />
                                             </Trigger>

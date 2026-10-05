@@ -52,6 +52,26 @@ public partial class MainWindow
     /// <summary>The current view id: terminal, herd, dashboard or zen.</summary>
     public string ViewId => _viewId;
 
+    /// <summary>Whether the current layout shows the sidebar.</summary>
+    internal bool SidebarVisible => CurrentLayout.Sidebar.Placement != SidePlacement.Hidden;
+
+    /// <summary>The dashboard control, for the self-test's renders.</summary>
+    internal Chrome.DashboardView DashboardView => Dashboard;
+
+    /// <summary>Whether the middle shows the dashboard cards.</summary>
+    internal bool DashboardVisible => _settings.ViewFor(_viewId).Content == ViewContent.Dashboard;
+
+    /// <summary>The tabs in the sidebar's order, top to bottom; empty when it is hidden.</summary>
+    internal IReadOnlyList<TerminalTab> SidebarOrder => SidebarVisible ? _sidebar.Items.SelectMany(g => g.Tabs).ToList() : [];
+
+    /// <summary>Switches views by id; unknown ids are ignored.</summary>
+    internal void ShowViewById(string id)
+    {
+        if (AppSettings.ViewOrder.Contains(id, StringComparer.OrdinalIgnoreCase))
+        {
+            ApplyView(id);
+        }
+    }
     internal ChromeLayout CurrentLayout { get; private set; } = new() { Name = LayoutCatalog.DefaultName };
 
     internal HerdSidebar Sidebar => _sidebar;
@@ -119,8 +139,24 @@ public partial class MainWindow
         {
             var view = id;
             var title = _settings.ViewFor(id).Title ?? char.ToUpperInvariant(id[0]) + id[1..];
-            _commands.Register($"view.{id}", $"View: {title}", "View", () => ApplyView(view), description: $"Layout '{_settings.ViewFor(id).Layout}'");
-        }
+            _commands.Register($"view.{id}", $"View: {title}", "View", () =>
+            {
+                // The view's chord pressed again, on a view with a pane: the cursor goes into the pane (12.16).
+                if (string.Equals(_viewId, view, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (DashboardVisible && _commands.TryExecute("dashboard.focus"))
+                    {
+                        return;
+                    }
+
+                    if (SidebarVisible && _commands.TryExecute("sidebar.focus"))
+                    {
+                        return;
+                    }
+                }
+
+                ApplyView(view);
+            }, description: $"Layout '{_settings.ViewFor(id).Layout}'; again moves the cursor into its sidebar or cards");        }
 
         _commands.Register("view.toggle", "View: toggle last two", "View", () => ApplyView(_previousViewId), description: "Switch between the current view and the one before it");
         _commands.Register("settings.reload", "Reload configuration", "Settings", () => ReloadConfiguration(all: true), description: "settings.jsonc, keybindings.jsonc, snippets.jsonc, agents\\, layouts\\, skins\\, workspaces\\");

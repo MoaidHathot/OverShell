@@ -193,10 +193,25 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     /// </summary>
     public bool IsRunning => Session.IsRunning;
 
+    private bool _isCursor;
+
+    /// <summary>The keyboard cursor of the sidebar or the dashboard rests on this tab (§12.16); the row or card outlines itself.</summary>
+    public bool IsCursor
+    {
+        get => _isCursor;
+        set
+        {
+            if (_isCursor != value)
+            {
+                _isCursor = value;
+                Raise();
+            }
+        }
+    }
+
     public bool IsActive
     {
-        get => _isActive;
-        set
+        get => _isActive;        set
         {
             if (_isActive == value)
             {

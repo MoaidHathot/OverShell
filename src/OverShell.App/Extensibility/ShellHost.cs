@@ -80,6 +80,38 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public IHostUi Ui => this;
 
+    public string ViewId => _window.ViewId;
+
+    public bool SidebarVisible => _window.SidebarVisible;
+
+    public bool DashboardVisible => _window.DashboardVisible;
+
+    public IReadOnlyList<ITab> SidebarOrder => _window.SidebarOrder;
+
+    private TerminalTab? _cursor;
+
+    public ITab? Cursor => _cursor;
+
+    public void SetCursor(ITab? tab)
+    {
+        if (ReferenceEquals(_cursor, tab))
+        {
+            return;
+        }
+
+        if (_cursor is not null)
+        {
+            _cursor.IsCursor = false;
+        }
+
+        _cursor = tab as TerminalTab;
+        if (_cursor is not null)
+        {
+            _cursor.IsCursor = true;
+        }
+    }
+
+    public void ShowView(string viewId) => _window.ShowViewById(viewId);
     public ITab? OpenTab(TabRequest request) => _window.OpenTabFor(request);
 
     public void Activate(ITab tab)

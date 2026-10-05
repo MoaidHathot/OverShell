@@ -23,7 +23,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -115,6 +115,9 @@ internal static class HerdSelfTest
                         break;
                     case "address":
                         await RunAddressAsync(window, firstTab);
+                        break;
+                    case "keynav":
+                        await RunKeyNavAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -336,8 +339,90 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Prompt addressing (§12.16): address words at the front of a prompt choose the tabs
-    /// from the keyboard - @3, @label, #group, @blocked - the bar echoes where it will go
+    /// Keyboard navigation (§12.16): the view chord pressed again puts a cursor into the
+    /// sidebar (herd) or the cards (dashboard); arrows and j/k move it in the pane's own
+    /// order, Enter activates (the dashboard then opens the terminal view), Space activates
+    /// and keeps the cursor, Esc returns to the terminal; a chord leaves the cursor and runs.
+    /// </summary>
+    private static async Task RunKeyNavAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (keynav) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        bool Key(System.Windows.Input.Key key, System.Windows.Input.ModifierKeys modifiers = System.Windows.Input.ModifierKeys.None) => window.DispatchChord(key, modifiers);
+
+        var nav = window.Extensions.Loaded.OfType<Extensions.KeyNavExtension>().FirstOrDefault();
+        Check(nav is not null, "the keynav extension loaded");
+        if (nav is null)
+        {
+            Log("=== selftest (keynav) result: FAILED ===");
+            return;
+        }
+
+        var second = window.AddTab(first.Profile, activate: false);
+        var third = window.AddTab(first.Profile, activate: false);
+        await Task.Delay(800);
+        first.UserLabel = "one";
+        second.UserLabel = "two";
+        third.UserLabel = "three";
+        window.ActiveTab = first;
+
+        // ---- herd view: sidebar ----
+        window.Commands.TryExecute("view.herd");
+        await Task.Delay(600);
+        Check(window.SidebarVisible, "the herd view shows the sidebar");
+        Check(!Key(System.Windows.Input.Key.Down), "without a cursor, Down goes to the terminal");
+
+        Check(Key(System.Windows.Input.Key.D2, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && nav.Active == Extensions.KeyNavExtension.Pane.Sidebar, "Ctrl+Shift+2 again puts the cursor into the sidebar");
+        var order = window.SidebarOrder;
+        Log($"  sidebar order: {string.Join(" > ", order.Select(t => t.Label))}; cursor on '{window.Shell.Cursor?.Label}'");
+        Check(ReferenceEquals(window.Shell.Cursor, first) && first.IsCursor, "...starting on the active tab, which outlines itself");
+        // The sidebar's order is attention then recency, so the active tab may sit anywhere in it;
+        // step towards the row that exists.
+        var index = order.ToList().IndexOf(first);
+        var downwards = index < order.Count - 1;
+        var stepKey = downwards ? System.Windows.Input.Key.Down : System.Windows.Input.Key.Up;
+        var expectedNext = order[downwards ? index + 1 : index - 1];
+        Check(Key(stepKey) && ReferenceEquals(window.Shell.Cursor, expectedNext) && !first.IsCursor, $"{stepKey} moves the cursor to the neighbouring row in the sidebar's order; the old row loses the outline");
+        Check(Key(downwards ? System.Windows.Input.Key.J : System.Windows.Input.Key.K) && Key(downwards ? System.Windows.Input.Key.K : System.Windows.Input.Key.J) && ReferenceEquals(window.Shell.Cursor, expectedNext), "j and k move too (there and back)");
+        Check(ReferenceEquals(window.ActiveTab, first), "...the active tab has not changed");
+        await Task.Delay(150);
+        SaveVisual(window.Sidebar, "overshell-selftest-keynav-sidebar.png");
+
+        Check(Key(System.Windows.Input.Key.Return) && ReferenceEquals(window.ActiveTab, expectedNext) && nav.Active == Extensions.KeyNavExtension.Pane.None && window.Shell.Cursor is null, "Enter activates the row under the cursor and leaves the cursor");
+        Check(Key(System.Windows.Input.Key.D2, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && Key(System.Windows.Input.Key.End) && ReferenceEquals(window.Shell.Cursor, order[^1]), "End jumps to the last row");
+        Check(Key(System.Windows.Input.Key.Home) && ReferenceEquals(window.Shell.Cursor, order[0]), "Home to the first");
+        Check(Key(System.Windows.Input.Key.Space) && ReferenceEquals(window.ActiveTab, order[0]) && nav.Active == Extensions.KeyNavExtension.Pane.Sidebar, "Space activates and keeps the cursor");
+        Check(Key(System.Windows.Input.Key.Escape) && nav.Active == Extensions.KeyNavExtension.Pane.None && !order.Any(t => t.IsCursor), "Esc leaves: no row outlined");
+
+        // A chord while the cursor is up leaves it and still runs.
+        window.Commands.TryExecute("sidebar.focus");
+        Check(Key(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && nav.Active == Extensions.KeyNavExtension.Pane.None && window.Tabs.Count == 4, "a chord (Ctrl+Shift+T) leaves the cursor and runs as usual");
+        window.CloseTab(window.Tabs[^1]);
+
+        // ---- dashboard: cards ----
+        window.Commands.TryExecute("view.dashboard");
+        await Task.Delay(600);
+        window.ActiveTab = first;
+        Check(window.DashboardVisible && Key(System.Windows.Input.Key.D3, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && nav.Active == Extensions.KeyNavExtension.Pane.Dashboard && ReferenceEquals(window.Shell.Cursor, first), "Ctrl+Shift+3 again puts the cursor on the active tab's card");
+        Check(Key(System.Windows.Input.Key.Down) && Key(System.Windows.Input.Key.Down) && ReferenceEquals(window.Shell.Cursor, third), "Down twice: the third card (strip order)");
+        SaveVisual(window.DashboardView, "overshell-selftest-keynav-dashboard.png");
+
+        Check(Key(System.Windows.Input.Key.Return) && ReferenceEquals(window.ActiveTab, third) && window.ViewId == "terminal", "Enter on a card opens that tab in the terminal view");
+
+        window.Commands.TryExecute("view.terminal");
+        window.CloseTab(second);
+        window.CloseTab(third);
+        Log($"=== selftest (keynav) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Prompt addressing (§12.16): address words at the front of a prompt choose the tabs    /// from the keyboard - @3, @label, #group, @blocked - the bar echoes where it will go
     /// before Enter, only the addressed tabs receive the text (read back from their screens),
     /// an address that names nothing sends nothing, and the new Group target exists.
     /// </summary>
@@ -2923,7 +3008,15 @@ internal static class HerdSelfTest
             var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(element);
             var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
                 (int)(width * dpi.DpiScaleX), (int)(height * dpi.DpiScaleY), dpi.PixelsPerInchX, dpi.PixelsPerInchY, System.Windows.Media.PixelFormats.Pbgra32);
-            bitmap.Render(element);
+
+            // Through a VisualBrush, so an element laid out away from its parent's origin lands at 0,0.
+            var visual = new System.Windows.Media.DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new System.Windows.Media.VisualBrush(element), null, new System.Windows.Rect(0, 0, width, height));
+            }
+
+            bitmap.Render(visual);
 
             var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
             encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));

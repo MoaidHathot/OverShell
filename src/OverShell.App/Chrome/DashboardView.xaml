@@ -87,6 +87,10 @@
                         <DataTrigger Binding="{Binding IsActive}" Value="True">
                             <Setter TargetName="Card" Property="BorderBrush" Value="{Binding Accent}" />
                         </DataTrigger>
+                        <DataTrigger Binding="{Binding IsCursor}" Value="True">
+                            <Setter TargetName="Card" Property="BorderBrush" Value="{StaticResource Accent.Base}" />
+                            <Setter TargetName="Card" Property="BorderThickness" Value="2" />
+                        </DataTrigger>
                         <Trigger SourceName="Card" Property="IsMouseOver" Value="True">
                             <Setter TargetName="Card" Property="Background" Value="{StaticResource Surface.Hover}" />
                         </Trigger>
