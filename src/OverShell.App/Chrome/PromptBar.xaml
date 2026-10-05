@@ -28,6 +28,7 @@
                 <ComboBoxItem Content="Active tab" Tag="active" IsSelected="True" />
                 <ComboBoxItem Content="All agents" Tag="agents" />
                 <ComboBoxItem Content="Agents needing you" Tag="blocked" />
+                <ComboBoxItem Content="This tab's group" Tag="group" />
                 <ComboBoxItem Content="Every tab" Tag="all" />
             </ComboBox>
 
@@ -37,19 +38,30 @@
                     BorderThickness="1"
                     CornerRadius="6"
                     Padding="8,4">
-                <TextBox x:Name="Input"
-                         Background="Transparent"
-                         BorderThickness="0"
-                         Foreground="{StaticResource Text.Primary}"
-                         CaretBrush="{StaticResource Text.Primary}"
-                         FontFamily="{StaticResource Font.Ui}"
-                         FontSize="{StaticResource Font.Size.Body}"
-                         AcceptsReturn="True"
-                         AcceptsTab="False"
-                         MaxLines="6"
-                         VerticalScrollBarVisibility="Auto"
-                         TextWrapping="Wrap"
-                         PreviewKeyDown="Input_PreviewKeyDown" />
+                <StackPanel>
+                    <TextBox x:Name="Input"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             Foreground="{StaticResource Text.Primary}"
+                             CaretBrush="{StaticResource Text.Primary}"
+                             FontFamily="{StaticResource Font.Ui}"
+                             FontSize="{StaticResource Font.Size.Body}"
+                             AcceptsReturn="True"
+                             AcceptsTab="False"
+                             MaxLines="6"
+                             VerticalScrollBarVisibility="Auto"
+                             TextWrapping="Wrap"
+                             TextChanged="Input_TextChanged"
+                             PreviewKeyDown="Input_PreviewKeyDown" />
+                    <!-- Where an addressed prompt (@3, #group, @label) will go, echoed before Enter. -->
+                    <TextBlock x:Name="Route"
+                               Margin="2,2,0,0"
+                               Visibility="Collapsed"
+                               FontFamily="{StaticResource Font.Ui}"
+                               FontSize="{StaticResource Font.Size.Detail}"
+                               Foreground="{StaticResource Accent.Base}"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
             </Border>
 
             <Button x:Name="BtnSnippets"

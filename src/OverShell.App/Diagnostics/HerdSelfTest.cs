@@ -23,7 +23,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -112,6 +112,9 @@ internal static class HerdSelfTest
                         break;
                     case "summon":
                         await RunSummonAsync(window, firstTab);
+                        break;
+                    case "address":
+                        await RunAddressAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -333,8 +336,111 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Global summon (§12.16): the hotkey is registered system-wide once the window has its
-    /// handle (or the reason it could not be is recorded); fired, it brings a minimized window
+    /// Prompt addressing (§12.16): address words at the front of a prompt choose the tabs
+    /// from the keyboard - @3, @label, #group, @blocked - the bar echoes where it will go
+    /// before Enter, only the addressed tabs receive the text (read back from their screens),
+    /// an address that names nothing sends nothing, and the new Group target exists.
+    /// </summary>
+    private static async Task RunAddressAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (address) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        static async Task<bool> SawAsync(TerminalTab tab, string marker, int seconds = 6)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(seconds);
+            while (DateTime.UtcNow < deadline)
+            {
+                tab.RequestScreen();
+                await Task.Delay(400);
+                if (tab.ScreenRows.Any(r => r.Contains(marker, StringComparison.Ordinal) && !r.Contains("Write-Host", StringComparison.Ordinal)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        var api = window.AddTab(first.Profile, activate: false);
+        var web = window.AddTab(first.Profile, activate: false);
+        await WaitForPromptAsync(api);
+        await WaitForPromptAsync(web);
+        first.UserLabel = "shell";
+        api.UserLabel = "api";
+        web.UserLabel = "web";
+        api.Group = "backend";
+        first.Group = "backend";
+        window.ActiveTab = first;
+
+        var bar = window.PromptBarView;
+        window.Commands.TryExecute("prompt.toggle");
+        await Task.Delay(400);
+
+        // The echo while typing.
+        bar.Text = "@api Write-Host addr-one";
+        await Task.Delay(150);
+        Check(bar.RouteText == "\u2192 api", $"typing '@api ...' echoes where it will go ('{bar.RouteText}')");
+        bar.Text = "#back Write-Host x";
+        await Task.Delay(150);
+        Check(bar.RouteText == "\u2192 shell, api", $"'#back' echoes the group's tabs ('{bar.RouteText}')");
+        bar.Text = "@nobody Write-Host x";
+        await Task.Delay(150);
+        Check(bar.RouteText.StartsWith("\u2192 nobody", StringComparison.Ordinal), $"an address that names nothing says so ('{bar.RouteText}')");
+        bar.Text = "plain text";
+        await Task.Delay(150);
+        Check(bar.RouteText.Length == 0, "no address, no echo");
+
+        // Only the addressed tab receives it; the address words are not sent.
+        bar.Text = "@api Write-Host addr-one";
+        bar.Send();
+        Check(await SawAsync(api, "addr-one"), "@api: the api tab ran the prompt");
+        await Task.Delay(600);
+        web.RequestScreen();
+        first.RequestScreen();
+        await Task.Delay(400);
+        Check(!web.ScreenRows.Any(r => r.Contains("addr-one", StringComparison.Ordinal)) && !first.ScreenRows.Any(r => r.Contains("addr-one", StringComparison.Ordinal)), "...and nobody else did");
+        Check(!api.ScreenRows.Any(r => r.Contains("@api", StringComparison.Ordinal)), "...the address word itself was not sent");
+
+        // By number, and a group, and two at once.
+        bar.Text = "@3 Write-Host addr-three";
+        bar.Send();
+        Check(await SawAsync(web, "addr-three"), "@3: the third tab ran it");
+        bar.Text = "#backend Write-Host addr-group";
+        bar.Send();
+        Check(await SawAsync(api, "addr-group") && await SawAsync(first, "addr-group"), "#backend: both tabs of the group ran it");
+        web.RequestScreen();
+        await Task.Delay(400);
+        Check(!web.ScreenRows.Any(r => r.Contains("addr-group", StringComparison.Ordinal)), "...the tab outside the group did not");
+
+        // Nothing matched: nothing sent.
+        var before = api.OutputVersion + web.OutputVersion + first.OutputVersion;
+        bar.Text = "@nobody Write-Host addr-none";
+        bar.Send();
+        await Task.Delay(1200);
+        Check(api.OutputVersion + web.OutputVersion + first.OutputVersion == before, "an address that names nothing sends nothing");
+
+        // The Group combobox target without address words.
+        window.ActiveTab = api;
+        bar.SelectedTarget = Chrome.PromptTarget.Group;
+        bar.Text = "Write-Host addr-target";
+        bar.Send();
+        Check(await SawAsync(api, "addr-target") && await SawAsync(first, "addr-target"), "the Group target sends to the active tab's group");
+        bar.SelectedTarget = Chrome.PromptTarget.Active;
+
+        window.Commands.TryExecute("prompt.toggle");
+        window.CloseTab(api);
+        window.CloseTab(web);
+        Log($"=== selftest (address) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Global summon (§12.16): the hotkey is registered system-wide once the window has its    /// handle (or the reason it could not be is recorded); fired, it brings a minimized window
     /// back on the tab that has waited longest, fired again while in front it minimizes;
     /// extensions.summon.to = current leaves the tab alone; the key moves on settings reload.
     /// The physical keypress is not synthesised (§7.8): the WM_HOTKEY handler is invoked.

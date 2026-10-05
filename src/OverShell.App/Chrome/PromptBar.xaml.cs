@@ -11,6 +11,7 @@ public enum PromptTarget
     Active,
     Agents,
     Blocked,
+    Group,
     All,
 }
 
@@ -36,12 +37,26 @@ public partial class PromptBar : UserControl
 
     public event Action? HideRequested;
 
+    /// <summary>Asked while typing: where would this text go? Returns the echo line (\u2192 api, web), or empty for no address.</summary>
+    public Func<string, string>? RouteDescriber { get; set; }
+
+    /// <summary>The echo line shown under the box, for the self-test.</summary>
+    public string RouteText => Route.Text;
+
+    private void Input_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var echo = RouteDescriber?.Invoke(Input.Text) ?? string.Empty;
+        Route.Text = echo;
+        Route.Visibility = echo.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
     public PromptTarget SelectedTarget
     {
         get => (Target.SelectedItem as ComboBoxItem)?.Tag switch
         {
             "agents" => PromptTarget.Agents,
             "blocked" => PromptTarget.Blocked,
+            "group" => PromptTarget.Group,
             "all" => PromptTarget.All,
             _ => PromptTarget.Active,
         };
@@ -51,6 +66,7 @@ public partial class PromptBar : UserControl
             {
                 PromptTarget.Agents => "agents",
                 PromptTarget.Blocked => "blocked",
+                PromptTarget.Group => "group",
                 PromptTarget.All => "all",
                 _ => "active",
             };

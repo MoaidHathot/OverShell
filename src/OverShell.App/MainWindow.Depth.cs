@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using OverShell.App.Chrome;
 using OverShell.Core;
 using OverShell.Core.Agents;
+using OverShell.Core.Herd;
 using OverShell.Core.Settings;
 
 namespace OverShell.App;
@@ -27,6 +28,7 @@ public partial class MainWindow
     private void InitializeDepth()
     {
         Prompt.SendRequested += (text, target) => SendPrompt(text, target);
+        Prompt.RouteDescriber = text => PromptAddress.Describe(PromptAddress.Parse(text, AddressableTabs(), ActiveTab?.Id));
         Prompt.HideRequested += () => ShowPromptBar(false);
 
         _tabStrip.TabMoveRequested += MoveTab;
@@ -71,18 +73,48 @@ public partial class MainWindow
     {
         PromptTarget.Agents => Tabs.Where(t => t.IsAgent && t.IsRunning).ToList(),
         PromptTarget.Blocked => Tabs.Where(t => t.State is AgentState.Blocked && t.IsRunning).ToList(),
+        PromptTarget.Group => ActiveTab is { Group: { } group } ? Tabs.Where(t => t.IsRunning && string.Equals(t.Group, group, StringComparison.OrdinalIgnoreCase)).ToList() : ActiveTab is { } lone ? [lone] : [],
         PromptTarget.All => Tabs.Where(t => t.IsRunning).ToList(),
         _ => ActiveTab is { } active ? [active] : [],
     };
 
+    /// <summary>The open tabs as the address parser sees them (§12.16).</summary>
+    private IReadOnlyList<AddressableTab> AddressableTabs() =>
+        Tabs.Select((t, i) => new AddressableTab(t.Id, i, t.Label, t.Group, t.State.ToString(), t.IsAgent, t.IsRunning)).ToList();
+
     /// <summary>
-    /// Types <paramref name="text"/> into every target and presses Enter. Multi-line text
+    /// Types <paramref name="text"/> into every target and presses Enter. Address words at
+    /// the front (<c>@3</c>, <c>#group</c>, <c>@label</c>, <c>@blocked</c>; §12.16) choose the
+    /// tabs and are not sent; without them the combobox target applies. Multi-line text
     /// goes through <see cref="TerminalTab.Paste"/>, so it arrives bracketed where the
     /// application asked for that and as one block everywhere else.
     /// </summary>
     internal int SendPrompt(string text, PromptTarget target)
     {
-        var targets = ResolvePromptTargets(target);
+        var route = PromptAddress.Parse(text, AddressableTabs(), ActiveTab?.Id);
+        IReadOnlyList<TerminalTab> targets;
+        if (route.Addressed)
+        {
+            if (route.Unmatched.Count > 0 && route.Targets.Count == 0)
+            {
+                ShowStatusMessage($"No tab matches {string.Join(", ", route.Unmatched)}");
+                return 0;
+            }
+
+            var ids = route.Targets.Select(t => t.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            targets = Tabs.Where(t => ids.Contains(t.Id) && t.IsRunning).ToList();
+            text = route.Body;
+            if (text.Trim().Length == 0)
+            {
+                ShowStatusMessage("Nothing to send after the address");
+                return 0;
+            }
+        }
+        else
+        {
+            targets = ResolvePromptTargets(target);
+        }
+
         if (targets.Count == 0)
         {
             ShowStatusMessage(target == PromptTarget.Active ? "No active tab" : "No tab matches that target");
@@ -95,7 +127,7 @@ public partial class MainWindow
             tab.SendText("\r");
         }
 
-        _trace.Write($"prompt -> {target} ({targets.Count} tab(s)): {text.ReplaceLineEndings(" ")}");
+        _trace.Write($"prompt -> {(route.Addressed ? PromptAddress.Describe(route) : target.ToString())} ({targets.Count} tab(s)): {text.ReplaceLineEndings(" ")}");
         if (targets.Count > 1)
         {
             ShowStatusMessage($"Sent to {targets.Count} tabs");
