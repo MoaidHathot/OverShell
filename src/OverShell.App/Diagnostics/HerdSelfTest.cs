@@ -23,7 +23,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -106,6 +106,9 @@ internal static class HerdSelfTest
                         break;
                     case "herdmode":
                         await RunHerdModeAsync(window, firstTab);
+                        break;
+                    case "mru":
+                        await RunMruAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -327,8 +330,99 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Key sequences and herd mode (§12.16): the leader chord makes the next keys the mode's -
-    /// navigation keys stay, actions leave, a stray key is swallowed rather than reaching the
+    /// MRU switching (§12.16): the order follows activations; Ctrl+Tab opens the overlay on
+    /// the previous tab and steps through the list while held; Shift walks back; Esc cancels;
+    /// the Ctrl-release handler (the same method the router's release calls - the Win32
+    /// key-up itself is not synthesised, §7.8) commits; a tab closed while open leaves the
+    /// list; Ctrl+PgDn still cycles in order; Tab outside the switcher reaches the terminal.
+    /// </summary>
+    private static async Task RunMruAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (mru) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var mru = window.Extensions.Loaded.OfType<Extensions.MruSwitcherExtension>().FirstOrDefault();
+        Check(mru is not null, "the MRU switcher extension loaded");
+        if (mru is null)
+        {
+            Log("=== selftest (mru) result: FAILED ===");
+            return;
+        }
+
+        var ctrlTab = (System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control);
+        var ctrlShiftTab = (System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift);
+
+        var b = window.AddTab(first.Profile, activate: true);
+        var c = window.AddTab(first.Profile, activate: true);
+        await Task.Delay(800);
+        b.UserLabel = "bee";
+        c.UserLabel = "sea";
+        first.UserLabel = "ay";
+        window.ActiveTab = first;
+        window.ActiveTab = b;
+
+        // Order: b (current), a, c.
+        Log($"  order: {string.Join(" > ", mru.Order.Select(t => t.Label))}");
+        Check(mru.Order.Select(t => t.Label).SequenceEqual(["bee", "ay", "sea"]), "the MRU order follows activations: current, previous, older");
+
+        // Ctrl+Tab once: overlay opens on the previous tab.
+        Check(window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2) && mru.IsOpen && mru.Selected == 1, "Ctrl+Tab opens the switcher on the previous tab");
+        await Task.Delay(400);
+        var overlay = mru.Overlay;
+        Check(overlay is { IsVisible: true } && overlay.Labels.SequenceEqual(["bee", "ay", "sea"]) && overlay.SelectedIndex == 1, "the overlay lists the tabs in MRU order with the previous one selected");
+        Check(ReferenceEquals(window.ActiveTab, b), "...nothing switched yet (Ctrl is held)");
+        if (overlay is not null)
+        {
+            SaveVisual((System.Windows.FrameworkElement)overlay.Content, "overshell-selftest-mru-overlay.png");
+        }
+
+        // Another Ctrl+Tab while open goes to the interceptor, not the key map.
+        Check(window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2) && mru.Selected == 2, "a second Ctrl+Tab while open steps further (intercepted before the key map)");
+        Check(window.DispatchChord(ctrlShiftTab.Item1, ctrlShiftTab.Item2) && mru.Selected == 1, "Ctrl+Shift+Tab steps back");
+
+        // Release commits.
+        mru.Commit();
+        await Task.Delay(200);
+        Check(!mru.IsOpen && ReferenceEquals(window.ActiveTab, first) && overlay is { IsVisible: false }, "releasing Ctrl lands on the selected tab and hides the overlay");
+        Check(mru.Order.Select(t => t.Label).SequenceEqual(["ay", "bee", "sea"]), "...and the landed tab is now the most recent");
+
+        // Quick bounce: open + commit = previous tab.
+        window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2);
+        mru.Commit();
+        Check(ReferenceEquals(window.ActiveTab, b), "a quick Ctrl+Tab bounces to the previous tab");
+        window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2);
+        mru.Commit();
+        Check(ReferenceEquals(window.ActiveTab, first), "...and back again");
+
+        // Esc cancels.
+        window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2);
+        Check(window.DispatchChord(System.Windows.Input.Key.Escape, System.Windows.Input.ModifierKeys.None) && !mru.IsOpen && ReferenceEquals(window.ActiveTab, first), "Esc cancels without switching");
+
+        // A tab closed while the switcher is open leaves the list.
+        window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2);
+        window.CloseTab(c);
+        await Task.Delay(300);
+        Check(mru.IsOpen && mru.Order.Count == 2 && mru.Overlay!.Labels.SequenceEqual(["ay", "bee"]), "a tab closed while open leaves the list and the overlay");
+        mru.Cancel();
+
+        // In-order cycling still exists on PgDn.
+        window.ActiveTab = first;
+        Check(window.DispatchChord(System.Windows.Input.Key.PageDown, System.Windows.Input.ModifierKeys.Control) && ReferenceEquals(window.ActiveTab, b), "Ctrl+PgDn still cycles the strip in order");
+
+        // Tab alone is the terminal's.
+        Check(!window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.None), "Tab outside the switcher goes to the terminal");
+
+        window.CloseTab(b);
+        Log($"=== selftest (mru) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Key sequences and herd mode (§12.16): the leader chord makes the next keys the mode's -    /// navigation keys stay, actions leave, a stray key is swallowed rather than reaching the
     /// shell, Esc and the timeout end it; the hint bar lists what the key map says; tab.last
     /// bounces; waiting tabs are walked oldest first; the mode is an extension that can be
     /// turned off.

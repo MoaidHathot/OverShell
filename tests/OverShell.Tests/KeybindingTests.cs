@@ -74,8 +74,10 @@ public class KeybindingMapTests
         Assert.Equal("tab.reopenClosed", Resolve(map, "ctrl+shift+z"));
         Assert.Equal("tab.detach", Resolve(map, "ctrl+shift+x"));
         Assert.Equal("tab.close", Resolve(map, "ctrl+shift+w"));
-        Assert.Equal("tab.next", Resolve(map, "ctrl+tab"));
-        Assert.Equal("tab.previous", Resolve(map, "ctrl+shift+tab"));
+        // Ctrl+Tab belongs to the MRU switcher extension (12.16); the embedded defaults leave it to it.
+        Assert.Null(Resolve(map, "ctrl+tab"));
+        Assert.Equal("tab.next", Resolve(map, "ctrl+pgdn"));
+        Assert.Equal("tab.previous", Resolve(map, "ctrl+pgup"));
         Assert.Equal("tab.switchTo.3", Resolve(map, "alt+3"));
         Assert.Equal("clipboard.copyIfSelection", Resolve(map, "ctrl+c"));
         Assert.Equal("clipboard.paste", Resolve(map, "ctrl+v"));

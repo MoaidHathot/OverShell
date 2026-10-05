@@ -106,12 +106,35 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     internal void RaisePendingChanged(IReadOnlyList<KeyChord> pending) => PendingChanged?.Invoke(pending);
 
+    public event Action? ControlReleased;
+
+    internal void RaiseControlReleased() => ControlReleased?.Invoke();
+
+    private readonly List<(Func<bool> Active, Func<KeyChord, bool> Handler)> _interceptors = [];
+
+    public void Intercept(Func<bool> active, Func<KeyChord, bool> handler) => _interceptors.Add((active, handler));
+
+    /// <summary>Offers a chord to the active interceptors; true when one took it.</summary>
+    internal bool TryIntercept(KeyChord chord)
+    {
+        foreach (var (active, handler) in _interceptors)
+        {
+            if (active() && handler(chord))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
     /// <summary>What extensions declared, for the map to layer beneath the user's file.</summary>
     internal IReadOnlyList<Keybinding> ExtensionDefaults => _extensionDefaults;
 
     // ------------------------------------------------------------ IHostUi
 
     public object? Host => _window;
+
+    public object? TerminalArea => _window.TerminalArea;
 
     public void Status(string message) => _window.ShowStatusMessage(message);
 

@@ -165,6 +165,15 @@ public interface IKeyBindings
 
     /// <summary>The pending sequence changed: a leader chord went down, a sequence completed, was rejected, cancelled or timed out.</summary>
     event Action<IReadOnlyList<KeyChord>>? PendingChanged;
+
+    /// <summary>The Ctrl key went up anywhere in our windows - what a hold-and-release switcher commits on.</summary>
+    event Action? ControlReleased;
+
+    /// <summary>
+    /// A chord the extension wants to see before the key map does, while <paramref name="active"/>
+    /// says so: return true to take it. For a switcher that owns Tab while it is open.
+    /// </summary>
+    void Intercept(Func<bool> active, Func<KeyChord, bool> handler);
 }
 
 /// <summary>A new tab.</summary>
@@ -202,6 +211,9 @@ public interface IHostUi
 {
     /// <summary>The host's main window object - a WPF <c>Window</c> in the WPF host - for owning windows. Null in a headless host.</summary>
     object? Host { get; }
+
+    /// <summary>The element the terminal body fills (a WPF element in the WPF host) - what an overlay centres on. Null in a headless host.</summary>
+    object? TerminalArea { get; }
 
     /// <summary>A line in the status bar for a few seconds; a toast when the layout has no status bar.</summary>
     void Status(string message);

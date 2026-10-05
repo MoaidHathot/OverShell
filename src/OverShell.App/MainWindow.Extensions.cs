@@ -34,6 +34,9 @@ public partial class MainWindow
     /// <summary>The slot under the terminal where bars live: find, prompt, and extensions' own.</summary>
     internal StackPanel Bars => BarsHost;
 
+    /// <summary>The element the terminal body fills.</summary>
+    internal System.Windows.FrameworkElement TerminalArea => TerminalHost;
+
     /// <summary>The chords of a key sequence pressed so far.</summary>
     internal IReadOnlyList<KeyChord> PendingChords => _sequences?.Pending ?? [];
 
@@ -170,6 +173,12 @@ public partial class MainWindow
         if (!_canonicalChords.TryGetValue((key, modifiers), out var chord))
         {
             chord = new KeyChord(ToChordModifiers(modifiers), key.ToString());
+        }
+
+        // An extension that owns the keyboard for the moment (an open switcher) sees the chord first.
+        if (!_sequences.IsPending && _shell.TryIntercept(chord))
+        {
+            return true;
         }
 
         var wasPending = _sequences.IsPending;

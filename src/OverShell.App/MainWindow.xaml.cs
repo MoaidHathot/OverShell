@@ -519,6 +519,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void OnControlReleased()
     {
         _controlDown = false;
+        _shell?.RaiseControlReleased();
 
         if (_hoverTab is { } hovered)
         {
