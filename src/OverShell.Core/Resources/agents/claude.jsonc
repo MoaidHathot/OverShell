@@ -38,5 +38,9 @@
   "screenRows": 12,
   "resumeCommand": "claude --resume {sessionId}",
   // Without a session id (no integration installed): the tool's own "most recent session" form.
-  "resumeLastCommand": "claude --continue"
+  "resumeLastCommand": "claude --continue",
+  // What starts it in a shell. Its permission prompt is a numbered menu where 1 is yes and
+  // Esc / the last entry is no: from Claude Code's documentation, not measured here.
+  "launch": "claude",
+  "answers": { "approve": "1", "deny": "\\u001b" }
 }

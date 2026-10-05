@@ -23,5 +23,8 @@ internal sealed class AgentServices
     /// <summary>Environment a tab's child process gets so integrations can find the endpoint; null when there is none.</summary>
     public Func<string, IReadOnlyDictionary<string, string?>>? EnvironmentFor { get; init; }
 
+    /// <summary>The endpoint's command queue for the integrations (§12.17); null when the endpoint failed to start.</summary>
+    public Core.Integrations.TabCommandQueue? Commands { get; init; }
+
     public TraceLog Trace => TraceLog.Agents;
 }

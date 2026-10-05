@@ -5,6 +5,7 @@ using OverShell.Core.Agents;
 namespace OverShell.Core.Integrations;
 
 /// <summary>What a harness integration tells OverShell about one tab.</summary>
+/// <param name="RequestId">For a blocked report: the harness's id of the permission or question, so a reply can name it (§12.17). Wire: <c>"requestId"</c>, <c>"requestKind": "permission" | "question"</c>.</param>
 /// <param name="Advisory">
 /// A one-shot report that carries no continuing authority: the detector keeps deciding,
 /// this only marks the moment (Codex's <c>notify</c> fires once per turn and never says
@@ -21,7 +22,9 @@ public sealed record IntegrationReport(
     string? SessionId,
     string? ResumeCommand,
     bool Release,
-    bool Advisory = false)
+    bool Advisory = false,
+    string? RequestId = null,
+    string? RequestKind = null)
 {
     /// <summary>The wire shape of <c>POST /v1/report</c>.</summary>
     public static IntegrationReport? Parse(string tabId, JsonNode? body, out string? error)
@@ -63,7 +66,9 @@ public sealed record IntegrationReport(
             session is null ? Str(o, "sessionId") : Str(session, "id"),
             session is null ? null : Str(session, "resumeCommand"),
             Release: state == AgentState.Exited,
-            Advisory: advisory);
+            Advisory: advisory,
+            RequestId: Str(o, "requestId"),
+            RequestKind: Str(o, "requestKind"));
     }
 
     public static bool TryParseState(string text, out AgentState state)

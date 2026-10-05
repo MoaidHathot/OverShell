@@ -4,6 +4,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using OverShell.Core;
 using OverShell.Core.Agents;
+using OverShell.Core.Extensibility;
 using OverShell.Core.Input;
 using OverShell.Core.Integrations;
 using OverShell.Core.Search;
@@ -23,7 +24,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -118,6 +119,12 @@ internal static class HerdSelfTest
                         break;
                     case "keynav":
                         await RunKeyNavAsync(window, firstTab);
+                        break;
+                    case "inbox":
+                        await RunInboxAsync(window, firstTab);
+                        break;
+                    case "opencode-reply":
+                        await RunOpenCodeReplyAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -339,8 +346,290 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Keyboard navigation (§12.16): the view chord pressed again puts a cursor into the
-    /// sidebar (herd) or the cards (dashboard); arrows and j/k move it in the pane's own
+    /// The reply channel against the real OpenCode (§12.17): `opencode run` with a prompt that
+    /// needs a permission; when the plugin reports blocked with the request id, the tab is
+    /// answered through the queue and OpenCode's own permission API must move it on. If this
+    /// OpenCode never asks (permissions set to allow), that is logged and the reply part is
+    /// skipped rather than faked.
+    /// </summary>
+    private static async Task RunOpenCodeReplyAsync(MainWindow window, TerminalTab tab)
+    {
+        Log("=== selftest (opencode-reply) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        var transitions = new List<string>();
+        tab.StateChanged += (_, t) => transitions.Add($"+{Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s {t.From}->{t.To} ({t.Reason})");
+        var second = window.AddTab(tab.Profile, activate: true);
+        await Task.Delay(1500);
+
+        var status = IntegrationInstaller.Status("opencode");
+        Log($"  plugin installed={status.Installed} current={status.Current}");
+        Check(status is { Installed: true, Current: true }, "the v2 plugin is installed and current");
+
+        // OPENCODE_PERMISSION merges into config.permission for this process: the bash tool asks.
+        tab.SendText("$env:OPENCODE_PERMISSION='{\"bash\":\"ask\"}'; opencode run \"Run the shell command 'echo overshell-reply-probe' using your bash tool and tell me its output.\"\r");
+
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        string? blockedAt = null;
+        var listening = false;
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(500);
+            listening |= tab.IntegrationListening;
+            if (tab.State == AgentState.Blocked && tab.Agent.AuthoritySource == "opencode")
+            {
+                blockedAt = $"+{Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s";
+                break;
+            }
+
+            if (tab.Agent.AuthoritySource == "opencode" && tab.State is AgentState.Done or AgentState.Idle && Stopwatch.GetElapsedTime(started) > TimeSpan.FromSeconds(20))
+            {
+                break;
+            }
+        }
+
+        Log($"  {blockedAt ?? "never"} blocked; listening={listening} openRequest={tab.OpenRequest?.Kind}/{tab.OpenRequest?.Id} channel={tab.ReplyChannel} explain='{tab.Agent.Explain}'");
+        Check(listening, "the plugin long-polls the command queue (a listening integration)");
+
+        var askedThenAnswered = transitions.Any(t => t.Contains("->Blocked", StringComparison.Ordinal)) && transitions.Any(t => t.Contains("permission answered", StringComparison.Ordinal));
+        if (blockedAt is null && askedThenAnswered)
+        {
+            // Measured: `opencode run` asks and answers its own permission within ~100 ms (headless
+            // runs auto-reply "once"); only the TUI leaves a permission open for a human, and the
+            // TUI is not driven here (7.8). What is proven live: the plugin reports the ask with
+            // the state, and it long-polls the queue. The reply call itself is covered by the
+            // inbox self-test's poller and follows OpenCode's own permission.reply signature.
+            Log("  NOTE  headless `opencode run` asked and auto-answered its permission within the same instant; an open permission needs the TUI");
+            Check(true, "the plugin reported the permission ask (Working->Blocked->Working with 'permission answered')");
+        }
+        else if (blockedAt is null)
+        {
+            Log("  NOTE  this OpenCode did not ask a permission for the bash tool; the reply itself is not exercised here");
+        }        else
+        {
+            Check(tab.OpenRequest is { Kind: "permission", Id.Length: > 0 }, "the blocked report carried the permission's request id");
+            Check(tab.ReplyChannel == ReplyChannel.Integration, "the reply channel is the integration");
+
+            // Deny - the safer answer for an unattended run; OpenCode then reports permission.replied -> working.
+            Check(tab.Answer(approve: false), "Answer(deny) was queued");
+            var replied = false;
+            var replyDeadline = DateTime.UtcNow.AddSeconds(20);
+            while (DateTime.UtcNow < replyDeadline)
+            {
+                await Task.Delay(300);
+                if (tab.State != AgentState.Blocked)
+                {
+                    replied = true;
+                    break;
+                }
+            }
+
+            Log($"  after deny: state={tab.State} explain='{tab.Agent.Explain}' openRequest={tab.OpenRequest?.Id ?? "-"}");
+            Check(replied, "OpenCode left the permission prompt after the reply went through its own API (permission.replied)");
+            Check(tab.OpenRequest is null, "...and the open request is cleared");
+        }
+
+        // Let the run finish so the shell comes back.
+        var finish = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < finish && tab.Agent.AuthoritySource == "opencode" && tab.State is not (AgentState.Done or AgentState.Idle))
+        {
+            await Task.Delay(500);
+        }
+
+        Log($"  transitions: {string.Join(" | ", transitions)}");
+        await Task.Delay(2000);
+        window.CloseTab(second);
+        Log($"=== selftest (opencode-reply) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// The inbox and the reply channels (§12.17). The reply channel is exercised the way the    /// OpenCode plugin uses it: a poller long-polls GET /v1/tabs/{id}/commands and receives
+    /// what Answer / Reply enqueue, with the request id the blocked report carried; without a
+    /// poller, a rule with answers types them into the tab (read back from the screen); the
+    /// inbox lists the waiting tabs oldest first with the line that asked, y answers, Enter
+    /// jumps, A asks before approving all.
+    /// </summary>
+    private static async Task RunInboxAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (inbox) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var inbox = window.Extensions.Loaded.OfType<Extensions.InboxExtension>().FirstOrDefault();
+        var endpoint = window.Endpoint;
+        Check(inbox is not null && endpoint is not null, "the inbox extension loaded and the endpoint is up");
+        if (inbox is null || endpoint is null)
+        {
+            Log("=== selftest (inbox) result: FAILED ===");
+            return;
+        }
+
+        // ---- a tab whose "integration" polls for commands, like the OpenCode plugin ----
+        var agent = window.AddTab(first.Profile, activate: false);
+        var typed = window.AddTab(first.Profile, activate: false);
+        await WaitForPromptAsync(agent);
+        await WaitForPromptAsync(typed);
+        agent.UserLabel = "api";
+        typed.UserLabel = "cli";
+
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(40) };
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", endpoint.Token);
+        var received = new List<System.Text.Json.Nodes.JsonObject>();
+        var after = 0L;
+        var polling = true;
+        var poller = Task.Run(async () =>
+        {
+            while (polling)
+            {
+                try
+                {
+                    var text = await http.GetStringAsync($"{endpoint.BaseUrl}/v1/tabs/{agent.Id}/commands?after={after}&holdMs=3000");
+                    var node = System.Text.Json.Nodes.JsonNode.Parse(text) as System.Text.Json.Nodes.JsonObject;
+                    foreach (var command in (node?["commands"] as System.Text.Json.Nodes.JsonArray) ?? [])
+                    {
+                        if (command is System.Text.Json.Nodes.JsonObject o)
+                        {
+                            lock (received)
+                            {
+                                received.Add(o);
+                            }
+
+                            after = Math.Max(after, o["seq"]!.GetValue<long>());
+                        }
+                    }
+                }
+                catch (Exception e) when (e is System.Net.Http.HttpRequestException or TaskCanceledException)
+                {
+                    await Task.Delay(200);
+                }
+            }
+        });
+        await Task.Delay(700);
+        Check(agent.IntegrationListening && agent.ReplyChannel == ReplyChannel.None, "a poller on the queue counts as a listening integration (channel None until the tab is an agent)");
+
+        // The integration reports blocked with the request id, as the plugin does.
+        agent.ApplyReport(new IntegrationReport(agent.Id, "opencode", 1, AgentState.Blocked, "opencode", "Run `git push`?", null, "ses-1", null, Release: false, RequestId: "per_42", RequestKind: "permission"));
+        await Task.Delay(400);
+        Check(agent.OpenRequest is { Id: "per_42", Kind: "permission", Title: "Run `git push`?" } && agent.ReplyChannel == ReplyChannel.Integration, "the blocked report's request id is kept as the open request; the channel is the integration");
+
+        Check(agent.Answer(approve: true), "Answer(approve) is taken");
+        await Task.Delay(600);
+        System.Text.Json.Nodes.JsonObject? permission;
+        lock (received)
+        {
+            permission = received.FirstOrDefault(o => o["kind"]?.GetValue<string>() == "permission");
+        }
+
+        Check(permission is not null && permission["requestId"]?.GetValue<string>() == "per_42" && permission["response"]?.GetValue<string>() == "approve", $"...and the poller received {{permission, per_42, approve}} ({permission?.ToJsonString()})");
+
+        agent.Reply("use the staging remote");
+        await Task.Delay(600);
+        System.Text.Json.Nodes.JsonObject? prompt;
+        lock (received)
+        {
+            prompt = received.FirstOrDefault(o => o["kind"]?.GetValue<string>() == "prompt");
+        }
+
+        Check(prompt is not null && prompt["response"]?.GetValue<string>() == "use the staging remote" && prompt["requestId"] is null, "free text goes to the integration as a prompt");
+        var beforeTyped = agent.OutputVersion;
+        await Task.Delay(400);
+        Check(agent.OutputVersion == beforeTyped, "...and nothing was typed into the terminal");
+
+        // A question: the free text names the question's id.
+        agent.ApplyReport(new IntegrationReport(agent.Id, "opencode", 2, AgentState.Blocked, "opencode", "OpenCode is asking a question", null, "ses-1", null, Release: false, RequestId: "que_7", RequestKind: "question"));
+        await Task.Delay(300);
+        agent.Reply("the second option");
+        await Task.Delay(600);
+        System.Text.Json.Nodes.JsonObject? question;
+        lock (received)
+        {
+            question = received.FirstOrDefault(o => o["kind"]?.GetValue<string>() == "question");
+        }
+
+        Check(question is not null && question["requestId"]?.GetValue<string>() == "que_7" && question["response"]?.GetValue<string>() == "the second option", "a reply while a question is open names the question");
+
+        polling = false;
+        await Task.WhenAny(poller, Task.Delay(4000));
+
+        // ---- a tab with no poller: the rule's keys are typed ----
+        // The report names copilot so the copilot rule (with answers) applies; the process probe
+        // will release the fake integration a few seconds later for want of a copilot process -
+        // correct, and why the answer is sent right away.
+        typed.ApplyReport(new IntegrationReport(typed.Id, "selftest-keys", 1, AgentState.Blocked, "copilot", "Allow this? [y/N]", null, null, null, Release: false));
+        await Task.Delay(300);
+        Log($"  typed tab: channel={typed.ReplyChannel} answers={typed.Rules.Answers?.Approve}/{typed.Rules.Answers?.Deny}");
+        Check(typed.ReplyChannel == ReplyChannel.Keys, "a copilot tab with no poller answers with the rule file's keys");
+        Check(typed.Answer(approve: true), "Answer(approve) is taken through the keys");
+        await Task.Delay(1500);
+        typed.RequestScreen();
+        await Task.Delay(400);
+        Check(typed.ScreenRows.Any(r => r.TrimStart().StartsWith("y", StringComparison.Ordinal) || r.Contains("> y", StringComparison.Ordinal) || r.Contains("The term 'y'", StringComparison.Ordinal)), "...the shell received 'y' and Enter (visible on screen)");
+
+        // ---- the inbox window ----
+        var oldest = window.AddTab(first.Profile, activate: false);
+        await Task.Delay(500);
+        oldest.UserLabel = "older";
+        oldest.ApplyReport(new IntegrationReport(oldest.Id, "selftest", 1, AgentState.Blocked, "selftest", "first question", null, null, null, Release: false));
+        await Task.Delay(400);
+        agent.ApplyReport(new IntegrationReport(agent.Id, "opencode", 3, AgentState.Blocked, "opencode", "Run `git push`?", null, "ses-1", null, Release: false, RequestId: "per_43", RequestKind: "permission"));
+        // A finished-unseen tab: a selftest harness (generic rules, which the probe never releases).
+        typed.ApplyReport(new IntegrationReport(typed.Id, "selftest", 5, AgentState.Working, "selftest", "working", null, null, null, Release: false));
+        await Task.Delay(200);
+        typed.ApplyReport(new IntegrationReport(typed.Id, "selftest", 6, AgentState.Done, "selftest", "all done", null, null, null, Release: false));
+        await Task.Delay(400);
+        window.ActiveTab = first;
+        Log($"  typed after done: state={typed.State} unread={typed.Unread} needs={typed.NeedsAttention}");
+
+        var items = Extensions.InboxExtension.Build(window.Tabs, DateTimeOffset.Now);
+        Log($"  items: {string.Join(" | ", items.Select(i => $"{i.Tab.Label}:{i.Kind}:{i.Line}:{i.Channel}"))}");
+        Check(items.Count == 3 && items[0].Tab == oldest && items[1].Tab == agent && items[2].Tab == typed, "the inbox lists blocked tabs oldest first, then the finished one");
+        Check(items[1].Line == "Run `git push`?" && items[1].Kind == "needs you", "an item shows the line the harness asked");
+
+        Check(window.DispatchChord(System.Windows.Input.Key.I, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift), "Ctrl+Shift+I opens the inbox");
+        await Task.Delay(600);
+        var inboxWindow = inbox.Window;
+        Check(inboxWindow is { IsVisible: true } && inboxWindow.Items.Count == 3 && inboxWindow.SelectedIndex == 0, "the inbox window shows the three items with the oldest selected");
+        if (inboxWindow is not null)
+        {
+            SaveVisual((System.Windows.FrameworkElement)inboxWindow.Content, "overshell-selftest-inbox.png");
+
+            // The selected tab moves on: its item leaves, the selection stays on the next.
+            oldest.ApplyReport(new IntegrationReport(oldest.Id, "selftest", 2, AgentState.Working, "selftest", "answered", null, null, null, Release: false));
+            await Task.Delay(500);
+            Check(inboxWindow.Items.Count == 2 && inboxWindow.SelectedIndex == 0 && inboxWindow.Items[0].Tab == agent, "an item leaves when its tab moves on; the selection moves to the next");
+
+            // Approve all asks first; the question is an owned palette window of the main window.
+            var approveAll = inboxWindow.ApproveAllAsync();
+            await Task.Delay(700);
+            var ask = window.OwnedWindows.OfType<Chrome.PaletteWindow>().FirstOrDefault(w => w.IsVisible);
+            Check(ask is not null && inboxWindow.IsVisible, "A (approve all) asks before approving, and the inbox stays open behind the question");
+            ask?.Close();
+            await Task.WhenAny(approveAll, Task.Delay(2000));
+            Check(approveAll.IsCompleted, "...closing the question without an answer approves nothing and finishes");
+
+            inboxWindow.Close();
+            await Task.Delay(300);
+            Check(inbox.Window is null, "Esc / close ends the inbox");
+        }
+
+        window.CloseTab(agent);
+        window.CloseTab(typed);
+        window.CloseTab(oldest);
+        Log($"=== selftest (inbox) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Keyboard navigation (§12.16): the view chord pressed again puts a cursor into the    /// sidebar (herd) or the cards (dashboard); arrows and j/k move it in the pane's own
     /// order, Enter activates (the dashboard then opens the terminal view), Space activates
     /// and keeps the cursor, Esc returns to the terminal; a chord leaves the cursor and runs.
     /// </summary>

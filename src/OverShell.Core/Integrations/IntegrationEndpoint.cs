@@ -45,6 +45,12 @@ public sealed class IntegrationEndpoint : IDisposable
     /// <summary>Supplies <c>GET /v1/tabs</c>. Set by the UI layer; called on the listener thread.</summary>
     public Func<IReadOnlyList<TabSummary>>? TabsProvider { get; set; }
 
+    /// <summary>Commands for the integrations to carry out, per tab (§12.17): the UI enqueues, the harness's plugin long-polls.</summary>
+    public TabCommandQueue Commands { get; } = new();
+
+    /// <summary>How long a poll with nothing waiting is held before an empty answer.</summary>
+    public static readonly TimeSpan PollHold = TimeSpan.FromSeconds(25);
+
     /// <summary>Every request, for the trace log: method, path, status, elapsed.</summary>
     public event Action<string>? Trace;
 
@@ -181,6 +187,28 @@ public sealed class IntegrationEndpoint : IDisposable
             }
 
             return await WriteAsync(response, 200, new JsonObject { ["tabs"] = tabs }).ConfigureAwait(false);
+        }
+
+        // GET /v1/tabs/{tabId}/commands?after=N - a long poll for the integration's work queue (12.17).
+        var getSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (request.HttpMethod == "GET" && getSegments.Length == 4 && getSegments[0] == "v1" && getSegments[1] == "tabs" && getSegments[3] == "commands")
+        {
+            var tabId = Uri.UnescapeDataString(getSegments[2]);
+            _ = long.TryParse(request.QueryString["after"], out var after);
+            var hold = PollHold;
+            if (int.TryParse(request.QueryString["holdMs"], out var holdMs))
+            {
+                hold = TimeSpan.FromMilliseconds(Math.Clamp(holdMs, 0, 30000));
+            }
+
+            var commands = await Commands.PollAsync(tabId, after, hold).ConfigureAwait(false);
+            var array = new JsonArray();
+            foreach (var command in commands)
+            {
+                array.Add(command.ToJson());
+            }
+
+            return await WriteAsync(response, 200, new JsonObject { ["commands"] = array }).ConfigureAwait(false);
         }
 
         if (request.HttpMethod != "POST")

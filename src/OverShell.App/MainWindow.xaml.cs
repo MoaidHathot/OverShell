@@ -221,6 +221,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             ActiveTab = tab;
         }
 
+        // A tab opened in the background is not being looked at; say so now rather than at the next activation.
+        UpdateViewed();
         _shell?.RaiseTabOpened(tab);
 
         if (Tabs.Count == 1)
@@ -250,6 +252,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // Remembered while its directory and session id are still readable.
         RememberClosed(tab);
         _findBar.Forget(tab);
+        _endpoint?.Commands.Forget(tab.Id);
         _shell?.RaiseTabClosed(tab);
 
         // Dispose first: it suppresses further input, so the focus and key messages

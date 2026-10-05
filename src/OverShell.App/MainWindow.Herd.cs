@@ -100,6 +100,7 @@ public partial class MainWindow
             Detection = _settings.Detection,
             Compatibility = _settings.Compatibility,
             EnvironmentFor = _endpoint is { } ep ? ep.EnvironmentFor : null,
+            Commands = _endpoint?.Commands,
         };
 
         // overshell:// for this user, so a toast click finds its tab. HKCU only, rewritten only

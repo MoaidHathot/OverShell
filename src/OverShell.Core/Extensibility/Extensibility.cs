@@ -160,6 +160,23 @@ public interface ITab : INotifyPropertyChanged
     /// <summary>Pastes text (bracketed when the application asked for it) without a trailing Enter.</summary>
     void Paste(string text);
 
+    /// <summary>The permission or question the harness has open, as its integration reported it; null when none or unknown.</summary>
+    OpenRequest? OpenRequest { get; }
+
+    /// <summary>The best channel a reply to this tab has right now.</summary>
+    ReplyChannel ReplyChannel { get; }
+
+    /// <summary>
+    /// Approves or denies the open permission (<paramref name="approve"/>), through the integration
+    /// when it listens, else the rule file's keystrokes. False when neither exists.
+    /// </summary>
+    bool Answer(bool approve);
+
+    /// <summary>
+    /// Sends free text as the reply: to an open question through the integration, as a prompt
+    /// through the integration when it listens, else typed with Enter. Always possible.
+    /// </summary>
+    void Reply(string text);
     /// <summary>
     /// Per-tab extension state, saved with the session and restored with the tab - a mute
     /// flag, a watch pattern. Keys are the extension's own; keep them prefixed by its id.
@@ -196,6 +213,28 @@ public interface IKeyBindings
     /// says so: return true to take it. For a switcher that owns Tab while it is open.
     /// </summary>
     void Intercept(Func<bool> active, Func<KeyChord, bool> handler);
+}
+
+/// <summary>The permission or question a harness has open, as its integration reported it (§12.17).</summary>
+/// <param name="Id">The harness's id for the request; what a reply names.</param>
+/// <param name="Kind"><c>permission</c> or <c>question</c>.</param>
+/// <param name="Title">What the harness said it is asking, if anything.</param>
+public sealed record OpenRequest(string Id, string Kind, string? Title, DateTimeOffset At);
+
+/// <summary>How a reply reaches an agent (§12.17).</summary>
+public enum ReplyChannel
+{
+    /// <summary>Nothing is open, or the tab is not an agent.</summary>
+    None,
+
+    /// <summary>The harness's integration is listening: the reply goes through its own API, exact.</summary>
+    Integration,
+
+    /// <summary>The rule file knows the keystrokes for approve / deny; free text is typed.</summary>
+    Keys,
+
+    /// <summary>Only free text, typed, is possible.</summary>
+    TypedText,
 }
 
 /// <summary>A new tab.</summary>

@@ -42,5 +42,9 @@
   "screenRows": 12,
   "resumeCommand": "opencode --session {sessionId}",
   // Without a session id (no integration installed): the tool's own "most recent session" form.
-  "resumeLastCommand": "opencode --continue"
+  "resumeLastCommand": "opencode --continue",
+  // What starts it in a shell (spawning a new agent tab). No "answers": its permission dialog is
+  // arrows + Enter with no letter keys; replies go through the plugin, which answers OpenCode's
+  // own permission API (install the opencode integration).
+  "launch": "opencode"
 }

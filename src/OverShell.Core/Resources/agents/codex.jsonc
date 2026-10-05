@@ -34,5 +34,9 @@
   "screenRows": 12,
   "resumeCommand": "codex resume {sessionId}",
   // Without a session id (no integration installed): the tool's own "most recent session" form.
-  "resumeLastCommand": "codex resume --last"
+  "resumeLastCommand": "codex resume --last",
+  // What starts it in a shell. Its approval prompt takes y / n: from Codex's documentation,
+  // not measured here.
+  "launch": "codex",
+  "answers": { "approve": "y", "deny": "n" }
 }

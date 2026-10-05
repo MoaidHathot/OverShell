@@ -19,6 +19,7 @@ internal sealed class ExtensionHost : IDisposable
         () => new Extensions.MruSwitcherExtension(),
         () => new Extensions.SummonExtension(),
         () => new Extensions.KeyNavExtension(),
+        () => new Extensions.InboxExtension(),
     ];
 
     public IReadOnlyList<IExtension> Loaded => _loaded;

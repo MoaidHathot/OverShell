@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using OverShell.App.Agents;
 using OverShell.App.Terminal;
 using OverShell.Core.Agents;
+using OverShell.Core.Extensibility;
 using OverShell.Core.Integrations;
 
 namespace OverShell.App;
@@ -33,7 +34,9 @@ public sealed partial class TerminalTab
     private bool _snapshotBusy;
     private bool _probeBusy;
     private nint _hwnd;
-    private bool _viewed;
+    // Starts true, as the state machine's own flag does, so the first SetViewed(false) reaches it:
+    // a mismatch here left background tabs counted as viewed until something toggled them (12.17).
+    private bool _viewed = true;
 
     private string? _harnessFromCommandline;
     private string? _harnessFromProcess;
@@ -407,6 +410,88 @@ public sealed partial class TerminalTab
 
     // ------------------------------------------------------------ ITab (12.16)
 
+    /// <summary>The permission or question the integration says is open, with its id; null when none or unknown (12.17).</summary>
+    public OpenRequest? OpenRequest { get; private set; }
+
+    /// <summary>An integration that has polled the command queue within this long is listening.</summary>
+    private static readonly TimeSpan ListeningWindow = TimeSpan.FromSeconds(40);
+
+    /// <summary>Whether the harness's integration is polling for commands right now - the exact channel.</summary>
+    public bool IntegrationListening => _agents.Commands?.IsListening(Id, ListeningWindow) == true;
+
+    public ReplyChannel ReplyChannel
+    {
+        get
+        {
+            if (!IsAgent || !IsRunning)
+            {
+                return ReplyChannel.None;
+            }
+
+            if (IntegrationListening)
+            {
+                return ReplyChannel.Integration;
+            }
+
+            return Agent.Rules.Answers is { Approve: not null } ? ReplyChannel.Keys : ReplyChannel.TypedText;
+        }
+    }
+
+    /// <summary>
+    /// Approve or deny (12.17): through the integration's queue when it listens (the plugin
+    /// answers OpenCode's own permission API), else the rule file's keystrokes. False when
+    /// neither can do it - the caller falls back to free text or to visiting the tab.
+    /// </summary>
+    public bool Answer(bool approve)
+    {
+        if (!IsAgent || !IsRunning)
+        {
+            return false;
+        }
+
+        if (IntegrationListening && _agents.Commands is { } queue)
+        {
+            var kind = OpenRequest?.Kind == "question" ? "question" : "permission";
+            if (kind == "question")
+            {
+                // A question has no yes/no; the harness decides what an empty or "no" answer means.
+                queue.Enqueue(Id, "question", OpenRequest?.Id, approve ? "yes" : "no");
+            }
+            else
+            {
+                queue.Enqueue(Id, "permission", OpenRequest?.Id, approve ? "approve" : "deny");
+            }
+
+            _agents.Trace.Write($"[{Id}] reply via integration: {(approve ? "approve" : "deny")} {OpenRequest?.Kind ?? "permission"} {OpenRequest?.Id}");
+            return true;
+        }
+
+        var keys = approve ? Agent.Rules.Answers?.Approve : Agent.Rules.Answers?.Deny;
+        if (string.IsNullOrEmpty(keys))
+        {
+            return false;
+        }
+
+        SendText(System.Text.RegularExpressions.Regex.Unescape(keys));
+        _agents.Trace.Write($"[{Id}] reply via keys: {(approve ? "approve" : "deny")} -> {keys}");
+        return true;
+    }
+
+    /// <summary>Free text as the reply (12.17): a question's answer or a prompt through the integration when it listens, else typed with Enter.</summary>
+    public void Reply(string text)
+    {
+        if (IntegrationListening && _agents.Commands is { } queue)
+        {
+            var kind = OpenRequest?.Kind == "question" ? "question" : "prompt";
+            queue.Enqueue(Id, kind, kind == "question" ? OpenRequest?.Id : null, text);
+            _agents.Trace.Write($"[{Id}] reply via integration ({kind}): {text.ReplaceLineEndings(" ")}");
+            return;
+        }
+
+        Paste(text);
+        SendText("\r");
+        _agents.Trace.Write($"[{Id}] reply typed: {text.ReplaceLineEndings(" ")}");
+    }
     /// <summary>The rule set in force: the harness's, or the generic one for a shell.</summary>
     public AgentRuleSet Rules => Agent.Rules;
 
@@ -664,6 +749,10 @@ public sealed partial class TerminalTab
                 Agent.OnReport(report.Source, report.Seq, report.State, report.Message, report.Summary, report.SessionId, now);
             }
 
+            // The request a reply would name (12.17): kept while the integration says blocked, gone when it moves on.
+            OpenRequest = report.State == AgentState.Blocked && report.RequestId is { Length: > 0 }
+                ? new OpenRequest(report.RequestId, report.RequestKind ?? "permission", report.Message, now)
+                : report.State == AgentState.Blocked ? OpenRequest : null;
             // Whatever resumes this session: the integration's own command, else the rule file's
             // pattern with the id filled in. Kept for restore and for `tab.resume`.
             var sessionId = report.SessionId ?? Agent.SessionId;

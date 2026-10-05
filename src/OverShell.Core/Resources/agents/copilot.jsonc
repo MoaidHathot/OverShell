@@ -34,5 +34,9 @@
   "screenRows": 12,
   "resumeCommand": "copilot --resume={sessionId}",
   // Without a session id (no integration installed): the tool's own "most recent session" form.
-  "resumeLastCommand": "copilot --continue"
+  "resumeLastCommand": "copilot --continue",
+  // What starts it in a shell (spawning a new agent tab), and the keys that answer its
+  // [y/N] permission prompts when a reply comes from the inbox or a toast rather than the tab.
+  "launch": "copilot",
+  "answers": { "approve": "y\\r", "deny": "n\\r" }
 }

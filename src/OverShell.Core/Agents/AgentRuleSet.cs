@@ -51,8 +51,14 @@ public sealed class StateRules
     internal CompiledStateRules Compiled => _compiled ??= new CompiledStateRules(this);
 
     private CompiledStateRules? _compiled;
-}
 
+    /// <summary>
+    /// The screen row that put the agent in <paramref name="state"/> - the line with the
+    /// question, for an inbox to show (§12.17) - or null when no pattern for that state
+    /// matches any row. The last matching row wins: prompts sit at the bottom.
+    /// </summary>
+    public string? MatchingLine(IReadOnlyList<string> rows, AgentState state) => Compiled.MatchingLine(rows, state);
+}
 internal sealed class CompiledStateRules
 {
     private readonly (AgentState State, Regex Regex, string Pattern)[] _rules;
@@ -70,6 +76,28 @@ internal sealed class CompiledStateRules
 
     public bool IsEmpty => _rules.Length == 0;
 
+    /// <summary>The last row any pattern for <paramref name="state"/> matches, trimmed; null when none.</summary>
+    public string? MatchingLine(IReadOnlyList<string> rows, AgentState state)
+    {
+        for (var i = rows.Count - 1; i >= 0; i--)
+        {
+            var row = rows[i];
+            if (row.Trim().Length == 0)
+            {
+                continue;
+            }
+
+            foreach (var (ruleState, regex, _) in _rules)
+            {
+                if (ruleState == state && regex.IsMatch(row))
+                {
+                    return row.Trim();
+                }
+            }
+        }
+
+        return null;
+    }
     /// <summary>First match in precedence order (blocked, error, working, done, idle), with the pattern that hit.</summary>
     public (AgentState State, string Pattern)? Match(string text)
     {
@@ -119,6 +147,14 @@ public sealed class DetectRules
 /// <c>%APPDATA%\OverShell\agents\</c> replaces it wholesale — herdr's override model, so a
 /// user never has to reason about merges when a new agent version changes its prompts.
 /// </summary>
+/// <summary>What to type for yes and no at a harness's permission prompt.</summary>
+public sealed class AnswerKeys
+{
+    public string? Approve { get; init; }
+
+    public string? Deny { get; init; }
+}
+
 public sealed class AgentRuleSet
 {
     public required string Id { get; init; }
@@ -173,6 +209,16 @@ public sealed class AgentRuleSet
     /// one harness in one directory may both land on the same session.
     /// </summary>
     public string? ResumeLastCommand { get; init; }
+
+    /// <summary>
+    /// Keystrokes that answer the harness's permission prompt when no exact channel exists
+    /// (§12.17): <c>approve</c> and <c>deny</c>, sent as typed (<c>\r</c> for Enter). Null means
+    /// the harness has no one-key answers; a reply is then free text or the integration's.
+    /// </summary>
+    public AnswerKeys? Answers { get; init; }
+
+    /// <summary>The command that starts this harness in a shell (<c>opencode</c>), for spawning a new agent tab (§12.18).</summary>
+    public string? Launch { get; init; }
 
     [JsonIgnore]
     internal Regex? SummaryRegex => _summary ??= Compile(Summary);
