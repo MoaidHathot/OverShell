@@ -51,6 +51,16 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public event Action? SettingsChanged;
 
+    public event Action? Ready;
+
+    public bool IsReady { get; private set; }
+
+    internal void RaiseReady()
+    {
+        IsReady = true;
+        Ready?.Invoke();
+    }
+
     public CommandRegistry Commands => _window.Commands;
 
     public IKeyBindings Keys => this;
@@ -229,6 +239,31 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
         }
     }
 
+    private GlobalHotKeys? _hotKeys;
+
+    internal GlobalHotKeys HotKeys => _hotKeys ??= new GlobalHotKeys(_window);
+
+    public (int? Handle, string? Error) RegisterGlobalHotKey(KeyChord chord, Action onPressed) => HotKeys.Register(chord, onPressed);
+
+    public void UnregisterGlobalHotKey(int handle) => _hotKeys?.Unregister(handle);
+
+    public void BringToFront() => _window.BringToFront();
+
+    public void Minimize() => _window.WindowState = WindowState.Minimized;
+
+    /// <summary>
+    /// In front means visible, not minimized, and the foreground window as Windows sees it.
+    /// <c>Window.IsActive</c> alone stays true for a minimized window that was active -
+    /// found when a summon of a minimized window minimized it "again" (§12.16).
+    /// </summary>
+    public bool IsForeground =>
+        _window.IsVisible
+        && _window.WindowState != WindowState.Minimized
+        && GetForegroundWindow() == new System.Windows.Interop.WindowInteropHelper(_window).Handle;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+    internal void DisposeHotKeys() => _hotKeys?.Dispose();
     private static IReadOnlyList<PaletteItem> Filter(IReadOnlyList<PaletteItem> rows, PaletteQuery query)
     {
         var text = query.Text.Trim();

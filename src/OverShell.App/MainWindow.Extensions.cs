@@ -53,7 +53,11 @@ public partial class MainWindow
 
         // Extensions declared their default keys during Initialize; the map is rebuilt with them beneath the user's file.
         LoadKeybindings();
-        Closed += (_, _) => _extensions.Dispose();
+        Closed += (_, _) =>
+        {
+            _extensions.Dispose();
+            _shell.DisposeHotKeys();
+        };
     }
 
     /// <summary>Opens a tab the way an extension asks for one: profile by name, directory, label, group, a command typed at the prompt.</summary>

@@ -23,7 +23,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -109,6 +109,9 @@ internal static class HerdSelfTest
                         break;
                     case "mru":
                         await RunMruAsync(window, firstTab);
+                        break;
+                    case "summon":
+                        await RunSummonAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -330,8 +333,107 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// MRU switching (§12.16): the order follows activations; Ctrl+Tab opens the overlay on
-    /// the previous tab and steps through the list while held; Shift walks back; Esc cancels;
+    /// Global summon (§12.16): the hotkey is registered system-wide once the window has its
+    /// handle (or the reason it could not be is recorded); fired, it brings a minimized window
+    /// back on the tab that has waited longest, fired again while in front it minimizes;
+    /// extensions.summon.to = current leaves the tab alone; the key moves on settings reload.
+    /// The physical keypress is not synthesised (§7.8): the WM_HOTKEY handler is invoked.
+    /// </summary>
+    private static async Task RunSummonAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (summon) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var summon = window.Extensions.Loaded.OfType<Extensions.SummonExtension>().FirstOrDefault();
+        Check(summon is not null, "the summon extension loaded");
+        if (summon is null)
+        {
+            Log("=== selftest (summon) result: FAILED ===");
+            return;
+        }
+
+        Log($"  registered={summon.IsRegistered} error='{summon.RegistrationError}' ready={window.Shell.IsReady}");
+        Check(window.Shell.IsReady, "the shell reported Ready once the window had its handle");
+        Check(summon.IsRegistered || summon.RegistrationError is not null, "RegisterHotKey was attempted after Ready: registered, or the reason is recorded");
+        if (!summon.IsRegistered)
+        {
+            Log($"  NOTE  Win+` is held by another program here ({summon.RegistrationError}); the handler is still exercised below");
+        }
+
+        var second = window.AddTab(first.Profile, activate: false);
+        await Task.Delay(600);
+        second.UserLabel = "waiting";
+        second.ApplyReport(new IntegrationReport(second.Id, "selftest", 1, AgentState.Blocked, "selftest", "a question", null, null, null, Release: false));
+        await Task.Delay(300);
+        window.ActiveTab = first;
+
+        // In front with toggle on: the hotkey minimizes. "In front" is what the feature itself
+        // checks - the foreground window as Windows sees it, not WPF's IsActive.
+        var inFront = window.Shell.Ui.IsForeground;
+        summon.Summon();
+        await Task.Delay(400);
+        if (inFront)
+        {
+            Check(window.WindowState == System.Windows.WindowState.Minimized && summon.LastAction == "minimized", "pressed while in front: the window minimizes (toggle)");
+        }
+        else
+        {
+            Log("  SKIP  minimize-when-in-front: another window holds the foreground");
+            window.WindowState = System.Windows.WindowState.Minimized;
+            await Task.Delay(300);
+        }
+
+        // Minimized: the hotkey brings it back on the waiting tab.
+        summon.Summon();
+        await Task.Delay(600);
+        Log($"  after summon: state={window.WindowState} active='{window.ActiveTab?.Label}' action='{summon.LastAction}'");
+        Check(window.WindowState != System.Windows.WindowState.Minimized, "pressed while away: the window comes back");
+        Check(ReferenceEquals(window.ActiveTab, second) && summon.LastAction == "front (waiting)", "...on the tab that has waited longest (extensions.summon.to = attention)");
+
+        // to = current, and a different key, through settings.
+        var settingsFile = AppPaths.SettingsFile;
+        var hadSettings = System.IO.File.Exists(settingsFile);
+        var previous = hadSettings ? System.IO.File.ReadAllText(settingsFile) : null;
+        System.IO.File.WriteAllText(settingsFile, """{ "extensions": { "summon": { "keys": "ctrl+alt+shift+f12", "to": "current", "toggle": false } } }""");
+        await Task.Delay(1800);
+        Log($"  after reload: registered={summon.IsRegistered} error='{summon.RegistrationError}'");
+        Check(summon.IsRegistered && summon.RegistrationError is null, "a new key from settings is registered live (Ctrl+Alt+Shift+F12)");
+        window.ActiveTab = first;
+        summon.Summon();
+        await Task.Delay(400);
+        Check(ReferenceEquals(window.ActiveTab, first) && summon.LastAction == "front (current)" && window.WindowState != System.Windows.WindowState.Minimized, "to = current and toggle = false: front, the active tab untouched, never minimized");
+
+        // Fire through the hotkey table itself, as WM_HOTKEY would.
+        var host = (Extensibility.ShellHost)window.Shell;
+        var fired = false;
+        var (handle, error) = host.RegisterGlobalHotKey(new KeyChord(ChordModifiers.Control | ChordModifiers.Alt | ChordModifiers.Shift, "F11"), () => fired = true);
+        Check(handle is not null && host.HotKeys.Fire(handle.Value) && fired, $"the hotkey table dispatches a registered id to its handler{(error is null ? string.Empty : $" ({error})")}");
+        if (handle is not null)
+        {
+            host.UnregisterGlobalHotKey(handle.Value);
+        }
+
+        if (hadSettings)
+        {
+            System.IO.File.WriteAllText(settingsFile, previous);
+        }
+        else
+        {
+            System.IO.File.WriteAllText(settingsFile, "{ }");
+        }
+
+        await Task.Delay(1200);
+        window.CloseTab(second);
+        Log($"=== selftest (summon) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// MRU switching (§12.16): the order follows activations; Ctrl+Tab opens the overlay on    /// the previous tab and steps through the list while held; Shift walks back; Esc cancels;
     /// the Ctrl-release handler (the same method the router's release calls - the Win32
     /// key-up itself is not synthesised, §7.8) commits; a tab closed while open leaves the
     /// list; Ctrl+PgDn still cycles in order; Tab outside the switcher reaches the terminal.

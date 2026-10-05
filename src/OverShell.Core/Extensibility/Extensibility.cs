@@ -47,6 +47,11 @@ public interface IShell
     /// <summary>Every 500 ms on the UI thread - the shell's own heartbeat, so extensions need no timers.</summary>
     event Action<DateTimeOffset>? Heartbeat;
 
+    /// <summary>The main window is on screen with its handle - when a global hotkey can be registered. Already true when subscribed late: check IsReady first.</summary>
+    event Action? Ready;
+
+    bool IsReady { get; }
+
     /// <summary>settings.jsonc, agent rules or keybindings reloaded; <see cref="Settings"/> is the new object.</summary>
     event Action? SettingsChanged;
 
@@ -234,4 +239,22 @@ public interface IHostUi
     void ShowBar(object bar);
 
     void HideBar(object bar);
+
+    /// <summary>
+    /// A system-wide hotkey (RegisterHotKey): <paramref name="onPressed"/> runs on the UI thread
+    /// whenever it is pressed, in any application. Returns a handle to unregister with, or null
+    /// and a reason (the chord is taken, the window has no handle yet).
+    /// </summary>
+    (int? Handle, string? Error) RegisterGlobalHotKey(KeyChord chord, Action onPressed);
+
+    void UnregisterGlobalHotKey(int handle);
+
+    /// <summary>Brings the main window to the front, restoring it if minimized, and focuses the active tab.</summary>
+    void BringToFront();
+
+    /// <summary>Minimizes the main window.</summary>
+    void Minimize();
+
+    /// <summary>Whether the main window is the foreground window.</summary>
+    bool IsForeground { get; }
 }

@@ -17,6 +17,7 @@ internal sealed class ExtensionHost : IDisposable
     [
         () => new Extensions.HerdModeExtension(),
         () => new Extensions.MruSwitcherExtension(),
+        () => new Extensions.SummonExtension(),
     ];
 
     public IReadOnlyList<IExtension> Loaded => _loaded;

@@ -103,6 +103,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             ApplyBackdrop();
             HookSettingChange();
+            _shell?.RaiseReady();
         };
 
         // The frame-extension margins are physical pixels, so they have to be
