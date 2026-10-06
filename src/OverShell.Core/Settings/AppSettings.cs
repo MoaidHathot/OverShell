@@ -149,9 +149,21 @@ public sealed class CompatibilitySettings{
 }
 
 /// <summary>The <c>overshell://</c> URL protocol.</summary>
-public sealed class ProtocolSettings{
+public sealed class ProtocolSettings
+{
     /// <summary>Register <c>overshell://</c> for this user at start (HKCU, no elevation), so toast clicks find their tab.</summary>
     public bool Register { get; init; } = true;
+}
+
+/// <summary>The loopback endpoint integrations and the control API come through (12.18).</summary>
+public sealed class EndpointSettings
+{
+    /// <summary>
+    /// Serve the control routes (read a screen, send text, reply, open a tab, wait) and write
+    /// <c>endpoint.json</c> for <c>OverShell mcp</c>. Off, the endpoint only takes the
+    /// integrations' reports and the plugins' command polls.
+    /// </summary>
+    public bool Control { get; init; } = true;
 }
 
 /// <summary>
@@ -188,6 +200,8 @@ public sealed class AppSettings
     public SessionSettings Session { get; init; } = new();
 
     public ProtocolSettings Protocol { get; init; } = new();
+
+    public EndpointSettings Endpoint { get; init; } = new();
 
     public CompatibilitySettings Compatibility { get; init; } = new();
 

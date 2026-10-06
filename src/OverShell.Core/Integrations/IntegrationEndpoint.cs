@@ -48,6 +48,13 @@ public sealed class IntegrationEndpoint : IDisposable
     /// <summary>Commands for the integrations to carry out, per tab (§12.17): the UI enqueues, the harness's plugin long-polls.</summary>
     public TabCommandQueue Commands { get; } = new();
 
+    /// <summary>
+    /// The control API (§12.18) when it is on: set by the UI layer, null when
+    /// <c>endpoint.control</c> is off - the routes then answer 403 and the endpoint is what it
+    /// was before, a place for reports and polls.
+    /// </summary>
+    public ShellControl? Control { get; set; }
+
     /// <summary>How long a poll with nothing waiting is held before an empty answer.</summary>
     public static readonly TimeSpan PollHold = TimeSpan.FromSeconds(25);
 
@@ -175,8 +182,19 @@ public sealed class IntegrationEndpoint : IDisposable
             return await WriteAsync(response, 401, new JsonObject { ["error"] = "unauthorized" }).ConfigureAwait(false);
         }
 
-        if (request.HttpMethod == "GET" && path == "/v1/tabs")
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var onTabs = segments.Length >= 2 && segments[0] == "v1" && segments[1] == "tabs";
+        var tabKey = onTabs && segments.Length >= 3 ? Uri.UnescapeDataString(segments[2]) : null;
+        var leaf = onTabs && segments.Length == 4 ? segments[3] : null;
+
+        if (request.HttpMethod == "GET" && onTabs && segments.Length == 2)
         {
+            // The control's description when it is on (a superset), the summary otherwise.
+            if (Control is { } control)
+            {
+                return await WriteAsync(response, 200, new JsonObject { ["tabs"] = await control.ListAsync().ConfigureAwait(false) }).ConfigureAwait(false);
+            }
+
             var tabs = new JsonArray();
             foreach (var t in TabsProvider?.Invoke() ?? [])
             {
@@ -190,10 +208,8 @@ public sealed class IntegrationEndpoint : IDisposable
         }
 
         // GET /v1/tabs/{tabId}/commands?after=N - a long poll for the integration's work queue (12.17).
-        var getSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (request.HttpMethod == "GET" && getSegments.Length == 4 && getSegments[0] == "v1" && getSegments[1] == "tabs" && getSegments[3] == "commands")
+        if (request.HttpMethod == "GET" && tabKey is not null && leaf == "commands")
         {
-            var tabId = Uri.UnescapeDataString(getSegments[2]);
             _ = long.TryParse(request.QueryString["after"], out var after);
             var hold = PollHold;
             if (int.TryParse(request.QueryString["holdMs"], out var holdMs))
@@ -201,7 +217,7 @@ public sealed class IntegrationEndpoint : IDisposable
                 hold = TimeSpan.FromMilliseconds(Math.Clamp(holdMs, 0, 30000));
             }
 
-            var commands = await Commands.PollAsync(tabId, after, hold).ConfigureAwait(false);
+            var commands = await Commands.PollAsync(tabKey, after, hold).ConfigureAwait(false);
             var array = new JsonArray();
             foreach (var command in commands)
             {
@@ -209,6 +225,21 @@ public sealed class IntegrationEndpoint : IDisposable
             }
 
             return await WriteAsync(response, 200, new JsonObject { ["commands"] = array }).ConfigureAwait(false);
+        }
+
+        // ---- the control API (12.18): everything else under /v1/tabs ----
+        var controlRoute = onTabs && (
+            (request.HttpMethod == "POST" && segments.Length == 2) ||
+            (request.HttpMethod is "GET" or "DELETE" && segments.Length == 3) ||
+            (segments.Length == 4 && leaf is "screen" or "wait" or "input" or "reply"));
+        if (controlRoute)
+        {
+            if (Control is not { } control)
+            {
+                return await WriteAsync(response, 403, new JsonObject { ["error"] = "the control API is off (settings: endpoint.control)" }).ConfigureAwait(false);
+            }
+
+            return await RouteControlAsync(control, request, response, segments, tabKey, leaf).ConfigureAwait(false);
         }
 
         if (request.HttpMethod != "POST")
@@ -245,7 +276,6 @@ public sealed class IntegrationEndpoint : IDisposable
         }
 
         // /v1/copilot/{tabId}/{event}, /v1/claude/{tabId}/{event}, /v1/codex/{tabId}/notify: raw hook payloads, translated.
-        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length == 4 && segments[0] == "v1" && segments[1] is "copilot" or "claude" or "codex")
         {
             var tabId = Uri.UnescapeDataString(segments[2]);
@@ -265,6 +295,101 @@ public sealed class IntegrationEndpoint : IDisposable
 
         return await WriteAsync(response, 404, new JsonObject { ["error"] = "not found" }).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The control routes (§12.18), each a spelling of one <see cref="ShellControl"/> call:
+    /// <c>GET /v1/tabs/{tab}</c>, <c>GET .../screen</c>, <c>GET .../wait?states=&amp;timeout=</c>,
+    /// <c>POST /v1/tabs</c>, <c>POST .../input</c>, <c>POST .../reply</c>, <c>DELETE /v1/tabs/{tab}</c>.
+    /// A tab is its id or a unique label.
+    /// </summary>
+    private async Task<int> RouteControlAsync(ShellControl control, HttpListenerRequest request, HttpListenerResponse response, string[] segments, string? tabKey, string? leaf)
+    {
+        if (request.HttpMethod == "POST" && segments.Length == 2)
+        {
+            var body = await ReadBodyAsync(request).ConfigureAwait(false);
+            var node = (body is null ? null : Jsonc.Parse(body, out _)) as JsonObject ?? new JsonObject();
+            var (tab, result) = await control.OpenAsync(node).ConfigureAwait(false);
+            return tab is null
+                ? await WriteResultAsync(response, result).ConfigureAwait(false)
+                : await WriteAsync(response, 201, tab).ConfigureAwait(false);
+        }
+
+        if (tabKey is null)
+        {
+            return await WriteAsync(response, 404, new JsonObject { ["error"] = "not found" }).ConfigureAwait(false);
+        }
+
+        if (request.HttpMethod == "DELETE")
+        {
+            return await WriteResultAsync(response, await control.CloseAsync(tabKey).ConfigureAwait(false)).ConfigureAwait(false);
+        }
+
+        if (request.HttpMethod == "GET")
+        {
+            switch (leaf)
+            {
+                case null:
+                {
+                    var tab = await control.DescribeAsync(tabKey).ConfigureAwait(false);
+                    return tab is null
+                        ? await WriteResultAsync(response, ControlResult.NotFound(tabKey)).ConfigureAwait(false)
+                        : await WriteAsync(response, 200, tab).ConfigureAwait(false);
+                }
+
+                case "screen":
+                {
+                    var screen = await control.ScreenAsync(tabKey).ConfigureAwait(false);
+                    return screen is null
+                        ? await WriteResultAsync(response, ControlResult.NotFound(tabKey)).ConfigureAwait(false)
+                        : await WriteAsync(response, 200, screen).ConfigureAwait(false);
+                }
+
+                case "wait":
+                {
+                    var timeout = TimeSpan.FromSeconds(60);
+                    if (double.TryParse(request.QueryString["timeout"], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+                    {
+                        timeout = TimeSpan.FromSeconds(Math.Clamp(seconds, 0, ShellControl.MaxWait.TotalSeconds));
+                    }
+
+                    var states = ShellControl.ParseStates(request.QueryString["states"]);
+                    var outcome = await control.WaitAsync(tabKey, states, timeout, _stop.Token).ConfigureAwait(false);
+                    return await WriteAsync(response, 200, outcome).ConfigureAwait(false);
+                }
+            }
+
+            return await WriteAsync(response, 405, new JsonObject { ["error"] = "method not allowed" }).ConfigureAwait(false);
+        }
+
+        if (request.HttpMethod == "POST" && leaf is "input" or "reply")
+        {
+            var body = await ReadBodyAsync(request).ConfigureAwait(false);
+            var node = (body is null ? null : Jsonc.Parse(body, out _)) as JsonObject;
+            if (leaf == "input")
+            {
+                var text = ShellControl.Str(node, "text");
+                var enter = ShellControl.Bool(node, "enter") ?? true;
+                if (text is null && !enter)
+                {
+                    return await WriteResultAsync(response, ControlResult.BadRequest("\"text\" is required (or \"enter\": true)")).ConfigureAwait(false);
+                }
+
+                return await WriteResultAsync(response, await control.SendAsync(tabKey, text ?? string.Empty, enter).ConfigureAwait(false)).ConfigureAwait(false);
+            }
+
+            return await WriteResultAsync(response, await control.ReplyAsync(tabKey, ShellControl.Str(node, "answer"), ShellControl.Str(node, "text")).ConfigureAwait(false)).ConfigureAwait(false);
+        }
+
+        return await WriteAsync(response, 405, new JsonObject { ["error"] = "method not allowed" }).ConfigureAwait(false);
+    }
+
+    private static Task<int> WriteResultAsync(HttpListenerResponse response, ControlResult result) => result.Status switch
+    {
+        ControlStatus.Ok => WriteAsync(response, 200, new JsonObject { ["ok"] = true }),
+        ControlStatus.NotFound => WriteAsync(response, 404, new JsonObject { ["error"] = result.Message ?? "not found" }),
+        ControlStatus.BadRequest => WriteAsync(response, 400, new JsonObject { ["error"] = result.Message ?? "bad request" }),
+        _ => WriteAsync(response, 409, new JsonObject { ["error"] = result.Message ?? "refused" }),
+    };
 
     private bool Authorized(HttpListenerRequest request)
     {

@@ -87,9 +87,17 @@
   "extensions": {
   },
 
-  // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked  // toast (--launch overshell://focus/<tab>) lands on its tab in the running window.
+  // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked
+  // toast (--launch overshell://focus/<tab>) lands on its tab in the running window.
   "protocol": {
     "register": true
+  },
+
+  // The loopback endpoint. "control": false keeps it to the integrations' reports and polls:
+  // no reading screens, sending text, replying or opening tabs over HTTP, and no endpoint.json
+  // for `OverShell mcp`.
+  "endpoint": {
+    "control": true
   },
 
   // A ResourceDictionary under %APPDATA%\OverShell\skins\<name>.xaml overriding theme keys

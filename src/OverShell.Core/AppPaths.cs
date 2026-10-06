@@ -65,6 +65,13 @@ public static class AppPaths
     public static string ShellIntegrationScript => Path.Combine(StateRoot, "shell", "overshell-prompt.ps1");
 
     /// <summary>
+    /// Where the running window says how to reach its control API (§12.18): URL, token, pid.
+    /// Written at start when <c>endpoint.control</c> is on, removed at exit; <c>OverShell mcp</c>
+    /// reads it. Lives with the machine-local state because the token is per run.
+    /// </summary>
+    public static string EndpointFile => Path.Combine(StateRoot, "endpoint.json");
+
+    /// <summary>
     /// Creates the two roots if they do not exist yet. Only the roots: the sub-folders
     /// (<c>agents\</c>, <c>layouts\</c>, <c>skins\</c>) are optional and are made when
     /// something is put in them — an empty trio in someone's dotfiles repository is noise.

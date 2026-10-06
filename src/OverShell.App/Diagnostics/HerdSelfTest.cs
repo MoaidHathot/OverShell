@@ -25,7 +25,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -135,6 +135,9 @@ internal static class HerdSelfTest
                         break;
                     case "spawn-opencode":
                         await RunSpawnOpenCodeAsync(window, firstTab);
+                        break;
+                    case "mcp":
+                        await RunMcpAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -557,7 +560,205 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Mute, watch and auto-advance (§12.17): a muted tab's notifications are dropped while its    /// state still shows and the mute survives in the session file; a watch fires one
+    /// The control API and <c>OverShell mcp</c> (§12.18). The routes over real HTTP against
+    /// this window's endpoint: describe by id and by label, list, type and read back, a reply
+    /// refused for a shell, open with a command and a first prompt, a bad harness, wait
+    /// (timing out, then satisfied by a report), close, and the last-tab guard. Then the verb
+    /// itself as a child process on pipes: initialize, tools/list, tools/call against this
+    /// window, found through endpoint.json.
+    /// </summary>
+    private static async Task RunMcpAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (mcp) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var endpoint = window.Endpoint;
+        if (endpoint is null)
+        {
+            Check(false, "the endpoint is running");
+            Log("=== selftest (mcp) result: FAILED ===");
+            return;
+        }
+
+        Check(endpoint.Control is not null, "the control API is on by default (endpoint.control)");
+        var info = EndpointInfo.Read(AppPaths.EndpointFile);
+        Check(info is not null && info.Url == endpoint.BaseUrl && info.Token == endpoint.Token && info.Pid == Environment.ProcessId && info.IsAlive, $"endpoint.json names this window: url, token, pid ({AppPaths.EndpointFile})");
+
+        using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(40) };
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", endpoint.Token);
+        async Task<(int Status, System.Text.Json.Nodes.JsonNode? Body)> CallAsync(string method, string path, System.Text.Json.Nodes.JsonObject? body = null)
+        {
+            using var request = new System.Net.Http.HttpRequestMessage(new System.Net.Http.HttpMethod(method), endpoint.BaseUrl + path);
+            if (body is not null)
+            {
+                request.Content = new System.Net.Http.StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json");
+            }
+
+            using var response = await http.SendAsync(request);
+            var text = await response.Content.ReadAsStringAsync();
+            System.Text.Json.Nodes.JsonNode? parsed = null;
+            try
+            {
+                parsed = text.Length > 0 ? System.Text.Json.Nodes.JsonNode.Parse(text) : null;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+            }
+
+            return ((int)response.StatusCode, parsed);
+        }
+
+        await WaitForPromptAsync(first);
+        first.UserLabel = "shell";
+
+        // ---- describe, by id and by label ----
+        var (status, body) = await CallAsync("GET", $"/v1/tabs/{first.Id}");
+        Check(status == 200 && body?["id"]?.GetValue<string>() == first.Id && body["label"]?.GetValue<string>() == "shell" && body["isAgent"]?.GetValue<bool>() == false && body["replyChannel"] is not null, $"GET /v1/tabs/{{id}} describes the tab ({status})");
+        (status, body) = await CallAsync("GET", "/v1/tabs/shell");
+        Check(status == 200 && body?["id"]?.GetValue<string>() == first.Id, "...and a unique label works as the key");
+        (status, _) = await CallAsync("GET", "/v1/tabs/no-such-tab");
+        Check(status == 404, "an unknown tab is 404");
+        (status, body) = await CallAsync("GET", "/v1/tabs");
+        var listed = (body?["tabs"] as System.Text.Json.Nodes.JsonArray)?.OfType<System.Text.Json.Nodes.JsonObject>().FirstOrDefault(t => t["id"]?.GetValue<string>() == first.Id);
+        Check(status == 200 && listed is not null && listed["cwd"] is not null, "GET /v1/tabs lists the tabs in the control's fuller form");
+
+        // ---- type, then read the screen back ----
+        (status, _) = await CallAsync("POST", "/v1/tabs/shell/input", new System.Text.Json.Nodes.JsonObject { ["text"] = "Write-Host ('mcp-' + 'typed')", ["enter"] = true });
+        Check(status == 200, "POST .../input types into the tab");
+        var seen = false;
+        for (var i = 0; i < 20 && !seen; i++)
+        {
+            await Task.Delay(400);
+            (status, body) = await CallAsync("GET", "/v1/tabs/shell/screen");
+            seen = status == 200 && (body?["rows"] as System.Text.Json.Nodes.JsonArray)?.Any(r => r?.GetValue<string>().Trim() == "mcp-typed") == true;
+        }
+
+        Check(seen, "GET .../screen reads the rows back, the typed command's output among them");
+
+        // ---- replies need an agent ----
+        (status, body) = await CallAsync("POST", "/v1/tabs/shell/reply", new System.Text.Json.Nodes.JsonObject { ["answer"] = "approve" });
+        Check(status == 409 && body?["error"] is not null, $"a reply to a shell tab is refused with 409 ({body?["error"]})");
+
+        // ---- open a tab with a command and a first prompt ----
+        (status, body) = await CallAsync("POST", "/v1/tabs", new System.Text.Json.Nodes.JsonObject { ["label"] = "spawned-api", ["command"] = "Write-Host api-launch", ["prompt"] = "hello from the api", ["activate"] = false });
+        var openedId = body?["id"]?.GetValue<string>();
+        var opened = openedId is null ? null : window.Shell.Find(openedId) as TerminalTab;
+        Check(status == 201 && opened is not null && opened.UserLabel == "spawned-api" && opened.PendingPrompt == "hello from the api", $"POST /v1/tabs opens a labelled tab holding the first prompt ({status})");
+        (status, body) = await CallAsync("POST", "/v1/tabs", new System.Text.Json.Nodes.JsonObject { ["harness"] = "no-such-harness" });
+        Check(status == 400 && (body?["error"]?.GetValue<string>() ?? string.Empty).Contains("opencode", StringComparison.Ordinal), "an unknown harness is 400 and the error names the known ones");
+
+        // ---- wait: times out, then is satisfied by a state change ----
+        var startedWait = DateTime.UtcNow;
+        (status, body) = await CallAsync("GET", "/v1/tabs/spawned-api/wait?states=Working&timeout=1");
+        Check(status == 200 && body?["timedOut"]?.GetValue<bool>() == true && DateTime.UtcNow - startedWait >= TimeSpan.FromSeconds(0.9), "GET .../wait returns timedOut when the state does not come");
+        if (opened is not null)
+        {
+            var waiting = CallAsync("GET", "/v1/tabs/spawned-api/wait?states=idle,done&timeout=20");
+            await Task.Delay(800);
+            opened.ApplyReport(new IntegrationReport(opened.Id, "selftest", 1, AgentState.Working, "selftest", "starting", null, null, null, Release: false));
+            await Task.Delay(300);
+            opened.ApplyReport(new IntegrationReport(opened.Id, "selftest", 2, AgentState.Idle, "selftest", "ready", null, null, null, Release: false));
+            (status, body) = await waiting;
+            // A background tab's finished turn is Done (unseen), which is one of the two asked for.
+            Check(status == 200 && body?["timedOut"]?.GetValue<bool>() == false && body["state"]?.GetValue<string>() is "Idle" or "Done" && body["waitedMs"]?.GetValue<long>() >= 700, $"...and returns the state once it arrives ({body?["state"]} after {body?["waitedMs"]} ms)");
+        }
+
+        // ---- the MCP verb, as a child process on pipes ----
+        var exe = Environment.ProcessPath;
+        if (exe is null)
+        {
+            Check(false, "the executable path is known");
+        }
+        else
+        {
+            var start = new System.Diagnostics.ProcessStartInfo(exe, "mcp")
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                StandardOutputEncoding = new System.Text.UTF8Encoding(false),
+                StandardInputEncoding = new System.Text.UTF8Encoding(false),
+            };
+            using var child = System.Diagnostics.Process.Start(start);
+            if (child is null)
+            {
+                Check(false, "OverShell mcp starts");
+            }
+            else
+            {
+                var errors = new System.Text.StringBuilder();
+                child.ErrorDataReceived += (_, e) => { if (e.Data is not null) errors.AppendLine(e.Data); };
+                child.BeginErrorReadLine();
+                async Task<System.Text.Json.Nodes.JsonNode?> AskAsync(string request)
+                {
+                    await child.StandardInput.WriteLineAsync(request);
+                    await child.StandardInput.FlushAsync();
+                    var read = child.StandardOutput.ReadLineAsync();
+                    var done = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(20)));
+                    if (done != read)
+                    {
+                        return null;
+                    }
+
+                    var line = await read;
+                    return line is null ? null : System.Text.Json.Nodes.JsonNode.Parse(line);
+                }
+
+                var init = await AskAsync("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\",\"capabilities\":{},\"clientInfo\":{\"name\":\"selftest\",\"version\":\"0\"}}}");
+                Check(init?["result"]?["serverInfo"]?["name"]?.GetValue<string>() == "overshell" && init["result"]?["protocolVersion"]?.GetValue<string>() == "2025-06-18", "OverShell mcp answers initialize as 'overshell'");
+                await child.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
+                var tools = await AskAsync("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
+                Check((tools?["result"]?["tools"] as System.Text.Json.Nodes.JsonArray)?.Count == 7, "tools/list names the seven tools");
+                var list = await AskAsync("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"overshell_list_tabs\",\"arguments\":{}}}");
+                var listText = list?["result"]?["content"]?[0]?["text"]?.GetValue<string>() ?? string.Empty;
+                Check(list?["result"]?["isError"] is null && listText.Contains("\"label\": \"shell\"", StringComparison.Ordinal), "tools/call overshell_list_tabs reaches this window through endpoint.json and sees the tabs");
+                var screen = await AskAsync("{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"overshell_read_screen\",\"arguments\":{\"tab\":\"shell\",\"rows\":30}}}");
+                var screenText = screen?["result"]?["content"]?[0]?["text"]?.GetValue<string>() ?? string.Empty;
+                Check(screenText.Contains("mcp-typed", StringComparison.Ordinal), "tools/call overshell_read_screen shows what the tab printed");
+                var bad = await AskAsync("{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"tools/call\",\"params\":{\"name\":\"overshell_reply\",\"arguments\":{\"tab\":\"shell\",\"answer\":\"approve\"}}}");
+                Check(bad?["result"]?["isError"]?.GetValue<bool>() == true, "a refused control call is a tool error, not a protocol error");
+
+                child.StandardInput.Close();
+                var exited = child.WaitForExit(10000);
+                Check(exited && child.ExitCode == 0, $"OverShell mcp leaves at end of input with exit code {(exited ? child.ExitCode : -1)}{(errors.Length > 0 ? $"; stderr: {errors.ToString().Trim()}" : string.Empty)}");
+                if (!exited)
+                {
+                    child.Kill();
+                }
+            }
+        }
+
+        // ---- close, and the last-tab guard ----
+        if (opened is not null)
+        {
+            (status, _) = await CallAsync("DELETE", "/v1/tabs/spawned-api");
+            await Task.Delay(300);
+            Check(status == 200 && window.Shell.Find(opened.Id) is null, "DELETE /v1/tabs/{id} closes the tab");
+        }
+
+        if (window.Tabs.Count == 1)
+        {
+            (status, body) = await CallAsync("DELETE", "/v1/tabs/shell");
+            Check(status == 409 && window.Tabs.Count == 1, $"...but never the last one ({body?["error"]})");
+        }
+        else
+        {
+            Log($"  SKIP  last-tab guard: {window.Tabs.Count} tabs open");
+        }
+
+        Log($"=== selftest (mcp) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Mute, watch and auto-advance (§12.17): a muted tab's notifications are dropped while its
+    /// state still shows and the mute survives in the session file; a watch fires one
     /// notification when a row starts matching and again only after the row leaves; with
     /// autoAdvance on, the blocked tab in front moving on jumps to the next waiting one.
     /// </summary>

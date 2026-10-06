@@ -54,6 +54,26 @@ public partial class MainWindow
         _extensions = new ExtensionHost();
         _extensions.Load(_shell, ExtensionHost.BuiltIns);
 
+        // The control API (12.18) is the extensibility surface over HTTP: it goes on only when the
+        // setting says so, and endpoint.json then tells `OverShell mcp` where the window is.
+        if (_settings.Endpoint.Control && _endpoint is { } endpoint)
+        {
+            endpoint.Control = new OverShell.Core.Integrations.ShellControl(_shell);
+            try
+            {
+                File.WriteAllText(AppPaths.EndpointFile, OverShell.Core.Integrations.EndpointInfo.Current(endpoint.BaseUrl, endpoint.Token).ToJson().ToJsonString());
+                _trace.Write($"endpoint: control API on; {AppPaths.EndpointFile} written");
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                _trace.Write($"endpoint: control API on, but endpoint.json could not be written: {e.Message}");
+            }
+        }
+        else if (_endpoint is not null)
+        {
+            _trace.Write("endpoint: control API off (endpoint.control)");
+        }
+
         // Extensions declared their default keys during Initialize; the map is rebuilt with them beneath the user's file.
         LoadKeybindings();
         Closed += (_, _) =>
@@ -61,6 +81,22 @@ public partial class MainWindow
             _extensions.Dispose();
             _shell.DisposeHotKeys();
         };
+    }
+
+    /// <summary>Removes endpoint.json at exit - only when it is this run's, so a second window's file is left alone.</summary>
+    private void ForgetEndpointFile()
+    {
+        try
+        {
+            if (OverShell.Core.Integrations.EndpointInfo.Read(AppPaths.EndpointFile) is { } info && info.Pid == Environment.ProcessId)
+            {
+                File.Delete(AppPaths.EndpointFile);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _trace.Write($"endpoint: endpoint.json not removed: {e.Message}");
+        }
     }
 
     /// <summary>Opens a tab the way an extension asks for one: profile by name, directory, label, group, a command typed at the prompt.</summary>

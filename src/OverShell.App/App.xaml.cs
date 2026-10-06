@@ -28,6 +28,7 @@ public partial class App : Application
     private static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
 
     private const uint AttachParentProcess = unchecked((uint)-1);
+    private const int StdInputHandle = -10;
     private const int StdOutputHandle = -11;
     private const uint FileTypeChar = 0x0002;
 
@@ -55,6 +56,9 @@ public partial class App : Application
                 return;
             case "version" or "--version" or "-v":
                 Shutdown(RunVersionCli());
+                return;
+            case "mcp":
+                Shutdown(RunMcpCli());
                 return;
             case "help" or "--help" or "-h" or "-?" or "/?":
                 Shutdown(RunHelpCli());
@@ -379,17 +383,48 @@ public partial class App : Application
         };
     }
 
+    private static string InformationalVersion
+    {
+        get
+        {
+            var assembly = typeof(App).Assembly;
+            return assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion
+                ?? assembly.GetName().Version?.ToString() ?? "?";
+        }
+    }
+
     private static int RunVersionCli()
     {
         var out_ = OpenCliOutput();
-        var assembly = typeof(App).Assembly;
-        var informational = assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
-            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion
-            ?? assembly.GetName().Version?.ToString() ?? "?";
-        out_.WriteLine($"OverShell {informational}");
+        out_.WriteLine($"OverShell {InformationalVersion}");
         out_.WriteLine(Environment.ProcessPath);
         out_.Flush();
         return 0;
+    }
+
+    /// <summary>
+    /// <c>OverShell mcp</c> (§12.18): an MCP server over this process's stdin/stdout, for an MCP
+    /// host that spawned it with pipes. Every tool call goes to the running window through
+    /// endpoint.json. Run from a console by hand - no pipes - it explains itself and leaves.
+    /// </summary>
+    private static int RunMcpCli()
+    {
+        var stdin = GetStdHandle(StdInputHandle);
+        if (stdin == 0 || stdin == -1 || GetFileType(stdin) == FileTypeChar)
+        {
+            var out_ = OpenCliOutput();
+            out_.WriteLine("OverShell mcp speaks the Model Context Protocol over stdin/stdout; it is started by an MCP host, not by hand.");
+            out_.WriteLine("Add to the host's MCP servers, e.g. { \"overshell\": { \"command\": \"" + (Environment.ProcessPath ?? "OverShell.exe").Replace("\\", "\\\\") + "\", \"args\": [\"mcp\"] } }");
+            out_.WriteLine("The window must be running (it writes " + Core.AppPaths.EndpointFile + "); tools: overshell_list_tabs, overshell_read_screen, overshell_send, overshell_reply, overshell_spawn, overshell_wait, overshell_close.");
+            out_.Flush();
+            return 2;
+        }
+
+        var server = McpServer.OverHttp(() => EndpointInfo.Read(Core.AppPaths.EndpointFile), InformationalVersion);
+        using var input = Console.OpenStandardInput();
+        using var output = Console.OpenStandardOutput();
+        return server.RunAsync(input, output, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     private static int RunHelpCli()
@@ -407,6 +442,7 @@ public partial class App : Application
         out_.WriteLine("  OverShell integrations uninstall <opencode|copilot|claude|codex|shell|all>");
         out_.WriteLine("  OverShell integrations show      <claude|codex>");
         out_.WriteLine("  OverShell protocol status|register|unregister");
+        out_.WriteLine("  OverShell mcp                               MCP server over stdio for an agent host; tools act on the running window");
         out_.WriteLine("  OverShell version");
         out_.WriteLine();
         out_.WriteLine("  Guide: https://github.com/MoaidHathot/OverShell/blob/main/docs/GUIDE.md");

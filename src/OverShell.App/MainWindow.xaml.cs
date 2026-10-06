@@ -1106,6 +1106,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _explain?.Close();
         _notifications?.Dispose();
         _endpoint?.Dispose();
+        ForgetEndpointFile();
 
         // Two passes on purpose: WPF unloads every HwndHost during shutdown and each one
         // generates focus traffic, so all tabs must stop accepting input before any of
