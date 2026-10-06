@@ -67,6 +67,8 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public AppSettings Settings => _window.CurrentSettings;
 
+    public IReadOnlyCollection<AgentRuleSet> AgentRules => _window.Rules.All;
+
     public T ExtensionSettings<T>(string extensionId) where T : class, new()
     {
         var bound = Settings.ExtensionSettings<T>(extensionId, out var problem);

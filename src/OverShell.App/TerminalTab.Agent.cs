@@ -156,6 +156,26 @@ public sealed partial class TerminalTab
         _resumeScheduledAt = DateTimeOffset.Now;
     }
 
+    private string? _pendingPrompt;
+    private DateTimeOffset _promptScheduledAt;
+
+    /// <summary>
+    /// A first prompt for an agent that is starting in this tab (12.18): delivered once the
+    /// agent is detected and idle - not on output silence, which is the shell's prompt, not
+    /// the agent's - through the integration when it listens, else pasted. Gives up after
+    /// 90 s and says so.
+    /// </summary>
+    public void ScheduleFirstPrompt(string text)
+    {
+        _pendingPrompt = text;
+        _promptScheduledAt = DateTimeOffset.Now;
+    }
+
+    /// <summary>The prompt waiting to be delivered, for diagnostics; null when none, delivered or abandoned.</summary>
+    public string? PendingPrompt => _pendingPrompt;
+
+    /// <summary>True once a scheduled first prompt went out (as opposed to being given up on).</summary>
+    public bool FirstPromptDelivered { get; private set; }
     /// <summary>
     /// What the saved session knew about this tab's agent, carried over so a restart
     /// before the integration speaks again does not lose the way back (`tab.resume`, the
@@ -416,6 +436,9 @@ public sealed partial class TerminalTab
     /// <summary>Raised on the UI thread after every state transition.</summary>
     public event Action<TerminalTab, AgentTransition>? StateChanged;
 
+    /// <summary>A scheduled first prompt was given up on (12.18); the window tells the user.</summary>
+    public event Action<TerminalTab>? FirstPromptAbandoned;
+
     public TabSummary Summarize() => new(Id, Label, Harness, State.ToString(), Project, Agent.Explain);
 
     // ------------------------------------------------------------ ITab (12.16)
@@ -614,9 +637,44 @@ public sealed partial class TerminalTab
             }
         }
 
-        if (!_snapshotBusy && version != _snapshotVersion)
+        if (_pendingPrompt is { } prompt && _pendingResume is null)
         {
-            var sinceOutput = now - new DateTimeOffset(Volatile.Read(ref _lastOutputTicks), TimeSpan.Zero);
+            // Ready for a prompt: the agent is detected and not busy. Done says so outright. Idle
+            // does too - unless the harness's rules know what idle looks like (opencode's composer,
+            // copilot's "? for shortcuts"), in which case only that evidence or the integration's
+            // report counts, not "quiet for a while": a TUI's boot has quiet gaps between its
+            // splash and its composer (measured: 2 s or more at +2.5 s, composer at +8 s), and a
+            // prompt appended into the gap is dropped - the plugin polls from the moment the
+            // server loads, so "the integration is listening" is no readiness signal either. The
+            // marker is looked for on the whole screen, not the rules' bottom rows: OpenCode's
+            // home screen centres its composer, 35 rows up on a tall terminal. A harness with no
+            // idle rules says nothing while it waits for input (Unknown): there, two quiet
+            // seconds of its own output is the best there is. Never into a Working or Blocked agent.
+            var waited = now - _promptScheduledAt;
+            var promptLastOutput = Volatile.Read(ref _lastOutputTicks);
+            var quietFor = promptLastOutput == 0 ? TimeSpan.Zero : now - new DateTimeOffset(promptLastOutput, TimeSpan.Zero);
+            var knowsIdle = Agent.Rules.KnowsIdle;
+            var markerOnScreen = knowsIdle && Agent.Rules.Screen.MatchingLine(ScreenRows, AgentState.Idle) is not null;
+            var settled = State == AgentState.Done
+                          || (State == AgentState.Idle && (!knowsIdle || Agent.ExplicitIdle || markerOnScreen))
+                          || (State == AgentState.Unknown && (knowsIdle ? markerOnScreen : quietFor >= TimeSpan.FromSeconds(2)));
+            if (IsAgent && IsRunning && settled && waited >= TimeSpan.FromSeconds(1))
+            {
+                _pendingPrompt = null;
+                FirstPromptDelivered = true;
+                Reply(prompt);
+                _agents.Trace.Write($"[{Id}] first prompt delivered after {waited.TotalSeconds:F1}s via {(IntegrationListening ? "integration" : "paste")} (state {State})");
+            }
+            else if (waited > TimeSpan.FromSeconds(90) || (HasStarted && !IsRunning))
+            {
+                _pendingPrompt = null;
+                _agents.Trace.Write($"[{Id}] first prompt abandoned: the agent did not become idle in time");
+                FirstPromptAbandoned?.Invoke(this);
+            }
+        }
+
+        if (!_snapshotBusy && version != _snapshotVersion)
+        {            var sinceOutput = now - new DateTimeOffset(Volatile.Read(ref _lastOutputTicks), TimeSpan.Zero);
             var sinceSnapshot = now - _lastSnapshotAt;
 
             // Agents: wait for output to settle, so a prompt is read whole. Watched screens

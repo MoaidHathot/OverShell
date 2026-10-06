@@ -111,6 +111,11 @@ public partial class MainWindow
                 tab.ScheduleResume(command);
             }
 
+            if (!string.IsNullOrWhiteSpace(entry.Prompt))
+            {
+                tab.ScheduleFirstPrompt(entry.Prompt.Trim());
+            }
+
             tab.RestoreNote = $"from workspace '{workspace.Name}'{(plan is null ? string.Empty : $" · {plan.Mode.ToString().ToLowerInvariant()} `{plan.Command}`")}";
             if (entry.Detached && Tabs.Count > 1)
             {

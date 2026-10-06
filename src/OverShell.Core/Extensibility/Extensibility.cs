@@ -61,6 +61,9 @@ public interface IShell
 
     AppSettings Settings { get; }
 
+    /// <summary>The agent rule sets in force (bundled plus the user's), for a harness picker.</summary>
+    IReadOnlyCollection<AgentRuleSet> AgentRules { get; }
+
     /// <summary>
     /// This extension's section of settings.jsonc - <c>"extensions": { "&lt;id&gt;": { ... } }</c> -
     /// bound to <typeparamref name="T"/>; a fresh <typeparamref name="T"/> when absent or broken.
@@ -185,7 +188,9 @@ public interface ITab : INotifyPropertyChanged
     /// through the integration when it listens, else typed with Enter. Always possible.
     /// </summary>
     void Reply(string text);
-    /// <summary>
+
+    /// <summary>A prompt delivered once the agent in this tab is detected and idle (§12.18); through the integration when it listens, else pasted.</summary>
+    void ScheduleFirstPrompt(string text);    /// <summary>
     /// Per-tab extension state, saved with the session and restored with the tab - a mute
     /// flag, a watch pattern. Keys are the extension's own; keep them prefixed by its id.
     /// </summary>
@@ -252,13 +257,15 @@ public enum ReplyChannel
 /// <param name="Group">A group to join.</param>
 /// <param name="Command">A command typed once the shell shows its prompt.</param>
 /// <param name="Activate">Whether the new tab becomes active.</param>
+/// <param name="Prompt">A first prompt for the agent the command starts, delivered once it is idle (§12.18).</param>
 public sealed record TabRequest(
     string? Profile = null,
     string? WorkingDirectory = null,
     string? Label = null,
     string? Group = null,
     string? Command = null,
-    bool Activate = true);
+    bool Activate = true,
+    string? Prompt = null);
 
 /// <summary>A row in a picker.</summary>
 public sealed record PickItem(

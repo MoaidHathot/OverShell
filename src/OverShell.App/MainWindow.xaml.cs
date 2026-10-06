@@ -202,6 +202,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         };
         tab.AttentionRequested += OnAttention;
+        tab.FirstPromptAbandoned += t => ShowStatusMessage($"{t.Label}: the first prompt was not delivered - the agent never became idle");
         tab.AttentionRequested += (t, a) => _shell?.RaiseAttention(t, a);
         tab.StateChanged += (t, transition) =>
         {

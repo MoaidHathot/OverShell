@@ -23,6 +23,9 @@ public sealed class WorkspaceTab
 
     /// <summary>Open in a tear-off window of its own.</summary>
     public bool Detached { get; init; }
+
+    /// <summary>A first prompt for the agent <see cref="Command"/> starts, delivered once it is idle (§12.18).</summary>
+    public string? Prompt { get; init; }
 }
 
 /// <summary>

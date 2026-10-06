@@ -4,6 +4,7 @@ using System.Windows.Input;
 using OverShell.App.Extensibility;
 using OverShell.Config;
 using OverShell.Core;
+using OverShell.Core.Agents;
 using OverShell.Core.Extensibility;
 using OverShell.Core.Input;
 using OverShell.Core.Settings;
@@ -30,6 +31,8 @@ public partial class MainWindow
     internal Diagnostics.TraceLog Trace => _trace;
 
     internal KeybindingMap Keybindings => _keybindings;
+
+    internal AgentRules Rules => _rules;
 
     /// <summary>The slot under the terminal where bars live: find, prompt, and extensions' own.</summary>
     internal StackPanel Bars => BarsHost;
@@ -97,6 +100,11 @@ public partial class MainWindow
         if (!string.IsNullOrWhiteSpace(request.Command))
         {
             tab.ScheduleResume(request.Command.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Prompt))
+        {
+            tab.ScheduleFirstPrompt(request.Prompt.Trim());
         }
 
         return tab;

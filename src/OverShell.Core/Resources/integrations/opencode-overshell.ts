@@ -1,4 +1,4 @@
-// OverShell integration v1 — written by `OverShell integrations install opencode`.
+// OverShell integration v2 — written by `OverShell integrations install opencode`.
 // Safe to delete. Reports this OpenCode session's state to the OverShell tab that launched
 // it, over loopback, so the tab strip, sidebar and notifications know exactly when the
 // agent is working, waiting for input, blocked on a permission or question, or failed - and,
@@ -64,55 +64,68 @@ export const OverShellPlugin: Plugin = async ({ directory, client }) => {
 
   const anyClient = client as unknown as Record<string, any>
 
-  const replyPermission = async (requestID: string, sessionID: string, response: string) => {
-    // The typed helper exists from v1.17 (POST /permission/{requestID}/reply); older servers
-    // have the per-session route. Try the new one, fall back to the old.
-    try {
-      if (anyClient.permission?.reply) {
-        await anyClient.permission.reply({ requestID, reply: response, directory })
+  // The SDK's call shape changed between versions: the current client takes the arguments
+  // flat ({ text, directory }), the older one nested ({ body: { text } }). A result object with
+  // an error, or a thrown error, both mean "did not land".
+  const call = async (fn: ((args: unknown) => Promise<unknown>) | undefined, ...shapes: unknown[]) => {
+    if (!fn) return false
+    for (const shape of shapes) {
+      try {
+        const result = (await fn(shape)) as { error?: unknown; response?: { ok?: boolean } } | undefined
+        if (result && result.error) continue
+        if (result && result.response && result.response.ok === false) continue
         return true
+      } catch {
+        // next shape
       }
-    } catch {
-      // fall through
-    }
-    try {
-      await anyClient.postSessionIdPermissionsPermissionId({ path: { id: sessionID, permissionID: requestID }, body: { response } })
-      return true
-    } catch {
-      return false
-    }
-  }
-
-  const replyQuestion = async (requestID: string, answers: string[]) => {
-    try {
-      if (anyClient.question?.reply) {
-        await anyClient.question.reply({ requestID, answers, directory })
-        return true
-      }
-    } catch {
-      // fall through
     }
     return false
   }
 
+  // Failures are logged through OpenCode's own log, so a shape mismatch shows up in its logs
+  // instead of vanishing (the first version of this swallowed a 400 and the prompt never landed).
+  const warn = async (message: string, extra?: Record<string, unknown>) => {
+    const app = anyClient.app
+    const entry = { service: "overshell", level: "warn", message, extra }
+    await call(app?.log?.bind(app), { ...entry, directory }, { body: entry, query: { directory } })
+  }
+
+  const replyPermission = async (requestID: string, sessionID: string, response: string) => {
+    // POST /permission/{requestID}/reply on current servers (flat or nested shape); the
+    // per-session route on older ones.
+    const permission = anyClient.permission
+    if (await call(permission?.reply?.bind(permission), { requestID, reply: response, directory }, { path: { requestID }, body: { reply: response }, query: { directory } })) return true
+    if (await call(anyClient.postSessionIdPermissionsPermissionId?.bind(anyClient), { path: { id: sessionID, permissionID: requestID }, body: { response } }, { id: sessionID, permissionID: requestID, response, directory })) return true
+    await warn("permission reply did not land", { requestID, response })
+    return false
+  }
+
+  const replyQuestion = async (requestID: string, answers: string[]) => {
+    const question = anyClient.question
+    if (await call(question?.reply?.bind(question), { requestID, answers, directory }, { path: { requestID }, body: { answers }, query: { directory } })) return true
+    await warn("question reply did not land", { requestID })
+    return false
+  }
+
   const sendPrompt = async (text: string) => {
-    // Through the TUI's composer, so it shows up as if typed; a headless run has no TUI and
-    // takes the session prompt instead.
-    try {
-      await anyClient.tui.appendPrompt({ body: { text } })
-      await anyClient.tui.submitPrompt()
-      return true
-    } catch {
-      // fall through
+    // Through the TUI's composer, so it shows up as if typed. Both calls are bus events the TUI
+    // picks up over its event stream: they land only once the TUI has drawn its composer, which
+    // is why OverShell waits for the screen to settle before sending a first prompt. The short
+    // gap lets the TUI finish inserting before the submit command reads the composer.
+    const tui = anyClient.tui
+    const appended = await call(tui?.appendPrompt?.bind(tui), { text, directory }, { body: { text }, query: { directory } }, { body: { text } })
+    if (appended) {
+      await new Promise((r) => setTimeout(r, 150))
+      const submitted = await call(tui?.submitPrompt?.bind(tui), { directory }, { query: { directory } }, {})
+      if (submitted) return true
+      await warn("tui.submitPrompt did not land after appendPrompt")
     }
-    try {
-      if (sessionId) {
-        await anyClient.session.promptAsync({ path: { id: sessionId }, body: { parts: [{ type: "text", text }] } })
-        return true
-      }
-    } catch {
-      // fall through
+    // A headless run has no TUI: the session prompt instead.
+    if (sessionId) {
+      const session = anyClient.session
+      if (await call(session?.promptAsync?.bind(session), { path: { id: sessionId }, body: { parts: [{ type: "text", text }] } }, { id: sessionId, parts: [{ type: "text", text }], directory })) return true
     }
+    await warn("prompt could not be delivered", { appended, sessionId })
     return false
   }
 
@@ -172,7 +185,8 @@ export const OverShellPlugin: Plugin = async ({ directory, client }) => {
   void poll()
 
   return {
-    event: async ({ event }) => {      const type = event.type as string
+    event: async ({ event }) => {
+      const type = event.type as string
       const props = (event.properties ?? {}) as Record<string, unknown>
 
       switch (type) {
@@ -241,7 +255,8 @@ export const OverShellPlugin: Plugin = async ({ directory, client }) => {
         case "question.rejected":
           openQuestion = undefined
           report("working", { message: "question answered" })
-          return      }
+          return
+      }
     },
   }
 }

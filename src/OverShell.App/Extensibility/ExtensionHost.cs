@@ -21,6 +21,7 @@ internal sealed class ExtensionHost : IDisposable
         () => new Extensions.KeyNavExtension(),
         () => new Extensions.InboxExtension(),
         () => new Extensions.TriageExtension(),
+        () => new Extensions.SpawnExtension(),
     ];
 
     public IReadOnlyList<IExtension> Loaded => _loaded;

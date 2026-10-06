@@ -340,4 +340,66 @@ public class AgentStateMachineTests
         m.OnScreen(["some output", "✻ Thinking… (12s · ↓ 1.2k tokens)", "  Esc to interrupt"], At(0));
         Assert.Equal("Thinking… (12s · ↓ 1.2k tokens)", m.Summary);
     }
+    [Fact]
+    public void Idle_from_quiet_output_is_not_explicit_but_a_composer_on_screen_or_a_report_is()
+    {
+        // The OpenCode TUI's boot: a splash, a quiet gap, then the composer. A first prompt
+        // must wait for the composer (12.18), so the two idles have to be told apart.
+        var m = new AgentStateMachine(Rules.Find("opencode")!, isAgent: true);
+        m.SetViewed(true, T0);
+        Assert.True(m.Rules.KnowsIdle);
+        Assert.False(Rules.Generic.KnowsIdle);
+
+        m.OnOutput(At(0));
+        m.OnScreen(["", "  opencode", "  loading..."], At(2.5));
+        Assert.Equal(AgentState.Idle, m.State);
+        Assert.False(m.ExplicitIdle);
+
+        m.OnOutput(At(5));
+        m.OnScreen(["", "  Ask anything...", "", "  tab agents  ctrl+p commands", "  ~  3 MCP /status"], At(5.1));
+        Assert.Equal(AgentState.Idle, m.State);
+        Assert.True(m.ExplicitIdle);
+
+        var reported = new AgentStateMachine(Rules.Find("opencode")!, isAgent: true);
+        reported.SetViewed(true, T0);
+        reported.OnReport("opencode", 1, AgentState.Idle, "session started", null, null, At(0));
+        Assert.True(reported.ExplicitIdle);
+    }
+    [Fact]
+    public void The_heartbeat_turns_a_quiet_unknown_agent_idle()
+    {
+        // A TUI that drew its home screen and stopped: no further output, no further snapshot.
+        var m = new AgentStateMachine(Rules.Find("opencode")!, isAgent: true);
+        m.SetViewed(true, T0);
+        m.OnOutput(At(0));
+        Assert.Equal(AgentState.Unknown, m.State);
+        m.Tick(At(1));
+        Assert.Equal(AgentState.Unknown, m.State);
+        m.Tick(At(2));
+        Assert.Equal(AgentState.Idle, m.State);
+        Assert.False(m.ExplicitIdle);
+    }
+    [Fact]
+    public void An_integrations_first_idle_after_a_guessed_working_is_not_done()
+    {
+        // A spawned OpenCode tab in the background: its render burst reads as Working to the
+        // detector; 0.3 s later the plugin's first report says "idle: session started". No turn
+        // happened yet, so no Done and no attention - the turn that follows will say so itself.
+        var m = new AgentStateMachine(Rules.Find("opencode")!, isAgent: true);
+        m.SetViewed(false, T0);
+        var attention = new List<AgentAttention>();
+        m.AttentionRequested += attention.Add;
+        Stream(m, 0, 1.5);
+        Assert.Equal(AgentState.Working, m.State);
+
+        m.OnReport("opencode", 1, AgentState.Idle, "session started", null, "ses_1", At(1.8));
+        Assert.Equal(AgentState.Idle, m.State);
+        Assert.Empty(attention);
+
+        // The integration's own Working -> Idle, however short, is a turn.
+        m.OnReport("opencode", 2, AgentState.Working, null, null, null, At(2));
+        m.OnReport("opencode", 3, AgentState.Idle, "turn finished", null, null, At(2.5));
+        Assert.Equal(AgentState.Done, m.State);
+        Assert.Single(attention);
+    }
 }

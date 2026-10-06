@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using OverShell.Core;
 using OverShell.Core.Agents;
 using OverShell.Core.Extensibility;
+using OverShell.Core.Git;
 using OverShell.Core.Input;
 using OverShell.Core.Integrations;
 using OverShell.Core.Search;
@@ -24,7 +25,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -128,6 +129,12 @@ internal static class HerdSelfTest
                         break;
                     case "triage":
                         await RunTriageAsync(window, firstTab);
+                        break;
+                    case "spawn":
+                        await RunSpawnAsync(window, firstTab);
+                        break;
+                    case "spawn-opencode":
+                        await RunSpawnOpenCodeAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -349,8 +356,208 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// Mute, watch and auto-advance (§12.17): a muted tab's notifications are dropped while its
-    /// state still shows and the mute survives in the session file; a watch fires one
+    /// Spawning (§12.18): a tab opened through the API with a command and a first prompt - the
+    /// command typed at the shell's prompt, the prompt held until the agent is idle and then
+    /// delivered (pasted here, since the fake agent has no integration); a worktree made on a
+    /// new branch beside a temporary repository with the plan's path and branch; a prompt
+    /// abandoned when no agent ever appears, with a status note.
+    /// </summary>
+    private static async Task RunSpawnAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (spawn) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var spawn = window.Extensions.Loaded.OfType<Extensions.SpawnExtension>().FirstOrDefault();
+        Check(spawn is not null && window.Commands.Find("agent.new") is not null && window.Commands.Find("agent.newWorktree") is not null, "the spawn extension loaded with agent.new / agent.newWorktree");
+
+        // ---- a tab with a command and a first prompt ----
+        var tab = (TerminalTab?)window.Shell.OpenTab(new TabRequest(Label: "spawned", Command: "Write-Host spawn-launch-ran", Prompt: "the first prompt", Activate: false));
+        Check(tab is not null && tab.UserLabel == "spawned" && tab.PendingPrompt == "the first prompt", "OpenTab with Command and Prompt opens a labelled tab holding the prompt");
+        if (tab is null)
+        {
+            Log("=== selftest (spawn) result: FAILED ===");
+            return;
+        }
+
+        await WaitForPromptAsync(tab);
+        var ran = false;
+        for (var i = 0; i < 20 && !ran; i++)
+        {
+            await Task.Delay(400);
+            tab.RequestScreen();
+            await Task.Delay(100);
+            ran = tab.ScreenRows.Any(r => r.Trim() == "spawn-launch-ran");
+        }
+
+        Check(ran, "the launch command was typed once the shell was at its prompt");
+        Check(tab.PendingPrompt is not null, "...the first prompt waits: the shell's prompt is not the agent's idle");
+
+        // The agent appears and goes idle: the prompt is delivered (pasted, no integration here).
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 1, AgentState.Working, "selftest", "starting", null, null, null, Release: false));
+        await Task.Delay(1500);
+        Check(tab.PendingPrompt is not null, "...not while the agent is working");
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 2, AgentState.Idle, "selftest", "ready", null, null, null, Release: false));
+        var delivered = false;
+        for (var i = 0; i < 20 && !delivered; i++)
+        {
+            await Task.Delay(400);
+            delivered = tab.FirstPromptDelivered;
+        }
+
+        Check(delivered, "once the agent is idle the prompt is delivered");
+        await Task.Delay(1200);
+        tab.RequestScreen();
+        await Task.Delay(300);
+        Check(tab.ScreenRows.Any(r => r.Contains("the first prompt", StringComparison.Ordinal)), "...pasted into the tab (read back from the screen)");
+
+        // ---- a worktree beside a temporary repository ----
+        var repo = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"overshell-spawn-{Guid.NewGuid():N}", "repo");
+        System.IO.Directory.CreateDirectory(repo);
+        var (initOk, initOut) = await Extensions.SpawnExtension.RunGitAsync(repo, ["init", "-q", "-b", "main"]);
+        if (initOk)
+        {
+            System.IO.File.WriteAllText(System.IO.Path.Combine(repo, "README.md"), "spawn test\n");
+            await Extensions.SpawnExtension.RunGitAsync(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
+            var (commitOk, commitOut) = await Extensions.SpawnExtension.RunGitAsync(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"]);
+            Check(commitOk, $"a temporary repository exists ({commitOut.Trim()})");
+
+            var (path, branch) = WorktreePlan.For(repo, "agent/one", System.IO.Directory.Exists);
+            var (addOk, addOut) = await Extensions.SpawnExtension.RunGitAsync(repo, WorktreePlan.AddArguments(path, branch));
+            Log($"  worktree: {path} branch={branch} ok={addOk} {addOut.Trim().Replace("\n", " | ")}");
+            Check(addOk && System.IO.Directory.Exists(path) && path.EndsWith("repo-agent-one", StringComparison.Ordinal), "git worktree add puts the worktree beside the repository on the planned branch");
+            var (branchOk, branchOut) = await Extensions.SpawnExtension.RunGitAsync(path, ["rev-parse", "--abbrev-ref", "HEAD"]);
+            Check(branchOk && branchOut.Trim() == "agent/one", $"...checked out on '{branchOut.Trim()}'");
+            var (second, _) = WorktreePlan.For(repo, "agent/one", System.IO.Directory.Exists);
+            Check(second.EndsWith("repo-agent-one-2", StringComparison.Ordinal), "a second worktree for the same branch name gets a numbered folder");
+
+            await Extensions.SpawnExtension.RunGitAsync(repo, ["worktree", "remove", "--force", path]);
+        }
+        else
+        {
+            Log($"  SKIP  worktree checks: git init failed ({initOut.Trim()})");
+        }
+
+        try
+        {
+            // git's object files are read-only; clear that before deleting.
+            foreach (var file in System.IO.Directory.EnumerateFiles(System.IO.Path.GetDirectoryName(repo)!, "*", System.IO.SearchOption.AllDirectories))
+            {
+                System.IO.File.SetAttributes(file, System.IO.FileAttributes.Normal);
+            }
+
+            System.IO.Directory.Delete(System.IO.Path.GetDirectoryName(repo)!, recursive: true);
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+        {
+            Log($"  (temp repo not fully removed: {e.Message})");
+        }
+
+        // ---- a prompt with no agent is given up on ----
+        var lonely = (TerminalTab?)window.Shell.OpenTab(new TabRequest(Label: "lonely", Prompt: "nobody home", Activate: false));
+        Check(lonely is not null && lonely.PendingPrompt == "nobody home", "a prompt for a tab that starts no agent waits");
+        window.CloseTab(tab);
+        if (lonely is not null)
+        {
+            window.CloseTab(lonely);
+        }
+
+        Log($"=== selftest (spawn) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Spawning against the real OpenCode (§12.18): a tab with `opencode` as the command and a
+    /// first prompt; the prompt is delivered once the TUI's composer is on screen (the rule
+    /// file's idle marker - not quiet output, which its boot has too) through the integration's
+    /// queue, since the plugin long-polls; the plugin reports the session and the turn finishes.
+    /// </summary>
+    private static async Task RunSpawnOpenCodeAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (spawn-opencode) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var started = Stopwatch.GetTimestamp();
+        var tab = (TerminalTab?)window.Shell.OpenTab(new TabRequest(Label: "oc", Command: "opencode", Prompt: "Reply with exactly the word spawned and nothing else.", Activate: false));
+        Check(tab is not null, "a tab with opencode as the command and a first prompt");
+        if (tab is null)
+        {
+            Log("=== selftest (spawn-opencode) result: FAILED ===");
+            return;
+        }
+
+        var transitions = new List<string>();
+        tab.StateChanged += (_, t) => transitions.Add($"+{Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s {t.From}->{t.To} ({t.Reason})");
+        var deadline = DateTime.UtcNow.AddSeconds(75);
+        string? deliveredAt = null;
+        var explicitAtDelivery = false;
+        var sawWorkingAfterPrompt = false;
+        var finished = false;
+        var screenLogged = false;
+        while (DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(500);
+            if (!screenLogged && Stopwatch.GetElapsedTime(started) > TimeSpan.FromSeconds(15))
+            {
+                screenLogged = true;
+                tab.RequestScreen();
+                await Task.Delay(400);
+                Log($"  screen 15s after start ({tab.ScreenRows.Count} rows, state {tab.State}, {tab.Agent.Explain}): {string.Join(" ? ", tab.ScreenRows.Where(r => r.Trim().Length > 0).TakeLast(8).Select(r => r.Trim()))}");
+            }
+
+            if (deliveredAt is null && tab.FirstPromptDelivered)
+            {
+                deliveredAt = $"+{Stopwatch.GetElapsedTime(started).TotalSeconds:F1}s";
+                // Read right after delivery: the state the heartbeat acted on (the plugin's own
+                // report follows within a second or two and would mask a quiet-based idle).
+                explicitAtDelivery = tab.Agent.ExplicitIdle || tab.State == AgentState.Working || tab.Agent.Rules.Screen.MatchingLine(tab.ScreenRows, AgentState.Idle) is not null;
+            }
+
+            if (tab.PendingPrompt is null && !tab.FirstPromptDelivered)
+            {
+                Log("  the prompt was abandoned");
+                break;
+            }
+
+            if (deliveredAt is not null && tab.State == AgentState.Working)
+            {
+                sawWorkingAfterPrompt = true;
+            }
+
+            if (sawWorkingAfterPrompt && tab.State is AgentState.Done or AgentState.Idle)
+            {
+                finished = true;
+                break;
+            }
+        }
+
+        Log($"  delivered at {deliveredAt ?? "never"}; listening={tab.IntegrationListening}; transitions: {string.Join(" | ", transitions)}");
+        Check(deliveredAt is not null && explicitAtDelivery, "the first prompt was delivered once the OpenCode TUI showed its composer (the rule file's idle marker, not quiet output)");
+        Check(!transitions.Any(t => t.Contains("->Done (opencode reported Idle: session started)", StringComparison.Ordinal)), "...with no Done flash when the plugin's first report ended a guessed Working");
+        Check(sawWorkingAfterPrompt, "...OpenCode went to work on it");
+        Check(finished, "...and the turn finished");
+        tab.RequestScreen();
+        await Task.Delay(400);
+        Log($"  screen tail: {string.Join(" ? ", tab.ScreenRows.TakeLast(6))}");
+
+        tab.SendText("\u0003");
+        await Task.Delay(500);
+        tab.SendText("/exit\r");
+        await Task.Delay(1500);
+        window.CloseTab(tab);
+        Log($"=== selftest (spawn-opencode) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Mute, watch and auto-advance (§12.17): a muted tab's notifications are dropped while its    /// state still shows and the mute survives in the session file; a watch fires one
     /// notification when a row starts matching and again only after the row leaves; with
     /// autoAdvance on, the blocked tab in front moving on jumps to the next waiting one.
     /// </summary>
@@ -411,7 +618,9 @@ internal static class HerdSelfTest
         Check(triage.SetWatch(other, "BUILD-\\d+-OK"), "a watch pattern is accepted");
         Check(!triage.SetWatch(first, "("), "...and a bad one refused");
         var watchBefore = toasts?.Toasts.Count ?? 0;
-        other.SendText("Write-Host BUILD-42-OK\r");
+        // Built from pieces so the echoed command line does not match too: a snapshot landing
+        // between the echo and the output would otherwise count two different hits.
+        other.SendText("Write-Host ('BUILD-' + '42-OK')\r");
         var fired = false;
         for (var i = 0; i < 20 && !fired; i++)
         {

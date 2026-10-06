@@ -31,7 +31,10 @@
       "OpenCode is asking"
     ],
     "working": ["\\besc\\b[^\\n]{0,12}\\binterrupt\\b", "\\bworking\\b", "\\bThinking\\b"],
-    "idle": []
+    // The composer waiting for input: its placeholder, or the hint row under it. Besides naming
+    // idle, these tell a spawned tab's first prompt when the TUI is up - its boot is quiet in
+    // places too, and a prompt sent before the composer exists is dropped.
+    "idle": ["Ask anything", "ctrl\\+p commands"]
   },
   "notification": {
     "blocked": ["approval", "permission", "question"],

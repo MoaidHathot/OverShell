@@ -69,6 +69,17 @@ public sealed class AgentStateMachine
     /// <summary>True while a Done/Blocked/Error has not been looked at.</summary>
     public bool Unread { get; private set; }
 
+    /// <summary>
+    /// Whether the current Idle rests on evidence - an integration's report, or a title, screen
+    /// or progress rule that names idle - rather than on output having gone quiet. A first prompt
+    /// (12.18) for a harness whose rules know what idle looks like waits for this: a TUI's boot
+    /// has quiet gaps too, and a prompt sent into one is lost.
+    /// </summary>
+    public bool ExplicitIdle =>
+        State == AgentState.Idle &&
+        (Authority == AgentAuthority.Integration ||
+         _fromTitle?.State == AgentState.Idle || _fromScreen?.State == AgentState.Idle || _fromProgress?.State == AgentState.Idle);
+
     public DateTimeOffset? AttentionSince { get; private set; }
 
     public bool NeedsAttention => State is AgentState.Blocked or AgentState.Error || (State == AgentState.Done && Unread);
@@ -375,10 +386,14 @@ public sealed class AgentStateMachine
         AttentionRequested?.Invoke(new AgentAttention(AgentState.Exited, Explain, null, now));
     }
 
-    /// <summary>The heartbeat: lets the quiet timer turn Working into Idle without new output.</summary>
+    /// <summary>
+    /// The heartbeat: lets the quiet timer turn Working into Idle without new output - and
+    /// Unknown too, for a TUI that drew its screen and then said nothing (OpenCode's home screen
+    /// before a session: without this it read Unknown until the next output, 68 s in one run).
+    /// </summary>
     public void Tick(DateTimeOffset now)
     {
-        if (_isAgent && Authority == AgentAuthority.Detector && State == AgentState.Working)
+        if (_isAgent && Authority == AgentAuthority.Detector && State is AgentState.Working or AgentState.Unknown)
         {
             Evaluate(now, "tick");
         }
@@ -404,6 +419,9 @@ public sealed class AgentStateMachine
             return;
         }
 
+        // Whether the Working this report may be ending was the detector's guess rather than an
+        // earlier report: the integration's first word decides nothing about a turn it never saw.
+        var guessedWorking = Authority == AgentAuthority.Detector;
         _authoritySource = source;
         _authoritySeq = seq ?? _authoritySeq;
         _authorityAt = now;
@@ -443,8 +461,13 @@ public sealed class AgentStateMachine
                     break;
                 }
 
+                // A turn the integration itself reported ends in Done however short it was. One the
+                // detector only guessed at (output activity while a spawned TUI drew its screen,
+                // then the plugin's first report: "idle: session started") needs the same minimum
+                // as the heuristic path - a banner is not a turn, and neither is a render burst.
                 var wasWorking = State is AgentState.Working or AgentState.Blocked;
-                if (!_viewed && (wasWorking || state == AgentState.Done))
+                var workedEnough = !guessedWorking || (_workingSince is { } since && now - since >= MinimumWorkForDone);
+                if (!_viewed && ((wasWorking && workedEnough) || state == AgentState.Done))
                 {
                     Set(AgentState.Done, reason, now);
                     Unread = true;

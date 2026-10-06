@@ -220,6 +220,15 @@ public sealed class AgentRuleSet
     /// <summary>The command that starts this harness in a shell (<c>opencode</c>), for spawning a new agent tab (§12.18).</summary>
     public string? Launch { get; init; }
 
+    /// <summary>
+    /// Whether these rules can tell idle apart from silence: a title, screen or progress rule
+    /// that names idle (progress state 0 does not count - it clears the bar, it never sets a
+    /// state). When they can, a first prompt waits for that evidence (or the integration's
+    /// word); when they cannot, quiet output is the best there is.
+    /// </summary>
+    [JsonIgnore]
+    public bool KnowsIdle => Title.Idle.Length > 0 || Screen.Idle.Length > 0 || Progress.Any(p => p.Key != "0" && p.Value == AgentState.Idle);
+
     [JsonIgnore]
     internal Regex? SummaryRegex => _summary ??= Compile(Summary);
 
