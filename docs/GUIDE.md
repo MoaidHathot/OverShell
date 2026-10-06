@@ -264,6 +264,8 @@ can be (your own sequences included); keys marked ↻ *repeat* - the mode stays 
 | `i` | the **inbox** (§9) |
 | `m` / `w` | **mute** this tab's notifications / **watch** it for a pattern (§9) |
 | `N` / `W` | **spawn an agent** in a new tab / in a fresh git worktree, with a first prompt (§7) |
+| `L` | the **herd log**: what happened this run, newest first (§9) |
+| `D` | the files an agent **changed while you were away** (§9) |
 | `?` | show the keys |
 
 **MRU switching.** `Ctrl+Tab` is Windows Terminal's most-recently-used switcher: hold
@@ -602,6 +604,24 @@ notifies once when a row starts matching - `BUILD SUCCEEDED` in a plain shell, a
 an agent's output - and again only after the row has gone. **Auto-advance** -
 `"extensions": { "triage": { "autoAdvance": true } }` - jumps to the next waiting tab when
 the blocked one you are on moves on, so answering the herd is a chain of keystrokes.
+
+### Coming back: the herd log, and what changed
+
+**The herd log** (`herd.log`, herd mode `L`) is everything that happened this run, newest
+first: a tab opened or closed, every state change with its reason (*Working -> Blocked:
+"Run git push?"*), every call for attention, the start of the run. Enter goes to the tab.
+The same is on disk as one JSON line per event in `%LOCALAPPDATA%\OverShell\logs\<stamp>.jsonl`
+- one file per run, written as it happens, the newest 30 kept (`"extensions": { "herd.log":
+{ "keep": 30 } }`); any text editor or `jq` reads it.
+
+**Changes while you were away** (`tab.changes`, herd mode `D`). When an agent's turn ends
+in a tab you are not looking at, OverShell compares `git status` in that tab's repository
+with the status from the last time you looked, and the tab's item says *2 changed*. The
+command lists those files with what happened to them (modified, added, untracked, deleted,
+renamed; *clean* for one that was committed or reverted in between) - Enter opens one.
+Switching to the tab clears the mark; the list stays until the agent's next turn starts a
+fresh one. Needs `git` on PATH; one `git status` per finished turn, nothing while agents
+work. `"extensions": { "git.changes": { "enabled": false } }` turns it off.
 
 ## 10. The prompt bar and snippets
 

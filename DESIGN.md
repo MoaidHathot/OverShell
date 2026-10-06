@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -801,6 +801,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **P6 — an engine with an API, and the keyboard on top** (§12.16) | `OverShell.Core/Extensibility`: `IExtension`, `IShell`, `ITab` (with a per-tab `Properties` bag saved in the session), `IKeyBindings`, `IHostUi`; `ShellHost` adapts the window, `ExtensionHost` loads the built-ins (each disable-able, a failing one skipped). **Key sequences** (`ctrl+shift+k j`, `stay`, shadowing reported, a pure dispatcher that swallows strays). Built on the API: **herd mode** (`Ctrl+Shift+K` + a which-key bar), **MRU switching** on `Ctrl+Tab` (hold, tap, release), **global summon** (`` Win+` ``, on the tab that waited longest), **prompt addressing** (`@3 #group @label @blocked ...` with a live echo), **keyboard cursor** in the sidebar and the dashboard, waiting tabs **by age**, `tab.last`. One bug fixed (a summon of a minimized window minimized it again: `IsActive` vs the foreground window). 281 unit tests; five new self-test modes |
 | **P7 — triage** (§12.17) | **Reply channels** per tab: the harness's integration (a per-tab command queue the OpenCode plugin v2 long-polls and executes through OpenCode's own permission / question / prompt API), the rule file's `answers` keys, or typed text. The **inbox** (`Ctrl+Shift+I`): waiting tabs oldest first with the line that asked, `y`/`n`, a reply box, Enter jumps, approve-all with a question. **Toast actions**: Allow / Deny on in-window and native toasts (`overshell://reply`, nonce-gated). **Mute** (`tab.mute`, survives restart), **watch** (`tab.watch`, a regex over the screen), **auto-advance**. Two bugs fixed (a background tab's first Done unmarked; a forgotten queue's poll waiting out its hold). 291 unit tests; `inbox` 22/22, `triage` 13/13, `opencode-reply` live |
 | **P8 — orchestration** (§12.18) | **Spawn**: `agent.new` / `agent.newWorktree` open a tab with a harness, a directory (a fresh `git worktree` beside the repository) and a **first prompt**, delivered once the agent shows its composer (the rule file's idle marker on the whole screen - not quiet output, not "the plugin is listening": both measured wrong against the OpenCode TUI). **Control API** under `/v1/tabs` (describe, screen, send, reply, open, wait, close) = `ShellControl` on `IShell`/`ITab`; `endpoint.json` for the window's lifetime. **`OverShell mcp`**: an MCP server over stdio with seven tools, each one control call against the running window. Two detection bugs fixed (a quiet Unknown never re-evaluated; a Done flash when the plugin's first report ended a guessed Working). 309 unit tests; `spawn` 12/12, `spawn-opencode` 5/5 live, `mcp` 21/21 |
+| **P9 — oversight** (§12.19) | **The herd log**: every tab opened or closed, state change and call for attention as a JSON line in `state\logs\<stamp>.jsonl` (one file per run, flushed per line, the newest 30 kept), fed from the API's events; `herd.log` (herd mode `L`) lists this run's entries newest first, Enter goes to the tab. **Changes while away**: when a turn ends in a tab out of view, `git status` is compared with the one from your last look; the files changed in between are counted on the item (`2 changed`) and listed by `tab.changes` (`D`), Enter opens one; count and list survive a restart. A P7 slip fixed (the mute glyph sat over the harness icon). 313 unit tests; `herdlog` 12/12, `changes` 15/15 |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -1458,6 +1459,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **P9 Oversight** ✅ 2026-10-06 — the herd log (one JSON line per event, a picker); changes while you were away (git status compared, counted on the item, listed) (§12.19).
 - **P8 Orchestration** ✅ 2026-10-06 — spawn agents on worktrees with a first prompt; the control API; `OverShell mcp` (§12.18).
 - **P7 Triage** ✅ 2026-10-06 — reply channels (integration / keys / typed); the inbox; toast actions; mute, watch, auto-advance (§12.17).
 - **P6 An engine with an API** ✅ 2026-10-05 — IShell / IExtension; key sequences; herd mode; MRU Ctrl+Tab; global summon; prompt addressing; keyboard cursor; waiting tabs by age (§12.16).
@@ -2330,6 +2332,53 @@ waits); **`spawn-opencode` 5/5 live** (delivered on the composer, no Done flash,
 went to work and finished the turn); `mcp` 21/21 (every route over real HTTP, then
 `OverShell mcp` as a child process on pipes reaching this window through `endpoint.json`);
 `inbox`, `herdmode`, `triage`, `opencode` e2e, 85-check 85/85.
+
+### 12.19 P9 - oversight: the herd log, and what changed while you were away
+
+**The herd log.** Everything the window saw happen, kept: a tab opened or closed, a state
+change with its reason, a call for attention, the run itself - one JSON line each in
+`state\logs\<stamp>.jsonl`, one file per run, flushed per line so a crash loses nothing,
+the newest 30 kept (`extensions.herd.log.keep`). `HerdLog` (Core) writes and reads it;
+`HerdLogExtension` feeds it from the API's events alone (`TabOpened`, `TabClosed`,
+`TabStateChanged`, `TabAttention`, `Ready`), so what it records is exactly what an extension
+can see - the point of P6, paying off again. `herd.log` (herd mode `L`) is this run's
+entries newest first in a picker, each with its time, tab, transition and reason; Enter goes
+to the tab. The answer to "what happened while I was at lunch" is a file a text editor can
+read and a list a key can open.
+
+**Changes while you were away.** The other question after lunch is "what did it *do*". When
+an agent's turn ends in a tab you are not looking at (`Working` to anything else, the tab
+not active), `ChangesExtension` runs `git status --porcelain` in the tab's repository and
+compares it with the status taken when you last looked (the baseline, taken at open and
+whenever the tab becomes active): the files whose status appeared, changed or went away
+(committed, reverted - a change too, shown as *clean*) are counted on the tab's item -
+`2 changed`, in the accent, next to the label in the strip, the list and the sidebar - and
+listed by `tab.changes` (herd mode `D`) with their status in words; Enter opens the file.
+The list accumulates across turns while you are away; looking at the tab clears the mark
+but keeps the list readable (that is when you want it), and the first turn after that
+starts a fresh one. Count and list ride in `ITab.Properties` (`git.changes`,
+`git.changes.files`), so a restart keeps both. `GitStatus` (Core) does the parsing
+(renames, quoted paths) and the comparison, both pure and tested without git; the one
+process spawn is per finished turn, never while agents work. Needs git on PATH; a tab
+outside a repository is never marked.
+
+**A slip from P7 fixed.** The triage mute glyph had been dropped into the strip's and the
+list's two-line template without a `Grid.Column`, so it sat in column 0 over the harness
+icon (the self-test had checked the property, not the geometry). The detached mark, the
+mute glyph and the new count now share a horizontal panel in column 2; in the rail the
+glyph takes the free top-left corner.
+
+**Verified** (313 unit tests): the log's round trip through the file with a line cut
+short, the run files' order and pruning, porcelain parsing (renames, quotes, every status
+word) and the comparison (appeared, changed, left). In-process: `herdlog` 12/12 (the file
+under logs\, the run entry, open / state / attention / Done / close entries for a tab
+driven by reports, the file reading back the same entries in order while the writer holds
+it, the picker rendered); `changes` 15/15 (a temporary repository; a turn out of view
+counting an edited and an added file, named with their status, on the item, in the
+tooltip and in the properties; a turn that changed nothing adding nothing; a look clearing
+the mark and keeping the list; the picker from the tab itself, rendered; the next turn
+starting afresh; a tab outside any repository unmarked); `triage` 13/13 with the moved
+glyph, `herdmode` 24/24, 85-check 85/85.
 
 ---
 
