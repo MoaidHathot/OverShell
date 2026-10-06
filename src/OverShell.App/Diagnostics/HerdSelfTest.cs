@@ -6,6 +6,7 @@ using OverShell.Core;
 using OverShell.Core.Agents;
 using OverShell.Core.Extensibility;
 using OverShell.Core.Git;
+using OverShell.Core.Herd;
 using OverShell.Core.Input;
 using OverShell.Core.Integrations;
 using OverShell.Core.Search;
@@ -25,7 +26,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -138,6 +139,12 @@ internal static class HerdSelfTest
                         break;
                     case "mcp":
                         await RunMcpAsync(window, firstTab);
+                        break;
+                    case "herdlog":
+                        await RunHerdLogAsync(window, firstTab);
+                        break;
+                    case "changes":
+                        await RunChangesAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -754,6 +761,224 @@ internal static class HerdSelfTest
         }
 
         Log($"=== selftest (mcp) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// The herd log (§12.19): a tab opened, reports moving it Working -> Blocked -> Idle (Done,
+    /// unseen), a tab closed - each an entry in memory and in this run's file under logs\, read
+    /// back the same; the `herd.log` picker opens on them (rendered) and Enter on an entry goes
+    /// to its tab.
+    /// </summary>
+    private static async Task RunHerdLogAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (herdlog) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var log = window.Extensions.Loaded.OfType<Extensions.HerdLogExtension>().FirstOrDefault();
+        Check(log is not null && window.Commands.Find("herd.log") is not null, "the herd log extension loaded with herd.log");
+        if (log is null)
+        {
+            Log("=== selftest (herdlog) result: FAILED ===");
+            return;
+        }
+
+        Check(log.Path is not null && log.Path.StartsWith(AppPaths.LogsDir, StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(log.Path), $"this run writes {log.Path}");
+        Check(log.Entries.Any(e => e.Kind == "run"), "the run itself is the first entry once the window is ready");
+
+        await WaitForPromptAsync(first);
+        var agent = window.AddTab(first.Profile, activate: false);
+        await WaitForPromptAsync(agent);
+        agent.UserLabel = "logged";
+        window.ActiveTab = first;
+        var before = log.Entries.Count;
+        agent.ApplyReport(new IntegrationReport(agent.Id, "selftest", 1, AgentState.Working, "selftest", "starting", null, null, null, Release: false));
+        await Task.Delay(200);
+        agent.ApplyReport(new IntegrationReport(agent.Id, "selftest", 2, AgentState.Blocked, "selftest", "May I?", null, null, null, Release: false, RequestId: "q1", RequestKind: "permission"));
+        await Task.Delay(200);
+        agent.ApplyReport(new IntegrationReport(agent.Id, "selftest", 3, AgentState.Idle, "selftest", "turn finished", null, null, null, Release: false));
+        await Task.Delay(400);
+
+        var mine = log.Entries.Skip(before).Where(e => e.Tab == agent.Id).ToList();
+        Log($"  entries for the tab: {string.Join(" | ", mine.Select(e => $"{e.Kind}:{e.From}->{e.To}"))}");
+        Check(log.Entries.Any(e => e.Kind == "opened" && e.Tab == agent.Id), "opening a tab is logged");
+        Check(mine.Any(e => e.Kind == "state" && e.From == "Unknown" && e.To == "Working") && mine.Any(e => e.Kind == "state" && e.From == "Working" && e.To == "Blocked" && e.Detail!.Contains("May I?", StringComparison.Ordinal)), "state changes are logged with their reason");
+        Check(mine.Any(e => e.Kind == "attention" && e.To == "Blocked"), "a call for attention is logged");
+        Check(mine.Any(e => e.Kind == "state" && e.To == "Done"), "the unseen finish is logged as Done");
+
+        var fromFile = HerdLog.Read(log.Path!);
+        Check(fromFile.Count == log.Entries.Count && fromFile.Select(e => e.Kind).SequenceEqual(log.Entries.Select(e => e.Kind)), $"the file reads back the same {fromFile.Count} entries in order");
+        Check(fromFile.All(e => e.Label is not null || e.Kind == "run"), "every tab entry carries the tab's label");
+
+        // ---- the picker ----
+        Check(window.Commands.TryExecute("herd.log"), "herd.log opens the picker");
+        await Task.Delay(700);
+        var picker = window.OwnedWindows.OfType<Chrome.PaletteWindow>().FirstOrDefault(w => w.IsVisible);
+        Check(picker is not null, "...an owned palette window over this run's entries, newest first");
+        if (picker is not null)
+        {
+            SaveVisual((System.Windows.FrameworkElement)picker.Content, "overshell-selftest-herdlog.png");
+            picker.Close();
+            await Task.Delay(200);
+        }
+
+        window.CloseTab(agent);
+        await Task.Delay(300);
+        Check(log.Entries.Any(e => e.Kind == "closed" && e.Tab == agent.Id && e.Label == "logged"), "closing a tab is logged with its label");
+        Log($"=== selftest (herdlog) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// Changes while away (§12.19): a tab in a temporary repository, out of view, an agent's
+    /// turn ends after a file was edited and another added - the item counts two files, the
+    /// list names them with their status; looking at the tab clears the mark and a second
+    /// turn with nothing changed adds nothing; a tab outside a repository stays unmarked.
+    /// </summary>
+    private static async Task RunChangesAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (changes) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var changes = window.Extensions.Loaded.OfType<Extensions.ChangesExtension>().FirstOrDefault();
+        Check(changes is not null && window.Commands.Find("tab.changes") is not null, "the changes extension loaded with tab.changes");
+        if (changes is null)
+        {
+            Log("=== selftest (changes) result: FAILED ===");
+            return;
+        }
+
+        var repo = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"overshell-changes-{Guid.NewGuid():N}", "repo");
+        System.IO.Directory.CreateDirectory(repo);
+        var (initOk, initOut) = await Extensions.SpawnExtension.RunGitAsync(repo, ["init", "-q", "-b", "main"]);
+        if (!initOk)
+        {
+            Log($"  SKIP  git init failed ({initOut.Trim()})");
+            Log("=== selftest (changes) result: ALL PASS ===");
+            return;
+        }
+
+        System.IO.File.WriteAllText(System.IO.Path.Combine(repo, "README.md"), "changes test\n");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(repo, "keep.cs"), "// keep\n");
+        await Extensions.SpawnExtension.RunGitAsync(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
+        await Extensions.SpawnExtension.RunGitAsync(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"]);
+
+        await WaitForPromptAsync(first);
+        var tab = (TerminalTab?)window.Shell.OpenTab(new TabRequest(WorkingDirectory: repo, Label: "worker", Activate: false));
+        Check(tab is not null, "a tab opens in the temporary repository, in the background");
+        if (tab is null)
+        {
+            Log("=== selftest (changes) result: FAILED ===");
+            return;
+        }
+
+        await WaitForPromptAsync(tab);
+        // The baseline is taken at open; git may still be running - give it a moment.
+        await Task.Delay(1500);
+        Check(tab.WorkingDirectory is not null && GitRepository.FindRoot(tab.WorkingDirectory) is not null, $"the tab's directory is inside the repository ({tab.WorkingDirectory})");
+
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 1, AgentState.Working, "selftest", "editing", null, null, null, Release: false));
+        await Task.Delay(300);
+        System.IO.File.AppendAllText(System.IO.Path.Combine(repo, "README.md"), "edited by the agent\n");
+        System.IO.File.WriteAllText(System.IO.Path.Combine(repo, "new-file.txt"), "new\n");
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 2, AgentState.Idle, "selftest", "turn finished", null, null, null, Release: false));
+        var counted = false;
+        for (var i = 0; i < 30 && !counted; i++)
+        {
+            await Task.Delay(300);
+            counted = tab.ChangesWhileAway == 2;
+        }
+
+        var list = changes.ChangesFor(tab);
+        Log($"  changes: {string.Join(", ", list.Select(c => $"{c.Describe()} {c.Path}"))}");
+        Check(counted && tab.HasChangesWhileAway && tab.Properties.TryGetValue(Extensions.ChangesExtension.CountKey, out var countText) && countText == "2", "a turn ending out of view counts the two files changed since the baseline (the tab property)");
+        Check(list.Any(c => c.Path == "README.md" && c.Describe() == "modified") && list.Any(c => c.Path == "new-file.txt" && c.Describe() == "untracked"), "...the list names them with their status");
+        Check(tab.Tooltip.Contains("2 file(s) changed", StringComparison.Ordinal), "...and the tooltip says so");
+        Check(tab.Properties.TryGetValue(Extensions.ChangesExtension.FilesKey, out var filesText) && filesText.Split('\n').Length == 2 && filesText.Contains("README.md", StringComparison.Ordinal), "...and the list rides in the tab's properties, for the session file");
+        SaveVisual(window.Strip, "overshell-selftest-changes-strip.png");
+
+        // A second turn with nothing changed adds nothing; the count stays.
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 3, AgentState.Working, "selftest", "thinking", null, null, null, Release: false));
+        await Task.Delay(300);
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 4, AgentState.Idle, "selftest", "turn finished", null, null, null, Release: false));
+        await Task.Delay(1500);
+        Check(tab.ChangesWhileAway == 2, "a turn that changed nothing adds nothing");
+
+        // Looking at the tab clears the mark.
+        window.ActiveTab = tab;
+        await Task.Delay(400);
+        Check(tab.ChangesWhileAway == 0 && !tab.Properties.ContainsKey(Extensions.ChangesExtension.CountKey) && changes.ChangesFor(tab).Count == 2, "looking at the tab clears the mark; the list stays readable on arrival");
+
+        // The picker, from the tab itself (the command's target is the active tab).
+        Check(window.Commands.TryExecute("tab.changes"), "tab.changes runs on the tab you arrived at");
+        await Task.Delay(700);
+        var picker = window.OwnedWindows.OfType<Chrome.PaletteWindow>().FirstOrDefault(w => w.IsVisible);
+        Check(picker is not null, "...and opens a picker over the two files");
+        if (picker is not null)
+        {
+            SaveVisual((System.Windows.FrameworkElement)picker.Content, "overshell-selftest-changes-picker.png");
+            picker.Close();
+            await Task.Delay(200);
+        }
+
+        window.ActiveTab = first;
+
+        // A third turn after looking reports only what changed since then.
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 5, AgentState.Working, "selftest", "editing", null, null, null, Release: false));
+        await Task.Delay(1500);
+        System.IO.File.AppendAllText(System.IO.Path.Combine(repo, "keep.cs"), "// touched\n");
+        tab.ApplyReport(new IntegrationReport(tab.Id, "selftest", 6, AgentState.Idle, "selftest", "turn finished", null, null, null, Release: false));
+        counted = false;
+        for (var i = 0; i < 30 && !counted; i++)
+        {
+            await Task.Delay(300);
+            counted = tab.ChangesWhileAway == 1;
+        }
+
+        Check(counted && changes.ChangesFor(tab).Single().Path == "keep.cs", "after looking, the next turn starts a fresh list with only its own change");
+
+        // tab.changes on a tab with nothing to show says so in the status bar, no picker.
+        window.Commands.TryExecute("tab.changes");
+        await Task.Delay(500);
+        Check(!window.OwnedWindows.OfType<Chrome.PaletteWindow>().Any(w => w.IsVisible), "tab.changes on a tab with no changes opens nothing (a status line instead)");
+
+        // A tab outside any repository is never marked.
+        var outside = (TerminalTab?)window.Shell.OpenTab(new TabRequest(WorkingDirectory: System.IO.Path.GetTempPath(), Label: "outside", Activate: false));
+        if (outside is not null)
+        {
+            await WaitForPromptAsync(outside);
+            outside.ApplyReport(new IntegrationReport(outside.Id, "selftest", 1, AgentState.Working, "selftest", "x", null, null, null, Release: false));
+            await Task.Delay(300);
+            outside.ApplyReport(new IntegrationReport(outside.Id, "selftest", 2, AgentState.Idle, "selftest", "turn finished", null, null, null, Release: false));
+            await Task.Delay(1500);
+            Check(outside.ChangesWhileAway == 0, "a tab outside a repository stays unmarked");
+            window.CloseTab(outside);
+        }
+
+        window.CloseTab(tab);
+        try
+        {
+            foreach (var file in System.IO.Directory.EnumerateFiles(System.IO.Path.GetDirectoryName(repo)!, "*", System.IO.SearchOption.AllDirectories))
+            {
+                System.IO.File.SetAttributes(file, System.IO.FileAttributes.Normal);
+            }
+
+            System.IO.Directory.Delete(System.IO.Path.GetDirectoryName(repo)!, recursive: true);
+        }
+        catch (Exception e) when (e is System.IO.IOException or UnauthorizedAccessException)
+        {
+            Log($"  (temp repo not fully removed: {e.Message})");
+        }
+
+        Log($"=== selftest (changes) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
 
     /// <summary>

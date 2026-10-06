@@ -358,6 +358,11 @@ public sealed partial class TerminalTab
                 lines.Add($"Watching for /{watch}/");
             }
 
+            if (ChangesWhileAway is > 0 and var changed)
+            {
+                lines.Add($"{changed} file(s) changed while you were away (herd mode D lists them)");
+            }
+
             if (IsAgent)
             {
                 lines.Add($"{Agent.Rules.DisplayName} · {StateText} — {Agent.Explain}");
@@ -545,11 +550,18 @@ public sealed partial class TerminalTab
     /// <summary>The triage extension's watch pattern, for the tooltip; null when none.</summary>
     public string? WatchText => Properties.TryGetValue("triage.watch", out var watch) && watch.Length > 0 ? watch : null;
 
+    /// <summary>Files the agent changed in its repository since the tab was last looked at (12.19), counted by the changes extension; 0 when none.</summary>
+    public int ChangesWhileAway => Properties.TryGetValue("git.changes", out var count) && int.TryParse(count, out var n) ? n : 0;
+
+    public bool HasChangesWhileAway => ChangesWhileAway > 0;
+
     /// <summary>An extension changed <see cref="Properties"/>; the derived properties re-read.</summary>
     internal void PropertiesChanged()
     {
         Raise(nameof(IsMuted));
         Raise(nameof(WatchText));
+        Raise(nameof(ChangesWhileAway));
+        Raise(nameof(HasChangesWhileAway));
         Raise(nameof(Tooltip));
     }
     void Core.Extensibility.ITab.RequestScreen() => RequestScreen();

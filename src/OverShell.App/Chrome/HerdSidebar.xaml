@@ -80,7 +80,8 @@
                                                         <chrome:HarnessIcon x:Name="Glyph" Tab="{Binding}" Size="12" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
                                                         <TextBlock x:Name="Label" Text="{Binding Label}" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Primary}" />
                                                         <TextBlock x:Name="DetachedMark" Text="&#xE8A7;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="In its own window" Visibility="Collapsed" />
-<TextBlock x:Name="MutedMark" Text="&#xE74F;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="Muted: no notifications" Visibility="Collapsed" />
+                                                        <TextBlock x:Name="MutedMark" Text="&#xE74F;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="Muted: no notifications" Visibility="Collapsed" />
+                                                        <TextBlock x:Name="ChangesMark" Text="{Binding ChangesWhileAway, StringFormat=\{0\} changed}" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Detail}" Foreground="{StaticResource Accent.Base}" ToolTip="Files changed while you were away (herd mode D)" Visibility="Collapsed" />
                                                         <Border x:Name="UnreadBadge" Width="6" Height="6" Margin="6,0,0,0" CornerRadius="3" VerticalAlignment="Center" Background="{Binding StateBrush}" Visibility="Collapsed" />
                                                     </StackPanel>
                                                     <TextBlock x:Name="Detail" Text="{Binding SidebarDetail}" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Detail}" Foreground="{StaticResource Text.Disabled}" />
@@ -109,7 +110,8 @@
                                             <DataTrigger Binding="{Binding Detached}" Value="True">
                                                 <Setter TargetName="DetachedMark" Property="Visibility" Value="Visible" />
                                             </DataTrigger>
-<DataTrigger Binding="{Binding IsMuted}" Value="True"><Setter TargetName="MutedMark" Property="Visibility" Value="Visible" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding IsMuted}" Value="True"><Setter TargetName="MutedMark" Property="Visibility" Value="Visible" /></DataTrigger>
+                                            <DataTrigger Binding="{Binding HasChangesWhileAway}" Value="True"><Setter TargetName="ChangesMark" Property="Visibility" Value="Visible" /></DataTrigger>
                                             <DataTrigger Binding="{Binding ShowsHarnessIcon}" Value="True">
                                                 <Setter TargetName="Glyph" Property="Visibility" Value="Visible" />
                                             </DataTrigger>

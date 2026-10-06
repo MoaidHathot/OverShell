@@ -71,6 +71,9 @@ public static class AppPaths
     /// </summary>
     public static string EndpointFile => Path.Combine(StateRoot, "endpoint.json");
 
+    /// <summary>The herd log's run files (§12.19): <c>logs\&lt;stamp&gt;.jsonl</c>, one per run, pruned to the newest few dozen.</summary>
+    public static string LogsDir => Path.Combine(StateRoot, "logs");
+
     /// <summary>
     /// Creates the two roots if they do not exist yet. Only the roots: the sub-folders
     /// (<c>agents\</c>, <c>layouts\</c>, <c>skins\</c>) are optional and are made when
