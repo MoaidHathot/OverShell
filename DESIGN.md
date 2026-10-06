@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav` | Run the end-to-end self-test in-process (§12.9–12.16): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16). Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -799,6 +799,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Herd overseer P5 — polish, honesty, depth** (§12.14) | Chords follow Windows Terminal (`Ctrl+T` back to the shell); `tab.duplicate`; atomic `state.json`; app icon + AUMID; the **working directory** probed from the shell process (cmd, bash) or read from the prompt line (PowerShell) with `integrations install shell` for the OSC hook; restore **held** after two interrupted runs in a minute; a **close question** when agents are working; the **previous screen** as a dim preamble after a crash; **workspaces** (`workspaces\*.jsonc`, `workspace.save`, `workspace.open.*`) and four more `overshell://` actions; tab-strip **overflow** (width band, wheel, fades, overflow button); taskbar **jump list**; **themes** `system`/`dark`/`light` with the Windows accent, live; **tear-offs** with the main window's chrome; **find in the buffer** (`Ctrl+Shift+F`, scrollback included, the current match as the terminal's selection, the rest tinted). Two pre-existing bugs fixed on the way (§12.14: the endpoint's disposed-listener retry, the `FindText` no-hit exception that hid the link probe's fallback). 207 unit tests; ten new self-test modes, 85-check still 85/85 |
 | **Terminal parity** (§12.15) | **Shell integration on the command line**: a plain PowerShell profile gets `-NoExit -Command ". '<script>'"` (VS Code's way), so the directory is announced exactly with no profile edit; profiles that run their own command, and other shells, are left alone; `detection.injectShellIntegration`. **Environment rebuilt per tab** from the registry with `CreateEnvironmentBlock`, as Terminal does (`compatibility.reloadEnvironmentVariables`), with `WT_SESSION`/`WT_PROFILE_ID`/`OVERSHELL_*` named in `WSLENV` - a tool installed after the launcher is on PATH in the next tab. One pre-existing bug fixed (a shell announcing its starting directory was not counted as announcing). 250 unit tests; `inject` 14/14, `env` 13/13 |
 | **P6 — an engine with an API, and the keyboard on top** (§12.16) | `OverShell.Core/Extensibility`: `IExtension`, `IShell`, `ITab` (with a per-tab `Properties` bag saved in the session), `IKeyBindings`, `IHostUi`; `ShellHost` adapts the window, `ExtensionHost` loads the built-ins (each disable-able, a failing one skipped). **Key sequences** (`ctrl+shift+k j`, `stay`, shadowing reported, a pure dispatcher that swallows strays). Built on the API: **herd mode** (`Ctrl+Shift+K` + a which-key bar), **MRU switching** on `Ctrl+Tab` (hold, tap, release), **global summon** (`` Win+` ``, on the tab that waited longest), **prompt addressing** (`@3 #group @label @blocked ...` with a live echo), **keyboard cursor** in the sidebar and the dashboard, waiting tabs **by age**, `tab.last`. One bug fixed (a summon of a minimized window minimized it again: `IsActive` vs the foreground window). 281 unit tests; five new self-test modes |
+| **P7 — triage** (§12.17) | **Reply channels** per tab: the harness's integration (a per-tab command queue the OpenCode plugin v2 long-polls and executes through OpenCode's own permission / question / prompt API), the rule file's `answers` keys, or typed text. The **inbox** (`Ctrl+Shift+I`): waiting tabs oldest first with the line that asked, `y`/`n`, a reply box, Enter jumps, approve-all with a question. **Toast actions**: Allow / Deny on in-window and native toasts (`overshell://reply`, nonce-gated). **Mute** (`tab.mute`, survives restart), **watch** (`tab.watch`, a regex over the screen), **auto-advance**. Two bugs fixed (a background tab's first Done unmarked; a forgotten queue's poll waiting out its hold). 291 unit tests; `inbox` 22/22, `triage` 13/13, `opencode-reply` live |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -1450,6 +1451,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **P7 Triage** ✅ 2026-10-06 — reply channels (integration / keys / typed); the inbox; toast actions; mute, watch, auto-advance (§12.17).
 - **P6 An engine with an API** ✅ 2026-10-05 — IShell / IExtension; key sequences; herd mode; MRU Ctrl+Tab; global summon; prompt addressing; keyboard cursor; waiting tabs by age (§12.16).
 - **Terminal parity** ✅ 2026-10-03 — shell integration injected into the command line (no profile edit); the environment rebuilt from the registry per tab (§12.15).
 - **P5 Polish, honesty, depth** ✅ 2026-10-03 — WT chords; honest working directory + shell hook; restore hold + close question; previous screen; workspaces; strip overflow; jump list; themes; tear-off chrome; find.
@@ -2176,9 +2178,74 @@ word not sent, @3, #group reaching two tabs and not the third, a miss sending no
 the Group target), `keynav` 17/17 (renders of the outlined sidebar row and the cards).
 85-check 85/85 and `session1`/`session2` after every batch.
 
+### 12.17 P7 - triage: answer the herd without visiting each tab
+
+**The reply channel.** Answering an agent meant switching to its tab. Three channels now,
+chosen per tab (`ITab.ReplyChannel`): the **integration**, when the harness's plugin is
+listening - exact, through the harness's own API; the rule file's **keys**
+(`"answers": { "approve", "deny" }` - copilot `y`/`n` from its own `[y/N]` prompts, claude
+`1`/Esc and codex `y`/`n` from their documentation, not measured here); **typed text**
+otherwise. OpenCode has no `answers` on purpose: its permission dialog is arrows + Enter
+with no letter keys, so typing into it would be a guess - the integration is the channel.
+The plumbing: the endpoint keeps a per-tab command queue (`TabCommandQueue`) that the
+plugin long-polls on `GET /v1/tabs/{id}/commands?after=N` (held up to 25 s; a tab counts
+as "listening" while something has polled within 40 s); a blocked report may carry
+`requestId` / `requestKind`, kept on the tab as its `OpenRequest`; `ITab.Answer(approve)`
+and `Reply(text)` enqueue `{permission|question|prompt, requestId, response}` or fall
+back to keys or typing. The OpenCode plugin (v2) reports `permission.asked` /
+`question.asked` with the id, polls, and executes: `client.permission.reply` (the
+per-session `postSessionIdPermissionsPermissionId` route as fallback), `question.reply`,
+`tui.appendPrompt` + `submitPrompt` (`session.promptAsync` headless). **Measured:**
+headless `opencode run` asks *and answers* its own permission within the same instant
+(`permission.asked` → `permission.replied` 100 ms apart - the binary auto-replies "once"
+outside the TUI), so an open permission exists only in the TUI, which the self-test does
+not drive (§7.8); what is proven live is the ask reported with the state and the plugin
+long-polling the queue; the reply itself is proven against a poller on the real endpoint.
+
+**The inbox** (`inbox`, `Ctrl+Shift+I`, herd mode `i`): every waiting tab oldest first,
+blocked before finished, each with the line that asked - the request's title, else the
+screen row the blocked pattern matched (`StateRules.MatchingLine`; until now only the
+pattern was kept), else the summary - its channel, and the tab's screen beside it;
+`j`/`k`, Enter jumps, `y`/`n` answer and the item leaves when the tab moves on (the
+selection moves to the next), a reply box (`i` or Tab; Enter sends), `Shift+A` approves
+everything approvable after a question through `IHostUi.AskAsync`, Esc.
+
+**Toast actions.** A blocked tab with a one-key channel (`NotificationEvent.CanAnswer`)
+gets Allow / Deny on its in-window toast and `<actions>` on its native toast: buttons that
+open `overshell://reply/<tab>?answer=approve|deny&nonce=...`. The nonce is this run's; a
+reply URL without it only focuses the tab.
+
+**Mute, watch, auto-advance** (`triage`). `tab.mute` drops a tab's notifications through
+`IShell.NotificationFilter`, consulted before any sink - the dot and badge still show, a
+glyph marks the item, and the mute lives in `ITab.Properties`, so it survives a restart
+with the tab (`SavedTab.Extra`). `tab.watch` takes a regular expression over the screen
+and fires one notification when a row starts matching, again only after the row has gone.
+`extensions.triage.autoAdvance` (off) jumps to the next waiting tab when the blocked tab
+in front moves on.
+
+**Bugs found.** A tab opened in the background kept its state machine counted as
+"viewed" until something toggled it (`TerminalTab._viewed` started false against the
+machine's true, so the first `SetViewed(false)` never reached it): its first Done showed
+as plain idle with no unread mark. Both start true now and `AddTab` calls `UpdateViewed`.
+`TabCommandQueue.Forget` woke a long poll that then waited out its hold anyway.
+
+**Verified** (291 unit tests): 9 new unit tests (the queue's poll after a sequence, wake
+on enqueue, empty after the hold, expiry, forget, the report's request id, `MatchingLine`,
+the bundled answers and launch commands, the reply URL); `inbox` 22/22 - a poller on the
+real endpoint receiving `{permission, per_42, approve}` and a prompt with nothing typed
+into the terminal, a reply naming an open question, a copilot tab typing `y`+Enter (read
+back from the screen), the inbox's order and lines, the window (render), an item leaving
+with the selection moving on, approve-all asking first and approving nothing when
+dismissed, the toast with Allow / Deny (render), a Deny URL with this run's nonce typing
+`n`, a URL without the nonce only focusing; `triage` 13/13; `opencode` e2e 7/7 with the v2
+plugin; `opencode-reply` live as described. 85-check 85/85, `session1`/`session2`, every
+P6 mode. Side effect on the reference machine: the OpenCode plugin was updated to v2.
+
 ---
 
-## 13. Distribution### 13.1 Channels - and why each artefact is what it is
+## 13. Distribution
+
+### 13.1 Channels - and why each artefact is what it is
 
 One tag `vX.Y.Z` produces three ways in, all from the same `build/Release.ps1` run:
 

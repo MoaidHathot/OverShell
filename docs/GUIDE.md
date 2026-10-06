@@ -184,6 +184,7 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+PgDn` / `Ctrl+PgUp` | `tab.next` / `tab.previous` | Cycle in strip order |
 | `Ctrl+Shift+K` then a key | herd mode | One leader, then single keys for everything you do to the herd (below) |
 | `` Win+` `` | `window.summon` | From any application: OverShell to the front, on the tab that needs you; again puts it away |
+| `Ctrl+Shift+I` | `inbox.open` | The inbox: everything waiting for you, answered from one place (§9) |
 | `Alt+1` … `Alt+9` | `tab.switchTo.N` | Jump to the Nth visible tab |
 | `Ctrl+Shift+J` | `tab.jumpToAttention` | The tab that needs you: blocked first, then finished-unseen; the one that has waited longest (`attention.order`) |
 | `Ctrl+Shift+R` | `tab.rename` | Label the tab (persisted per profile + directory) |
@@ -259,6 +260,8 @@ can be (your own sequences included); keys marked ↻ *repeat* - the mode stays 
 | `p` `f` `/` | prompt bar, find, tab switcher |
 | `t` / `a` | detach into a window / bring back |
 | `s` / `c` | move the **cursor** into the sidebar / the dashboard cards |
+| `i` | the **inbox** (§9) |
+| `m` / `w` | **mute** this tab's notifications / **watch** it for a pattern (§9) |
 | `?` | show the keys |
 
 **MRU switching.** `Ctrl+Tab` is Windows Terminal's most-recently-used switcher: hold
@@ -433,7 +436,9 @@ wholesale by yours. Shape:
   "progress": { "1": "Working", "2": "Error", "3": "Working" },
   "summary": "^✻\\s+(.+)$",          // one capture group: the status line shown as the tab's summary
   "idleAfterMs": 1500, "screenRows": 12,
-  "resumeCommand": "myagent --resume {sessionId}"
+  "resumeCommand": "myagent --resume {sessionId}",
+  "launch": "myagent",                                  // what starts it in a shell (spawning a new agent tab)
+  "answers": { "approve": "y\\r", "deny": "n\\r" }      // keys that answer its permission prompt from the inbox or a toast
 }
 ```
 
@@ -510,6 +515,36 @@ Placeholders for `command` arguments: `{kind}`, `{title}`, `{message}`, `{detail
 
 The status bar counts `● working`, `▲ needs you`, `✓ done`; clicking it jumps to the tab
 that needs you.
+
+### Answering from where you are
+
+**The inbox** (`Ctrl+Shift+I`, herd mode `i`) lists every tab waiting for you - blocked
+first, then finished unseen - oldest first, each with the line that asked (the permission
+text, the question, the row that matched) and the tab's screen beside it. `j`/`k` move,
+**Enter** jumps to the tab, **y** / **n** approve or deny without leaving the inbox (the
+item leaves when the tab moves on and the selection moves to the next), **i** or Tab
+focuses the reply box - type a reply, Enter sends it - **Shift+A** approves everything that
+can be approved after a question, Esc closes.
+
+How a reply reaches the agent depends on the tab, and the inbox says which: *through the
+integration* when the harness's plugin is connected (OpenCode with the `opencode`
+integration installed - the reply goes through OpenCode's own permission API, exact, never
+typed into the dialog); *y / n typed into the tab* when the rule file knows the harness's
+keys (`"answers": { "approve": "y\r", "deny": "n\r" }` - Copilot CLI, Claude Code, Codex
+have them; a user rule file can add its own); *typed* otherwise, for free text.
+
+**Toasts answer too.** A blocked tab's in-window toast has **Allow** and **Deny** when the
+tab can be answered; the Windows toast (the `toast` sink) has the same buttons - they open
+`overshell://reply/...` URLs signed for this run of OverShell, so a stray link cannot
+approve anything.
+
+**Mute** (`tab.mute`, herd mode `m`) silences a tab: its dot and badge still show, a small
+glyph marks it, nothing fires for it; it stays muted across a restart. **Watch**
+(`tab.watch`, herd mode `w`) takes a regular expression over the tab's screen and
+notifies once when a row starts matching - `BUILD SUCCEEDED` in a plain shell, a word in
+an agent's output - and again only after the row has gone. **Auto-advance** -
+`"extensions": { "triage": { "autoAdvance": true } }` - jumps to the next waiting tab when
+the blocked one you are on moves on, so answering the herd is a chain of keystrokes.
 
 ## 10. The prompt bar and snippets
 

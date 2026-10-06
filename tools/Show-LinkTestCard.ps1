@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-Prints the manual test card for OverShell's link handling (DESIGN.md §11.8).
+Prints the manual test card for OverShell's link handling (DESIGN.md ┬º11.8).
 
 .DESCRIPTION
 Run this inside an OverShell tab, then work through the numbered lines with the mouse.
-It only prints text — nothing here injects input (DESIGN.md §7.8).
+It only prints text ΓÇö nothing here injects input (DESIGN.md ┬º7.8).
 
 For a log of every hover and click decision, start OverShell with
 OVERSHELL_TRACE_LINKS=1 and read %TEMP%\overshell-links.log alongside.
@@ -21,8 +21,8 @@ if (-not $width -or $width -lt 40) { try { $width = [Console]::WindowWidth } cat
 if (-not $width -or $width -lt 40) { $width = 80 }
 
 # Non-ASCII built from code points so this file reads the same in every host and encoding.
-$cjk = -join ([char]0x65E5, [char]0x672C, [char]0x8A9E, [char]0x30C6, [char]0x30AD, [char]0x30B9, [char]0x30C8)   # 日本語テキスト
-$rocket = [char]::ConvertFromUtf32(0x1F680)                                                                           # 🚀
+$cjk = -join ([char]0x65E5, [char]0x672C, [char]0x8A9E, [char]0x30C6, [char]0x30AD, [char]0x30B9, [char]0x30C8)   # µùÑµ£¼Φ¬₧πâåπé¡πé╣πâê
+$rocket = [char]::ConvertFromUtf32(0x1F680)                                                                           # ≡ƒÜÇ
 $dash = [char]0x2014
 
 function Say([string]$text) { [Console]::Out.Write($text + "`r`n") }
@@ -107,14 +107,14 @@ Say "Right-click: copies a selection, else pastes | Tab completes in the shell O
 
 Head "Herd overseer (P0 - verified in-process, never by a human)"
 Case 26 "Ctrl+Shift+P: the command palette opens over the terminal and TAKES the keyboard; type 'new' and Enter opens a tab; Esc closes and the shell has the keyboard again."
-Case 27 "Ctrl+Shift+Space: the tab switcher lists tabs (state dot, 'state · project · cwd', Alt+N hint); '@blocked' / '#repo' filter; Enter switches."
+Case 27 "Ctrl+Shift+Space: the tab switcher lists tabs (state dot, 'state ┬╖ project ┬╖ cwd', Alt+N hint); '@blocked' / '#repo' filter; Enter switches."
 Case 28 "Ctrl+Shift+R: rename prompt; a name you type shows as the tab's first line; empty restores the automatic label; it survives a restart in the same directory."
 Case 29 "Open a second tab, come back here, then run this and switch away for 10 s:"
 Say "  `$e=[char]27; `$a=[char]7; Write-Host `"`${e}]0;OC | demo | card`${a}`"; Start-Sleep 2; Write-Host `"`${e}]9;4;1;50`${a}`"; Start-Sleep 4; Write-Host `"`${e}]9;4;4;100`${a}`""
 Expect "this tab turns into 'OpenCode', its dot goes amber with a ring (needs you) then green (done) with a badge; toasts appear top-right of the other tab; the status bar counts them; the taskbar icon shows a badge"
 Case 30 "Click a toast: this tab becomes active; 'done' clears; the badge and the count go."
 Case 31 "Ctrl+Shift+J from another tab while this one is amber or green: jumps here."
-Case 32 "Run 'opencode' (or 'copilot') here after 'OverShell integrations install opencode': the tab shows OpenCode · working while it thinks and 'needs you' on a permission prompt; quitting returns it to a shell within ~5 s."
+Case 32 "Run 'opencode' (or 'copilot') here after 'OverShell integrations install opencode': the tab shows OpenCode ┬╖ working while it thinks and 'needs you' on a permission prompt; quitting returns it to a shell within ~5 s."
 Case 33 "Hover a tab: the tooltip explains the state ('progress state 1', 'screen matched /.../', 'opencode reported Working')."
 
 Head "Views and layouts (P1 - verified in-process, never by a human)"
@@ -147,7 +147,7 @@ Case 55 "In the tear-off, right-click pastes / copies a selection; Ctrl+click on
 Case 56 "The sidebar and the dashboard still show the detached tab; clicking it there raises its window; its state keeps updating; it is saved in the session and comes back as a tear-off."
 Case 57 "Set `"toast`": { `"enabled`": true } in settings.jsonc, let an agent finish in a background tab: a Windows toast appears (Action Center too); clicking it brings OverShell up on that tab."
 Case 58 "OverShell integrations install codex, then run codex here and finish a turn: the tab shows Codex, 'done' when unseen, the explain panel lists the thread and 'codex resume <thread>'; the tab still shows 'working' on the next turn (detector)."
-Case 59 "OverShell settings path: with XDG_CONFIG_HOME set, configuration resolves under it (…\overshell); settings init writes the two starter files there; editing settings.jsonc there changes the running window within two seconds."
+Case 59 "OverShell settings path: with XDG_CONFIG_HOME set, configuration resolves under it (ΓÇª\overshell); settings init writes the two starter files there; editing settings.jsonc there changes the running window within two seconds."
 
 Head "Distribution (13 - packaging verified locally, the published channels never)"
 Case 60 "dotnet tool install -g OverShell; overshell: the prompt comes back within a second while the window stays; overshell version prints 'OverShell <version>+<sha>' and a .store path; overshell overshell://view/herd switches the running window's view instead of opening a second one."
@@ -185,3 +185,10 @@ Case 83 "With OverShell behind another window, press Win+`` (or the key extensio
 Case 84 "Ctrl+Shift+Enter, type '@2 Write-Host hi': the echo under the box reads '-> <tab 2's label>'; Enter: only tab 2 runs it. '#<group> ...' reaches every tab of the group; '@nobody ...' sends nothing and says so."
 Case 85 "Ctrl+Shift+2 (Herd) then Ctrl+Shift+2 again: a cursor outline appears on the active tab's row in the sidebar; Down/Up or j/k move it without changing the tab; Enter switches to the row; Esc returns the keyboard to the terminal. Ctrl+Shift+3 twice does the same on the dashboard cards; Enter there opens the terminal view on that tab."
 Case 86 "Two agents blocked, the older one first: Ctrl+Shift+J goes to the older; again to the newer; `"attention`": { `"order`": `"strip`" } makes it the next in tab order instead. `"extensions`": { `"herd.mode`": { `"enabled`": false } } removes the leader key and its bar after a reload."
+
+Head "Triage (P7 - 12.17; verified in-process, never by a human)"
+Case 87 "With the opencode integration installed, start opencode in a tab and make it ask a permission (a bash tool call with permissions set to ask); from another tab press Ctrl+Shift+I: the inbox lists it oldest first with the permission text and 'answers go through the integration'; press y: OpenCode's dialog is answered without you visiting the tab, the item leaves; type a reply + Enter on a question: it lands in OpenCode."
+Case 88 "A Copilot CLI permission prompt ([y/N]) in a background tab: its in-window toast shows Allow / Deny; Deny types n into that tab. With `"toast`": { `"enabled`": true } the Windows toast has Allow / Deny / Open too; Allow answers; a stale toast from an earlier run only opens the tab."
+Case 89 "Herd mode m on a noisy tab: a mute glyph appears on its item, its state keeps updating, no toast or sound fires for it; restart OverShell: still muted; m again unmutes."
+Case 90 "Herd mode w, type 'BUILD SUCCEEDED': run a build in that tab; one notification when the line appears, none while it stays; clear the screen and build again: one more."
+Case 91 "`"extensions`": { `"triage`": { `"autoAdvance`": true } }, two agents blocked, answer the one in front: you land on the other without a key."
