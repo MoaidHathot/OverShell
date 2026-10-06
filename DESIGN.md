@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -800,6 +800,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Terminal parity** (§12.15) | **Shell integration on the command line**: a plain PowerShell profile gets `-NoExit -Command ". '<script>'"` (VS Code's way), so the directory is announced exactly with no profile edit; profiles that run their own command, and other shells, are left alone; `detection.injectShellIntegration`. **Environment rebuilt per tab** from the registry with `CreateEnvironmentBlock`, as Terminal does (`compatibility.reloadEnvironmentVariables`), with `WT_SESSION`/`WT_PROFILE_ID`/`OVERSHELL_*` named in `WSLENV` - a tool installed after the launcher is on PATH in the next tab. One pre-existing bug fixed (a shell announcing its starting directory was not counted as announcing). 250 unit tests; `inject` 14/14, `env` 13/13 |
 | **P6 — an engine with an API, and the keyboard on top** (§12.16) | `OverShell.Core/Extensibility`: `IExtension`, `IShell`, `ITab` (with a per-tab `Properties` bag saved in the session), `IKeyBindings`, `IHostUi`; `ShellHost` adapts the window, `ExtensionHost` loads the built-ins (each disable-able, a failing one skipped). **Key sequences** (`ctrl+shift+k j`, `stay`, shadowing reported, a pure dispatcher that swallows strays). Built on the API: **herd mode** (`Ctrl+Shift+K` + a which-key bar), **MRU switching** on `Ctrl+Tab` (hold, tap, release), **global summon** (`` Win+` ``, on the tab that waited longest), **prompt addressing** (`@3 #group @label @blocked ...` with a live echo), **keyboard cursor** in the sidebar and the dashboard, waiting tabs **by age**, `tab.last`. One bug fixed (a summon of a minimized window minimized it again: `IsActive` vs the foreground window). 281 unit tests; five new self-test modes |
 | **P7 — triage** (§12.17) | **Reply channels** per tab: the harness's integration (a per-tab command queue the OpenCode plugin v2 long-polls and executes through OpenCode's own permission / question / prompt API), the rule file's `answers` keys, or typed text. The **inbox** (`Ctrl+Shift+I`): waiting tabs oldest first with the line that asked, `y`/`n`, a reply box, Enter jumps, approve-all with a question. **Toast actions**: Allow / Deny on in-window and native toasts (`overshell://reply`, nonce-gated). **Mute** (`tab.mute`, survives restart), **watch** (`tab.watch`, a regex over the screen), **auto-advance**. Two bugs fixed (a background tab's first Done unmarked; a forgotten queue's poll waiting out its hold). 291 unit tests; `inbox` 22/22, `triage` 13/13, `opencode-reply` live |
+| **P8 — orchestration** (§12.18) | **Spawn**: `agent.new` / `agent.newWorktree` open a tab with a harness, a directory (a fresh `git worktree` beside the repository) and a **first prompt**, delivered once the agent shows its composer (the rule file's idle marker on the whole screen - not quiet output, not "the plugin is listening": both measured wrong against the OpenCode TUI). **Control API** under `/v1/tabs` (describe, screen, send, reply, open, wait, close) = `ShellControl` on `IShell`/`ITab`; `endpoint.json` for the window's lifetime. **`OverShell mcp`**: an MCP server over stdio with seven tools, each one control call against the running window. Two detection bugs fixed (a quiet Unknown never re-evaluated; a Done flash when the plugin's first report ended a guessed Working). 309 unit tests; `spawn` 12/12, `spawn-opencode` 5/5 live, `mcp` 21/21 |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -857,6 +858,12 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 - [ ] Copilot CLI end-to-end with the real `copilot` (the shim is verified verbatim against
       the endpoint; the harness firing it is not — `~/.copilot/hooks` did not exist on the
       reference machine before `integrations install copilot`).
+- [ ] `OverShell mcp` from a real MCP host (the protocol is verified by unit test and by
+      the verb as a child process on pipes, §12.18; a host's `initialize` handshake and tool
+      calls against it are not - the host side is the host's).
+- [ ] A spawned Copilot / Claude / Codex tab's first prompt (the paste path): verified with a
+      fake agent and live with OpenCode through its plugin; their composer markers
+      (`screen.idle`) are what decides readiness, and only Copilot's is measured here.
 
 ### Open — the actual feature work
 
@@ -1451,6 +1458,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **P8 Orchestration** ✅ 2026-10-06 — spawn agents on worktrees with a first prompt; the control API; `OverShell mcp` (§12.18).
 - **P7 Triage** ✅ 2026-10-06 — reply channels (integration / keys / typed); the inbox; toast actions; mute, watch, auto-advance (§12.17).
 - **P6 An engine with an API** ✅ 2026-10-05 — IShell / IExtension; key sequences; herd mode; MRU Ctrl+Tab; global summon; prompt addressing; keyboard cursor; waiting tabs by age (§12.16).
 - **Terminal parity** ✅ 2026-10-03 — shell integration injected into the command line (no profile edit); the environment rebuilt from the registry per tab (§12.15).
@@ -2240,6 +2248,88 @@ dismissed, the toast with Allow / Deny (render), a Deny URL with this run's nonc
 `n`, a URL without the nonce only focusing; `triage` 13/13; `opencode` e2e 7/7 with the v2
 plugin; `opencode-reply` live as described. 85-check 85/85, `session1`/`session2`, every
 P6 mode. Side effect on the reference machine: the OpenCode plugin was updated to v2.
+
+### 12.18 P8 - orchestration: spawn agents, and a door for other agents
+
+**Spawning.** A tab can be opened *with a job*: `TabRequest.Prompt` (and `WorkspaceTab.Prompt`
+in a workspace file) is the agent's first prompt, delivered by `ITab.ScheduleFirstPrompt`
+once the agent in the tab is **detected and ready** - through the integration's queue when
+its plugin listens, else pasted with Enter - and given up on after 90 s with a status note
+(`FirstPromptAbandoned`). `agent.new` (herd mode `N`) asks for the harness (the rule files
+with a `launch` command), the directory and the prompt; `agent.newWorktree` (`W`) first
+runs `git worktree add` for a branch beside the repository (`WorktreePlan`: `<repo>-<slug>`,
+numbered when taken, `-b` only when the branch is new) and opens the tab in it, so three
+agents can work on one repository without stepping on each other's files. Both are an
+extension (`SpawnExtension`) over the API, like everything since P6.
+
+**What "ready" turned out to mean.** Measured against the real OpenCode TUI, three rules in
+a row were wrong before one was right. "The plugin is listening" is not readiness: the
+plugin polls from the moment the server loads (+3.5 s), seconds before the TUI has drawn
+its composer (+8 s), and `tui.appendPrompt` is a bus event the TUI picks up over its event
+stream - appended before the composer exists, it is dropped on the floor, silently.
+"Output quiet for two seconds" is not readiness either: the TUI's boot has gaps of two
+seconds and more between its splash and its home screen. What is readiness is the thing
+the rule files already describe for the other harnesses: **the composer on screen**
+(`screen.idle` - opencode now has `Ask anything` / `ctrl+p commands`; copilot, claude and
+codex had `? for shortcuts`). So a first prompt waits for an **explicit idle**
+(`AgentStateMachine.ExplicitIdle`: a title, screen or progress rule that names idle, or the
+integration's report - not the quiet timer) whenever the rules know what idle looks like
+(`AgentRuleSet.KnowsIdle`), and only falls back to quiet output for a harness that has no
+such rule. One more thing: the marker is looked for on the **whole screen**, not the
+rules' bottom 12 rows - OpenCode's home screen centres its composer, 35 rows up on a tall
+terminal. Delivered at +5.6 s on the composer, the turn finished at +13.6 s.
+
+**The control API** (`endpoint.control`, on). `ShellControl` (Core) is the control API's
+meaning on `IShell`/`ITab` alone - describe, screen, send, reply, open, wait, close - so a
+caller over the wire gets exactly what an extension gets in-process, no more, and every
+action is marshalled through `IShell.Post`. The endpoint serves it under `/v1/tabs` with the
+per-run bearer token: `GET /v1/tabs` (the fuller description), `GET /v1/tabs/{tab}`,
+`GET .../screen`, `GET .../wait?states=idle,done&timeout=60` (held up to 120 s; answers
+`timedOut`, or `closed`), `POST /v1/tabs` (`profile`, `cwd`, `label`, `group`, `command`,
+`prompt`, `activate`, or `harness` for a rule file's launch command), `POST .../input`
+(`text`, `enter`), `POST .../reply` (`answer: approve|deny` through `ITab.Answer`, or
+`text` through `Reply` - 409 when the tab has no such channel), `DELETE /v1/tabs/{tab}`
+(never the last tab: that would close the window). A tab is its id or a unique label. With
+the API on, the window writes `state\endpoint.json` (url, token, pid) for its lifetime, so
+a process started later can find it; the token is per run, so a stale file names a dead
+pid.
+
+**`OverShell mcp`.** A Model Context Protocol server over stdio (`McpServer`, Core):
+`initialize`, `ping`, `tools/list`, `tools/call`; seven tools - `overshell_list_tabs`,
+`overshell_read_screen`, `overshell_send`, `overshell_reply`, `overshell_spawn`,
+`overshell_wait`, `overshell_close` - each one control call against the running window
+through `endpoint.json`, re-read at every call so a restarted window (new port, new token)
+is picked up without restarting the host. A window that is not there is a *tool* error, not
+a protocol error, so a host still starts. Nothing but JSON-RPC lines goes to stdout; run by
+hand with no pipes the verb explains itself and leaves. The point: an agent in one tab (or
+outside OverShell altogether) can now oversee the herd - spawn three workers on three
+worktrees, wait for them, read what they ask, answer - with the same seven verbs a human
+has.
+
+**Bugs found.** (1) The heartbeat only re-evaluated a `Working` agent, so a TUI that drew
+its screen and said nothing stayed `Unknown` until the next output - 68 s in one run;
+`Tick` covers `Unknown` now. (2) An integration's *first* report ending a `Working` the
+detector had only guessed at (0.3 s of render activity, then "idle: session started") was
+counted as a finished turn - a `Done` flash with an attention event at session start; the
+report path now applies the heuristic path's `MinimumWorkForDone` when the Working it ends
+was the detector's. (3) The triage watch self-test typed its own pattern, so a snapshot
+landing between the echo and the output counted two hits (a test artefact, not a watch
+defect - the command is built from pieces now). (4) The OpenCode plugin swallowed a failed
+call; it now tries both SDK call shapes (flat and nested), waits briefly between append and
+submit, and reports a miss through OpenCode's log.
+
+**Verified** (309 unit tests): `WorktreePlan`; `ExplicitIdle` / `KnowsIdle`; the heartbeat
+turning a quiet Unknown idle; the first report after a guessed Working; `McpServer` against
+a fake wire (initialize with version negotiation, notifications, -32601, the seven tools
+and their schemas, each tool's call and its error shape, a window that is not there), the
+stdio loop, `endpoint.json`, the 403 off switch against a real listener. In-process:
+`spawn` 12/12 (a tab with a command and a first prompt - typed once the shell is at its
+prompt, waiting while the agent works, pasted once idle, read back; a worktree beside a
+temporary repository on the planned branch, numbered on repeat; a prompt with no agent
+waits); **`spawn-opencode` 5/5 live** (delivered on the composer, no Done flash, OpenCode
+went to work and finished the turn); `mcp` 21/21 (every route over real HTTP, then
+`OverShell mcp` as a child process on pipes reaching this window through `endpoint.json`);
+`inbox`, `herdmode`, `triage`, `opencode` e2e, 85-check 85/85.
 
 ---
 

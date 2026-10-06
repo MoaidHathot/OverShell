@@ -161,6 +161,7 @@ init` gives you the full default file, commented, as a starting point.
   },
 
   "protocol": { "register": true },  // overshell:// for this user (HKCU), so toast clicks find their tab
+  "endpoint": { "control": true },   // the control API + endpoint.json for OverShell mcp (§7); false keeps the endpoint to reports
 
   "notifications": { "sinks": { /* see §9 */ } },
 
@@ -262,6 +263,7 @@ can be (your own sequences included); keys marked ↻ *repeat* - the mode stays 
 | `s` / `c` | move the **cursor** into the sidebar / the dashboard cards |
 | `i` | the **inbox** (§9) |
 | `m` / `w` | **mute** this tab's notifications / **watch** it for a pattern (§9) |
+| `N` / `W` | **spawn an agent** in a new tab / in a fresh git worktree, with a first prompt (§7) |
 | `?` | show the keys |
 
 **MRU switching.** `Ctrl+Tab` is Windows Terminal's most-recently-used switcher: hold
@@ -450,6 +452,61 @@ of screen pixels. Draw it on a 16-unit grid as a solid shape (thin outlines turn
 fuzz at that size), or - for a blocky mark - on a grid of at most 8 units, where every
 unit becomes whole pixels and the edges stay exact at any scale; OpenCode's own mark is
 drawn that way.
+
+### Spawning agents
+
+`agent.new` (herd mode `N`) opens a tab that *starts* an agent: it asks which harness (the
+rule files with a `launch` command - opencode, copilot, claude, codex), in which directory,
+and for a **first prompt**. The tab opens, the launch command is typed at the shell's
+prompt, and the prompt is delivered once the agent is up and waiting - through its
+integration when the plugin listens, else pasted with Enter. `agent.newWorktree` (`W`) does
+the same in a fresh **git worktree**: a branch name you give, checked out beside the
+repository as `<repo>-<branch>` (`-2`, `-3` when taken), so several agents can work on one
+repository without touching each other's files. A workspace file (§11) can carry a
+`"prompt"` per tab for the same effect at open.
+
+What counts as "waiting" is the rule file's idle marker (`screen.idle`) seen anywhere on the
+screen - OpenCode's composer placeholder, Copilot's `? for shortcuts` - or the integration's
+own report; not silence, because a starting TUI is silent in places too. A harness with no
+idle marker falls back to two quiet seconds. If the agent never settles, the prompt is given
+up after 90 s and the status bar says so.
+
+### The control API and `OverShell mcp`
+
+Everything above is also available *to a program*, on the same loopback endpoint the
+integrations use (`OVERSHELL_ENDPOINT`, bearer `OVERSHELL_TOKEN`, both in every tab's
+environment; also in `%LOCALAPPDATA%\OverShell\endpoint.json` while the window runs). A tab
+is its id or a unique label:
+
+| Call | Does |
+|---|---|
+| `GET /v1/tabs` | every tab: id, label, harness, state, needsAttention, cwd, the open request, the reply channel |
+| `GET /v1/tabs/{tab}` | one tab |
+| `GET /v1/tabs/{tab}/screen` | the visible rows |
+| `GET /v1/tabs/{tab}/wait?states=idle,done&timeout=60` | holds until the state is one of those, the tab closes, or the timeout (max 120 s) |
+| `POST /v1/tabs` `{ "harness", "command", "cwd", "label", "group", "prompt", "profile", "activate" }` | opens a tab, starts the agent, delivers the first prompt |
+| `POST /v1/tabs/{tab}/input` `{ "text", "enter": true }` | types into the tab |
+| `POST /v1/tabs/{tab}/reply` `{ "answer": "approve" }` or `{ "text": "..." }` | answers the open request the way the inbox does (409 when the tab has no such channel) |
+| `DELETE /v1/tabs/{tab}` | closes the tab (never the last one) |
+
+`"endpoint": { "control": false }` turns the control routes off (the integrations keep
+working) and stops `endpoint.json` being written.
+
+**`OverShell mcp`** is the same surface as a [Model Context Protocol](https://modelcontextprotocol.io)
+server over stdio, for an agent that should oversee the herd itself - from one of the tabs,
+or from outside. Add it to the host's MCP servers:
+
+```jsonc
+// opencode.json / claude's settings / any MCP host
+"mcp": { "overshell": { "type": "local", "command": ["OverShell.exe", "mcp"] } }
+```
+
+(`overshell mcp` through the .NET tool shim, or the full path to `OverShell.exe` from a
+zip.) The tools: `overshell_list_tabs`, `overshell_read_screen`, `overshell_send`,
+`overshell_reply`, `overshell_spawn` (harness, cwd, label, prompt), `overshell_wait`,
+`overshell_close`. The window must be running; a tool called while it is not says so
+instead of failing the host. Run `OverShell mcp` from a console by hand and it explains
+itself.
 
 ## 8. Harness integrations
 
@@ -699,6 +756,7 @@ OverShell integrations install   <opencode|copilot|claude|codex|shell|all>
 OverShell integrations uninstall <opencode|copilot|claude|codex|shell|all>
 OverShell integrations show      <claude|codex>
 OverShell protocol status|register|unregister
+OverShell mcp                               # MCP server over stdio for an agent host (§7); tools act on the running window
 OverShell version                           # also --version, -v: version, commit, path
 OverShell help                              # also --help, -h, -?
 ```
