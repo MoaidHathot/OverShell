@@ -60,6 +60,11 @@
                                        Foreground="{StaticResource Text.Disabled}"
                                        TextTrimming="CharacterEllipsis"
                                        Visibility="{Binding DetailVisibility}" />
+                            <!-- Allow / Deny for a blocked agent that can be answered from here (12.17). -->
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0" Visibility="{Binding AnswerVisibility}">
+                                <Button Content="Allow" Margin="0,0,8,0" Style="{StaticResource ChromeAccentButton}" Click="Allow_Click" />
+                                <Button Content="Deny" Style="{StaticResource ChromeTextButton}" Click="Deny_Click" />
+                            </StackPanel>
                         </StackPanel>
 
                         <Button Grid.Column="2"

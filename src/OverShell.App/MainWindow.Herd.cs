@@ -124,7 +124,7 @@ public partial class MainWindow
     /// <summary>Needs the visual tree: the toast layer anchors to the middle of the window.</summary>
     private void InitializeNotifications()
     {
-        _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications);
+        _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
         _trace.Write($"notification sinks: {string.Join(", ", _notifications.ActiveSinks)}");
     }
 
@@ -439,7 +439,8 @@ public partial class MainWindow
             attention.Message is null ? null : attention.Reason,
             attention.At,
             TabIsActive: ReferenceEquals(tab, ActiveTab),
-            WindowIsFocused: IsActive);
+            WindowIsFocused: IsActive,
+            CanAnswer: kind == NotificationKind.Blocked && tab.ReplyChannel is Core.Extensibility.ReplyChannel.Integration or Core.Extensibility.ReplyChannel.Keys);
 
         _notifications.Publish(e);
         RefreshAttention();
@@ -504,6 +505,19 @@ public partial class MainWindow
         ActiveTab = Tabs[target.Index];
         return true;
     }
+    /// <summary>A toast's Allow / Deny (12.17): answers the tab through its reply channel; false when it has none.</summary>
+    private bool AnswerTabById(string tabId, bool approve)
+    {
+        if (!_tabsById.TryGetValue(tabId, out var tab))
+        {
+            return false;
+        }
+
+        var taken = tab.Answer(approve);
+        ShowStatusMessage(taken ? $"{(approve ? "Approved" : "Denied")} in {tab.Label}" : $"{tab.Label}: no one-key answer for this harness");
+        return taken;
+    }
+
     private void FocusTabById(string tabId)
     {
         if (_tabsById.TryGetValue(tabId, out var tab))

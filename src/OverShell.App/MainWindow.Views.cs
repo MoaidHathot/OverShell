@@ -527,7 +527,7 @@ public partial class MainWindow
             }
 
             _notifications?.Dispose();
-            _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications);
+            _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
             _counts = default;
             RefreshAttention();
 

@@ -328,6 +328,16 @@ public sealed partial class TerminalTab
                 lines.Add(_workingDirectory);
             }
 
+            if (IsMuted)
+            {
+                lines.Add("Muted: no notifications from this tab");
+            }
+
+            if (WatchText is { } watch)
+            {
+                lines.Add($"Watching for /{watch}/");
+            }
+
             if (IsAgent)
             {
                 lines.Add($"{Agent.Rules.DisplayName} · {StateText} — {Agent.Explain}");
@@ -506,6 +516,19 @@ public sealed partial class TerminalTab
     /// <summary>Extension state carried by the tab and saved with the session (<see cref="Core.Extensibility.ITab.Properties"/>).</summary>
     public IDictionary<string, string> Properties { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>Muted by the triage extension: its notifications are dropped (12.17). Read by the tab items for the glyph.</summary>
+    public bool IsMuted => Properties.TryGetValue("triage.muted", out var muted) && muted == "true";
+
+    /// <summary>The triage extension's watch pattern, for the tooltip; null when none.</summary>
+    public string? WatchText => Properties.TryGetValue("triage.watch", out var watch) && watch.Length > 0 ? watch : null;
+
+    /// <summary>An extension changed <see cref="Properties"/>; the derived properties re-read.</summary>
+    internal void PropertiesChanged()
+    {
+        Raise(nameof(IsMuted));
+        Raise(nameof(WatchText));
+        Raise(nameof(Tooltip));
+    }
     void Core.Extensibility.ITab.RequestScreen() => RequestScreen();
 
     // ------------------------------------------------------------- lifecycle

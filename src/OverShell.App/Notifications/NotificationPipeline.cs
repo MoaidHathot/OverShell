@@ -30,8 +30,16 @@ internal sealed class NotificationPipeline : IDisposable
     private ToastHost? _toasts;
     private TaskbarBadge? _taskbar;
 
-    public NotificationPipeline(Window window, FrameworkElement toastAnchor, Action<string> focusTab, NotificationSettings settings)
-    {
+    /// <summary>Per-run secret that signs the reply URLs on native toast buttons (§12.17): a URL without it only focuses the tab.</summary>
+    public static readonly string ReplyNonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(12)).ToLowerInvariant();
+
+    /// <summary>Set by the window: answers a blocked tab from a toast button (tab id, approve). Null disables the buttons.</summary>
+    public Func<string, bool, bool>? AnswerTab { get; set; }
+
+    /// <summary>A gate before the sinks (a muted tab): false drops the event (§12.17).</summary>
+    public Func<NotificationEvent, bool>? Filter { get; set; }
+
+    public NotificationPipeline(Window window, FrameworkElement toastAnchor, Action<string> focusTab, NotificationSettings settings)    {
         _window = window;
         _toastAnchor = toastAnchor;
         _focusTab = focusTab;
@@ -46,7 +54,7 @@ internal sealed class NotificationPipeline : IDisposable
             switch (config.Type.ToLowerInvariant())
             {
                 case "overlay":
-                    _toasts ??= new ToastHost(window, toastAnchor, focusTab);
+                    _toasts ??= new ToastHost(window, toastAnchor, focusTab) { AnswerTab = (id, approve) => AnswerTab?.Invoke(id, approve) ?? false };
                     _sinks.Add((name, config, e => _toasts.Show(e, AccentFor(e.Kind), config.DurationMs)));
                     break;
 
@@ -98,7 +106,7 @@ internal sealed class NotificationPipeline : IDisposable
     /// </summary>
     public void Announce(string message, int durationMs = 6000)
     {
-        _toasts ??= new ToastHost(_window, _toastAnchor, _focusTab);
+        _toasts ??= new ToastHost(_window, _toastAnchor, _focusTab) { AnswerTab = (id, approve) => AnswerTab?.Invoke(id, approve) ?? false };
         _toasts.Announce("OverShell", message, (Brush)Application.Current.FindResource("Accent.Base"), durationMs);
     }
     /// <summary>Names of the sinks that are live, for diagnostics.</summary>
@@ -107,11 +115,20 @@ internal sealed class NotificationPipeline : IDisposable
     /// <summary>Toasts currently on screen, for diagnostics.</summary>
     public int VisibleToasts => _toasts?.Toasts.Count ?? 0;
 
+    /// <summary>The in-window toast layer, for diagnostics.</summary>
+    internal ToastHost? ToastHost => _toasts;
+
     /// <summary>The toast layer's root element, for rendering in diagnostics.</summary>
     public FrameworkElement? ToastVisual => _toasts?.Content as FrameworkElement;
 
     public void Publish(NotificationEvent e)
     {
+        if (Filter?.Invoke(e) == false)
+        {
+            _trace.Write($"notification {e.Kind} for [{e.TabId}] dropped by the filter (muted)");
+            return;
+        }
+
         var now = TimeOnly.FromDateTime(DateTime.Now);
         foreach (var (name, config, send) in _sinks)
         {
@@ -189,8 +206,18 @@ internal sealed class NotificationPipeline : IDisposable
     {
         var values = e.TemplateValues();
         var launch = Core.Integrations.ProtocolRequest.FocusUrl(e.TabId);
-        var result = await Task.Run(() => NativeToast.Show(values["title"], e.Message, e.Detail ?? e.WorkingDirectory, launch, "overshell-" + e.TabId, "overshell", silent: true)).ConfigureAwait(false);
 
+        // A blocked tab that can be answered gets Allow / Deny buttons; each is a protocol URL
+        // signed with the run's nonce, so only this run's toasts can answer (12.17).
+        IReadOnlyList<(string Label, string Launch)>? actions = e.Kind == NotificationKind.Blocked && e.CanAnswer
+            ?
+            [
+                ("Allow", Core.Integrations.ProtocolRequest.ReplyUrl(e.TabId, approve: true, ReplyNonce)),
+                ("Deny", Core.Integrations.ProtocolRequest.ReplyUrl(e.TabId, approve: false, ReplyNonce)),
+                ("Open", launch),
+            ]
+            : null;
+        var result = await Task.Run(() => NativeToast.Show(values["title"], e.Message, e.Detail ?? e.WorkingDirectory, launch, "overshell-" + e.TabId, "overshell", silent: true, actions)).ConfigureAwait(false);
         LastToastResult = result ?? string.Empty;
         if (result is null)
         {

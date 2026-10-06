@@ -13,6 +13,7 @@ public enum NotificationKind
 }
 
 /// <summary>Everything a sink may want to show or template into a command line.</summary>
+/// <param name="CanAnswer">A blocked tab with a one-key reply channel (§12.17): toasts may offer Allow / Deny.</param>
 public sealed record NotificationEvent(
     NotificationKind Kind,
     string TabId,
@@ -25,7 +26,8 @@ public sealed record NotificationEvent(
     string? Detail,
     DateTimeOffset At,
     bool TabIsActive,
-    bool WindowIsFocused)
+    bool WindowIsFocused,
+    bool CanAnswer = false)
 {
     public static NotificationKind KindFor(AgentState state) => state switch
     {

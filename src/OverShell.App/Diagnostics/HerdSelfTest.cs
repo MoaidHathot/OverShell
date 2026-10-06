@@ -24,7 +24,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -125,6 +125,9 @@ internal static class HerdSelfTest
                         break;
                     case "opencode-reply":
                         await RunOpenCodeReplyAsync(window, firstTab);
+                        break;
+                    case "triage":
+                        await RunTriageAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -346,8 +349,116 @@ internal static class HerdSelfTest
     /// resumed by id again.
     /// </summary>
     /// <summary>
-    /// The reply channel against the real OpenCode (§12.17): `opencode run` with a prompt that
-    /// needs a permission; when the plugin reports blocked with the request id, the tab is
+    /// Mute, watch and auto-advance (§12.17): a muted tab's notifications are dropped while its
+    /// state still shows and the mute survives in the session file; a watch fires one
+    /// notification when a row starts matching and again only after the row leaves; with
+    /// autoAdvance on, the blocked tab in front moving on jumps to the next waiting one.
+    /// </summary>
+    private static async Task RunTriageAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (triage) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var triage = window.Extensions.Loaded.OfType<Extensions.TriageExtension>().FirstOrDefault();
+        Check(triage is not null, "the triage extension loaded");
+        if (triage is null)
+        {
+            Log("=== selftest (triage) result: FAILED ===");
+            return;
+        }
+
+        var noisy = window.AddTab(first.Profile, activate: false);
+        var other = window.AddTab(first.Profile, activate: false);
+        await WaitForPromptAsync(noisy);
+        await WaitForPromptAsync(other);
+        noisy.UserLabel = "noisy";
+        other.UserLabel = "other";
+        window.ActiveTab = first;
+
+        // ---- mute ----
+        var toasts = window.Notifications?.ToastHost;
+        var before = toasts?.Toasts.Count ?? 0;
+        noisy.ApplyReport(new IntegrationReport(noisy.Id, "selftest", 1, AgentState.Blocked, "selftest", "first", null, null, null, Release: false));
+        await Task.Delay(500);
+        Check((toasts?.Toasts.Count ?? 0) == before + 1, "an unmuted blocked tab toasts");
+
+        window.ActiveTab = noisy;
+        Check(window.Commands.TryExecute("tab.mute") && noisy.IsMuted && Extensions.TriageExtension.IsMuted(noisy), "tab.mute marks the tab muted (a glyph on its item)");
+        window.ActiveTab = first;
+        var muted = toasts?.Toasts.Count ?? 0;
+        noisy.ApplyReport(new IntegrationReport(noisy.Id, "selftest", 2, AgentState.Working, "selftest", "working", null, null, null, Release: false));
+        await Task.Delay(200);
+        noisy.ApplyReport(new IntegrationReport(noisy.Id, "selftest", 3, AgentState.Blocked, "selftest", "second", null, null, null, Release: false));
+        await Task.Delay(500);
+        Check((toasts?.Toasts.Count ?? 0) == muted && noisy.State == AgentState.Blocked, "a muted tab's blocked report raises no toast, while its state still shows Blocked");
+
+        window.SaveSession(force: true);
+        var saved = SessionSnapshot.Load(AppPaths.SessionFile, out _);
+        var savedNoisy = saved?.Tabs.FirstOrDefault(t => t.Label == "noisy");
+        Check(savedNoisy?.Extra is { } extra && extra.TryGetValue("triage.muted", out var m) && m == "true", "the mute is in the session file (ITab.Properties -> SavedTab.Extra)");
+
+        window.ActiveTab = noisy;
+        window.Commands.TryExecute("tab.mute");
+        Check(!noisy.IsMuted, "tab.mute again unmutes");
+        window.ActiveTab = first;
+
+        // ---- watch ----
+        Check(triage.SetWatch(other, "BUILD-\\d+-OK"), "a watch pattern is accepted");
+        Check(!triage.SetWatch(first, "("), "...and a bad one refused");
+        var watchBefore = toasts?.Toasts.Count ?? 0;
+        other.SendText("Write-Host BUILD-42-OK\r");
+        var fired = false;
+        for (var i = 0; i < 20 && !fired; i++)
+        {
+            await Task.Delay(400);
+            fired = toasts is not null && toasts.Toasts.Count > watchBefore && toasts.Toasts.Any(t => t.TabId == other.Id && t.Message.Contains("BUILD-42-OK", StringComparison.Ordinal));
+        }
+
+        Check(fired, "the watch fires a notification when a matching row appears");
+        var afterFire = toasts?.Toasts.Count ?? 0;
+        await Task.Delay(2500);
+        Check((toasts?.Toasts.Count ?? 0) == afterFire, "...once, not on every heartbeat while the row stays");
+        Check(other.WatchText == "BUILD-\\d+-OK" && other.Tooltip.Contains("Watching for", StringComparison.Ordinal), "the watch shows in the tab's tooltip");
+        triage.SetWatch(other, null);
+        Check(other.WatchText is null, "an empty pattern removes the watch");
+
+        // ---- auto-advance ----
+        var settingsFile = AppPaths.SettingsFile;
+        var hadSettings = System.IO.File.Exists(settingsFile);
+        var previous = hadSettings ? System.IO.File.ReadAllText(settingsFile) : null;
+        System.IO.File.WriteAllText(settingsFile, """{ "extensions": { "triage": { "autoAdvance": true } } }""");
+        await Task.Delay(1800);
+        other.ApplyReport(new IntegrationReport(other.Id, "selftest", 1, AgentState.Blocked, "selftest", "waiting too", null, null, null, Release: false));
+        await Task.Delay(300);
+        window.ActiveTab = noisy; // blocked, in front
+        await Task.Delay(300);
+        noisy.ApplyReport(new IntegrationReport(noisy.Id, "selftest", 4, AgentState.Working, "selftest", "answered", null, null, null, Release: false));
+        await Task.Delay(600);
+        Check(ReferenceEquals(window.ActiveTab, other), "autoAdvance: the blocked tab in front moving on jumps to the next waiting tab");
+
+        if (hadSettings)
+        {
+            System.IO.File.WriteAllText(settingsFile, previous);
+        }
+        else
+        {
+            System.IO.File.WriteAllText(settingsFile, "{ }");
+        }
+
+        await Task.Delay(1200);
+        window.ActiveTab = first;
+        window.CloseTab(noisy);
+        window.CloseTab(other);
+        Log($"=== selftest (triage) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// The reply channel against the real OpenCode (§12.17): `opencode run` with a prompt that    /// needs a permission; when the plugin reports blocked with the request id, the tab is
     /// answered through the queue and OpenCode's own permission API must move it on. If this
     /// OpenCode never asks (permissions set to allow), that is logged and the reply part is
     /// skipped rather than faked.
@@ -622,11 +733,36 @@ internal static class HerdSelfTest
             Check(inbox.Window is null, "Esc / close ends the inbox");
         }
 
+        // ---- toast actions (12.17) ----
+        // A blocked report on a tab with a channel publishes a toast that carries Allow / Deny.
+        var toasts = window.Notifications?.ToastHost;
+        var toastsBefore = toasts?.Toasts.Count ?? 0;
+        typed.ApplyReport(new IntegrationReport(typed.Id, "selftest-keys2", 1, AgentState.Blocked, "copilot", "Allow this too? [y/N]", null, null, null, Release: false));
+        await Task.Delay(600);
+        var toast = toasts?.Toasts.LastOrDefault(t => t.TabId == typed.Id);
+        Log($"  toast: {(toast is null ? "none" : $"'{toast.Title}' canAnswer={toast.CanAnswer}")} (count {toastsBefore} -> {toasts?.Toasts.Count})");
+        Check(toast is { CanAnswer: true }, "a blocked tab with a one-key channel gets an in-window toast with Allow / Deny");
+        var replyUrl = Core.Integrations.ProtocolRequest.ReplyUrl(typed.Id, approve: false, Notifications.NotificationPipeline.ReplyNonce);
+        var beforeDeny = typed.OutputVersion;
+        window.HandleArguments([replyUrl]);
+        await Task.Delay(1500);
+        typed.RequestScreen();
+        await Task.Delay(400);
+        Check(typed.ScreenRows.Any(r => r.Contains("> n", StringComparison.Ordinal) || r.TrimStart().StartsWith("n", StringComparison.Ordinal) || r.Contains("The term 'n'", StringComparison.Ordinal)), "a native toast's Deny URL with this run's nonce answers the tab (the shell received 'n')");
+        var beforeStray = typed.OutputVersion;
+        window.HandleArguments([Core.Integrations.ProtocolRequest.ReplyUrl(typed.Id, approve: true, "not-this-run")]);
+        await Task.Delay(1200);
+        Check(typed.OutputVersion == beforeStray && ReferenceEquals(window.ActiveTab, typed), "...a reply URL without the nonce only focuses the tab, nothing is typed");
+        if (toasts is not null && toast is not null)
+        {
+            SaveVisual((System.Windows.FrameworkElement)toasts.Content, "overshell-selftest-inbox-toast.png");
+        }
+
+        window.ActiveTab = first;
         window.CloseTab(agent);
         window.CloseTab(typed);
         window.CloseTab(oldest);
-        Log($"=== selftest (inbox) result: {(pass ? "ALL PASS" : "FAILED")} ===");
-    }
+        Log($"=== selftest (inbox) result: {(pass ? "ALL PASS" : "FAILED")} ===");    }
 
     /// <summary>
     /// Keyboard navigation (§12.16): the view chord pressed again puts a cursor into the    /// sidebar (herd) or the cards (dashboard); arrows and j/k move it in the pane's own

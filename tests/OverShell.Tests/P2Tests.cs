@@ -205,6 +205,7 @@ public class ProtocolRequestTests
     [InlineData("overshell://new", ProtocolAction.New, null)]
     [InlineData("overshell://", ProtocolAction.Show, null)]
     [InlineData("overshell://unknown/thing", ProtocolAction.Show, null)]
+    [InlineData("overshell://reply/ab12cd34?answer=approve&nonce=deadbeef", ProtocolAction.Reply, "ab12cd34")]
     public void Parses_actions_and_targets(string url, ProtocolAction action, string? target)
     {
         var request = ProtocolRequest.Parse(url)!;

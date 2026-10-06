@@ -132,6 +132,16 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public void Trace(string message) => _window.Trace.Write(message);
 
+    public Func<NotificationEvent, bool>? NotificationFilter { get; set; }
+
+    public void TabPropertiesChanged(ITab tab)
+    {
+        if (tab is TerminalTab t)
+        {
+            t.PropertiesChanged();
+            _window.SaveSessionSoon();
+        }
+    }
     public void Post(Action action) => _window.Dispatcher.BeginInvoke(action, DispatcherPriority.Normal);
 
     // ------------------------------------------------------- IKeyBindings

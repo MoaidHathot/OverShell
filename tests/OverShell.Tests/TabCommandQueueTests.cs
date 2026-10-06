@@ -86,6 +86,20 @@ public class TabCommandQueueTests
     }
 }
 
+public class ReplyUrlTests
+{
+    [Fact]
+    public void Reply_url_round_trips_answer_and_nonce()
+    {
+        var url = ProtocolRequest.ReplyUrl("tab 1", approve: false, "n0nce");
+        var request = ProtocolRequest.Parse(url)!;
+        Assert.Equal(ProtocolAction.Reply, request.Action);
+        Assert.Equal("tab 1", request.Target);
+        Assert.Equal("deny", request.Query["answer"]);
+        Assert.Equal("n0nce", request.Query["nonce"]);
+    }
+}
+
 public class MatchingLineTests
 {
     [Fact]

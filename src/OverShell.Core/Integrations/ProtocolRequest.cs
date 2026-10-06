@@ -21,6 +21,9 @@ public enum ProtocolAction
     /// <summary><c>overshell://history</c> — the session history picker; <c>overshell://history/&lt;archive stem&gt;</c> reopens that archive.</summary>
     History,
 
+    /// <summary><c>overshell://reply/&lt;tabId&gt;?answer=approve|deny&amp;nonce=...</c> - a toast button answered a blocked agent (§12.17). The nonce is per run; without the right one the request only focuses the tab.</summary>
+    Reply,
+
     /// <summary><c>overshell://</c> alone, or anything unknown: just show the window.</summary>
     Show,
 }
@@ -69,11 +72,15 @@ public sealed record ProtocolRequest(ProtocolAction Action, string? Target, IRea
             "workspace" when target is not null => new ProtocolRequest(ProtocolAction.Workspace, target, query),
             "reopen" => new ProtocolRequest(ProtocolAction.Reopen, null, query),
             "history" => new ProtocolRequest(ProtocolAction.History, target, query),
+            "reply" when target is not null => new ProtocolRequest(ProtocolAction.Reply, target, query),
             _ => new ProtocolRequest(ProtocolAction.Show, null, query),
         };
     }
 
     public static string FocusUrl(string tabId) => $"{Scheme}://focus/{Uri.EscapeDataString(tabId)}";
+
+    /// <summary>A toast button's answer for a tab, signed with the run's nonce so a stray URL cannot approve anything.</summary>
+    public static string ReplyUrl(string tabId, bool approve, string nonce) => $"{Scheme}://reply/{Uri.EscapeDataString(tabId)}?answer={(approve ? "approve" : "deny")}&nonce={Uri.EscapeDataString(nonce)}";
 
     public static string WorkspaceUrl(string name) => $"{Scheme}://workspace/{Uri.EscapeDataString(name)}";
 

@@ -57,7 +57,7 @@ internal static class NativeToast
     /// <paramref name="tag"/> and <paramref name="group"/> let a later toast replace this one.
     /// Returns null on success, else the failing step and HRESULT — the caller traces it.
     /// </summary>
-    public static string? Show(string title, string message, string? attribution, string? launch, string? tag, string? group, bool silent)
+    public static string? Show(string title, string message, string? attribution, string? launch, string? tag, string? group, bool silent, IReadOnlyList<(string Label, string Launch)>? actions = null)
     {
         var xml = new StringBuilder("<toast");
         if (launch is not null)
@@ -74,13 +74,24 @@ internal static class NativeToast
         }
 
         xml.Append("</binding></visual>");
+        if (actions is { Count: > 0 })
+        {
+            // Buttons that open protocol URLs - the same path a click takes, with the answer in the URL.
+            xml.Append("<actions>");
+            foreach (var (label, actionLaunch) in actions)
+            {
+                xml.Append("<action activationType=\"protocol\" content=\"").Append(Escape(label)).Append("\" arguments=\"").Append(Escape(actionLaunch)).Append("\"/>");
+            }
+
+            xml.Append("</actions>");
+        }
+
         if (silent)
         {
             xml.Append("<audio silent=\"true\"/>");
         }
 
         xml.Append("</toast>");
-
         try
         {
             // COM is already initialised on this thread by the runtime (WPF: STA; a pool

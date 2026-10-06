@@ -95,6 +95,14 @@ public interface IShell
     /// <summary>The agents trace (<c>OVERSHELL_TRACE_AGENTS=1</c>).</summary>
     void Trace(string message);
 
+    /// <summary>
+    /// A gate on notifications: return false to drop an event before any sink sees it (a
+    /// muted tab). One extension may set it; null lets everything through.
+    /// </summary>
+    Func<NotificationEvent, bool>? NotificationFilter { get; set; }
+
+    /// <summary>An extension changed a tab's <see cref="ITab.Properties"/>: the tab item re-reads them and the session is saved.</summary>
+    void TabPropertiesChanged(ITab tab);
     /// <summary>Runs on the UI thread, later.</summary>
     void Post(Action action);
 }

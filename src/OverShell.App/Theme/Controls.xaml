@@ -57,8 +57,44 @@
         </Setter>
     </Style>
 
-    <!-- ======================== Small icon button ====================== -->
+    <!-- ======================== Text button (toast Allow / Deny, dialogs) ====================== -->
 
+    <Style x:Key="ChromeTextButton" TargetType="Button">
+        <Setter Property="Padding" Value="12,4" />
+        <Setter Property="Background" Value="{StaticResource Surface.Hover}" />
+        <Setter Property="Foreground" Value="{StaticResource Text.Primary}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Surface.Border}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="FontFamily" Value="{StaticResource Font.Ui}" />
+        <Setter Property="FontSize" Value="{StaticResource Font.Size.Small}" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource Surface.Pressed}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource Accent.Muted}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ChromeAccentButton" TargetType="Button" BasedOn="{StaticResource ChromeTextButton}">
+        <Setter Property="Background" Value="{StaticResource Accent.Base}" />
+        <Setter Property="Foreground" Value="{StaticResource Accent.OnAccent}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Accent.Base}" />
+    </Style>
+
+    <!-- ======================== Small icon button ====================== -->
     <Style x:Key="ChromeIconButton" TargetType="Button">
         <Setter Property="Width" Value="30" />
         <Setter Property="Height" Value="30" />

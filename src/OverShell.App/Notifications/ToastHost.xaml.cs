@@ -22,7 +22,12 @@ public sealed class Toast
 
     public required Brush Accent { get; init; }
 
+    /// <summary>A blocked tab that can be answered from here: Allow / Deny buttons show (§12.17).</summary>
+    public bool CanAnswer { get; init; }
+
     public Visibility DetailVisibility => string.IsNullOrEmpty(Detail) ? Visibility.Collapsed : Visibility.Visible;
+
+    public Visibility AnswerVisibility => CanAnswer ? Visibility.Visible : Visibility.Collapsed;
 
     internal DispatcherTimer? Timer { get; set; }
 }
@@ -77,6 +82,7 @@ public partial class ToastHost : Window
     public void Show(NotificationEvent e, Brush accent, int durationMs)
     {
         var values = e.TemplateValues();
+        var canAnswer = e.Kind == NotificationKind.Blocked && e.CanAnswer && AnswerTab is not null;
         Show(new Toast
         {
             TabId = e.TabId,
@@ -84,9 +90,29 @@ public partial class ToastHost : Window
             Message = e.Message,
             Detail = e.Detail ?? e.WorkingDirectory,
             Accent = accent,
-        }, durationMs);
+            CanAnswer = canAnswer,
+        }, canAnswer ? Math.Max(durationMs, 15000) : durationMs);
     }
 
+    /// <summary>Answers a blocked tab from a toast's button: (tab id, approve) -> taken.</summary>
+    public Func<string, bool, bool>? AnswerTab { get; init; }
+
+    private void Allow_Click(object sender, RoutedEventArgs e) => Answer(sender, approve: true, e);
+
+    private void Deny_Click(object sender, RoutedEventArgs e) => Answer(sender, approve: false, e);
+
+    private void Answer(object sender, bool approve, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: Toast toast })
+        {
+            if (AnswerTab?.Invoke(toast.TabId, approve) == true)
+            {
+                Remove(toast);
+            }
+
+            e.Handled = true;
+        }
+    }
     /// <summary>
     /// A line from OverShell itself rather than about a tab — what the status bar would
     /// say when a layout has no status bar (Zen). Clicking it only dismisses it.

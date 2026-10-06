@@ -436,6 +436,9 @@ public partial class MainWindow
     /// <summary>Called by the windows as they activate: the main window clears the tear-off memory, a tear-off sets it.</summary>
     internal void NoteActivated(TearOffWindow? tearOff) => _lastActivatedTearOff = tearOff;
 
+    /// <summary>A tab's extension state changed: write the session if it differs (it carries the properties).</summary>
+    internal void SaveSessionSoon() => SaveSession();
+
     /// <summary>
     /// Writes the session file when something changed; with a <paramref name="reason"/>,
     /// unconditionally — that is the window closing, and nothing is written after it, so
@@ -792,6 +795,21 @@ public partial class MainWindow
                 FocusTabById(tabId);
                 break;
 
+            case ProtocolAction.Reply when request.Target is { } replyTab:
+                // A native toast's Allow / Deny. The nonce is this run's; a URL without it (another
+                // run's toast, a stray link) only focuses the tab - typing into an agent deserves more
+                // than a URL's trust (12.17).
+                if (request.Query.GetValueOrDefault("nonce") == OverShell.App.Notifications.NotificationPipeline.ReplyNonce && request.Query.GetValueOrDefault("answer") is "approve" or "deny")
+                {
+                    AnswerTabById(replyTab, request.Query["answer"] == "approve");
+                }
+                else
+                {
+                    _trace.Write("protocol: reply without this run's nonce - focusing only");
+                    FocusTabById(replyTab);
+                }
+
+                break;
             case ProtocolAction.View when request.Target is { } view && AppSettings.ViewOrder.Contains(view, StringComparer.OrdinalIgnoreCase):
                 ApplyView(view);
                 break;
