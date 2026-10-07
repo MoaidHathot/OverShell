@@ -8,7 +8,7 @@
 #   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID  - Entra app registration with a federated
 #                                                             credential for this repo's "release"
 #                                                             environment (OIDC; no client secret)
-#   AZURE_SIGNING_ENDPOINT   - e.g. https://eus.codesigning.azure.net/ (the account's region)
+#   AZURE_SIGNING_ENDPOINT   - e.g. https://wus3.codesigning.azure.net (the account's region)
 #   AZURE_SIGNING_ACCOUNT    - Artifact Signing account name
 #   AZURE_SIGNING_PROFILE    - certificate profile name (Public Trust)
 #   NUGET_USER               - the nuget.org profile name. The push uses Trusted Publishing: NuGet/login
@@ -21,7 +21,8 @@
 # repository, so a fork that pushes a tag publishes nothing.
 #
 # The job runs in the "release" environment so the OIDC subject is stable
-# (repo:MoaidHathot/OverShell:environment:release) instead of one subject per tag.
+# (repo:MoaidHathot@<owner id>/OverShell@<repo id>:environment:release - GitHub's token carries the
+# numeric ids) instead of one subject per tag.
 name: Release
 
 on:

@@ -2479,10 +2479,14 @@ way with `window.backdrop: mica`. The upstream submissions (phase 2) are written
 a pull request each for the dcomp.dll load and for the composed mode, texts in the fork's
 `build/overshell/UPSTREAMING.md`, branches `upstream/atlas-dcomp-load` and
 `upstream/wpf-composed-rendering` on upstream `main` — and are opened in the browser by hand, the
-fork owner's token being SAML-bound for the microsoft organisation. Signing: the fork's binaries
-are unsigned (upstream signs with Microsoft's certificate through internal tooling); OverShell's
-release signs them with its own certificate when signing is configured (`build/Release.ps1`
-catalogues them now).
+fork owner's token being SAML-bound for the microsoft organisation. Signing is configured: one Azure
+Artifact Signing account (Basic tier: one Public Trust profile, shared with the owner's other
+projects; the certificate's subject is the owner's validated identity either way) and an Entra
+app *OverShell release signing* with a federated credential per repository (OverShell and the
+fork), assigned *Artifact Signing Certificate Profile Signer* on the profile and nothing else;
+the six `AZURE_*` secrets live on each repository's `release` environment. The fork's `pack`
+job signs the two control binaries, OverShell's release signs its own and leaves signed files
+alone (`build/Release.ps1` catalogues only what is unsigned).
 
 ### 12.21 The self-tests on a private desktop
 
@@ -2629,8 +2633,9 @@ locally without any account:
    so a silent signing failure cannot ship unsigned bits under a signed-looking release.
 
 `.github/workflows/release.yml` runs on a `v*` tag in the `release` environment - which
-makes the OIDC subject `repo:MoaidHathot/OverShell:environment:release`, one federated
-credential in Entra instead of one per tag - and then: GitHub Release (both zips, the
+makes the OIDC subject `repo:MoaidHathot@<owner id>/OverShell@<repo id>:environment:release`
+(GitHub's token carries the numeric ids), one federated credential in Entra instead of one per
+tag - and then: GitHub Release (both zips, the
 `.nupkg`, the sums; prerelease when the version has a `-`), `dotnet nuget push` with
 `NUGET_API_KEY`, and `wingetcreate submit` of the rendered manifest folder with
 `WINGET_CREATE_GITHUB_TOKEN` (the documented CI form; `submit` also works for the first
