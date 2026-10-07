@@ -7,8 +7,9 @@
   Phase "build":   publish framework-dependent and self-contained win-x64, pack the .NET tool,
                    unpack the tool package - everything lands under artifacts/release/stage/ -
                    and write stage/signing-catalog.txt, the exact list of binaries we sign:
-                   our own (OverShell*.exe, OverShell*.dll) and the terminal control's two, which
-                   our fork of microsoft/terminal builds unsigned. The ConPTY binaries keep their
+                   our own (OverShell*.exe, OverShell*.dll) and the terminal control's two when
+                   they arrive unsigned (our fork of microsoft/terminal signs them since
+                   1.26.260930.2; a signed file is left alone). The ConPTY binaries keep their
                    Microsoft signatures and are left alone.
   Phase "package": repack the tool package from the (signed) staging copy, zip both publish
                    flavours, write SHA-256 sums, render the winget manifests from winget/templates.
@@ -51,10 +52,11 @@ function Invoke-Dotnet([string[]] $arguments) {
 }
 
 function Get-Signable {
-    # Our own assemblies, and the two terminal-control binaries when they arrive unsigned: since
-    # OverShell.Terminal.Wpf they are built by our fork of microsoft/terminal, whose release signs
-    # them only when it has a signing account of its own - if it did, they are left as they are
-    # (a second signature would be noise). The ConPTY binaries keep their Microsoft signatures.
+    # Our own assemblies, and the two terminal-control binaries only when they arrive unsigned:
+    # they are built by our fork of microsoft/terminal, whose release signs them with the same
+    # certificate since 1.26.260930.2 - then they are left as they are (a second signature would
+    # be noise), while an older or locally built package still gets covered here. The ConPTY
+    # binaries keep their Microsoft signatures.
     Get-ChildItem $stage -Recurse -File | Where-Object {
         if ($_.Name -like 'OverShell*.exe' -or $_.Name -like 'OverShell*.dll') { return $true }
         if ($_.Name -in 'Microsoft.Terminal.Wpf.dll', 'Microsoft.Terminal.Control.dll') { return (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' }

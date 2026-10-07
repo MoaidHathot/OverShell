@@ -205,7 +205,7 @@ OverShell.slnx
 ### Dependency graph
 
 ```
-OverShell.Terminal.Wpf 1.26.260930.1        (our fork of microsoft/terminal, §12.20; was CI.Microsoft.Terminal.Wpf 1.25.260303002)
+OverShell.Terminal.Wpf 1.26.260930.2        (our fork of microsoft/terminal, signed, §12.20; was CI.Microsoft.Terminal.Wpf 1.25.260303002)
 ├── Microsoft.Terminal.Wpf.dll          (managed HwndHost wrapper, ITerminalConnection)
 └── Microsoft.Terminal.Control.dll      (native — the real WT control, 1.6 MB)
 Microsoft.Windows.Console.ConPTY 1.24.260710001
@@ -923,7 +923,7 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | A URL ending in the last column of a non-wrapped row, or longer than 9 rows, gets approximate or no geometry | `FindText` off-by-one pushes such a match out of range (§7.10); the row walk is capped | Cosmetic; the link still opens |
 | A link whose text is not uniformly coloured is underlined in the scheme foreground | The colour attribute reports "mixed" for the range | Split by colour run if it ever matters |
 | x64 only | Native control not published AnyCPU | No |
-| The terminal control is unsigned by Microsoft | `OverShell.Terminal.Wpf` is built from source by our fork on GitHub Actions (§12.20); upstream signs its CI output with internal tooling, and there is still no release of the control ([microsoft/terminal#15404](https://github.com/microsoft/terminal/issues/15404)) | OverShell's release signs the two binaries with its own certificate when signing is configured |
+| The terminal control is not signed by Microsoft | `OverShell.Terminal.Wpf` is built from source by our fork on GitHub Actions (§12.20); upstream signs its CI output with internal tooling, and there is still no release of the control ([microsoft/terminal#15404](https://github.com/microsoft/terminal/issues/15404)) | Since 1.26.260930.2 the fork's release signs the two binaries with the owner's Azure Artifact Signing certificate (the same one OverShell's release uses), so the whole shipped tree carries one signer; OverShell's release leaves signed files alone |
 | Restored window placement can be a few pixels off on a mixed-DPI desktop | Placement is saved and clamped in the primary monitor's DIPs; a window on a monitor with another scale is converted by WPF at show time (§12.13) | Cosmetic; the window is always on a visible monitor |
 | A tiling window manager re-tiles restored windows | It moves every new window; OverShell asked for the saved rectangle (traced at `SourceInitialized`) and the manager overrode it | Expected with such a manager; nothing to do |
 
