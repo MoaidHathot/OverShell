@@ -4,7 +4,8 @@ OverShell is a Windows terminal shell built around Microsoft's Windows Terminal 
 engine, made for running several AI coding agents at once: it tells you which tab is
 working, which one is waiting for you, and which one finished while you were looking
 elsewhere. This guide is about using it; [DESIGN.md](../DESIGN.md) is about why it is
-built the way it is.
+built the way it is. New here? [TUTORIAL.md](TUTORIAL.md) walks through the features in ten
+minutes, hands on; in the palette it is **Help: Tutorial**.
 
 Contents
 
@@ -77,8 +78,15 @@ OverShell settings init    # writes settings.jsonc + keybindings.jsonc from the 
 OverShell settings open    # Explorer on the configuration root
 ```
 
-The same two actions are in the command palette (`Settings: …`). Files under the
-configuration root:
+The palette (`Ctrl+Shift+P`) has the same and more: **Open settings.jsonc** and **Open
+keybindings.jsonc** open the file in your editor, writing it from the commented defaults first
+when it does not exist; **Change a setting…** lists the settings people turn - theme, accent,
+backdrop, terminal opacity, the view at start, what comes back after a restart, notification
+sinks, the summon key and more - each with its current value, and choosing one shows the values
+it takes; and every one of them is also a command of its own (**Setting: Terminal body
+opacity**), so typing `opacity` lands on it. A change from the palette is one line written
+into `settings.jsonc` - the rest of the file, comments included, stays as it was - and
+applies the way a hand edit does, live. Files under the configuration root:
 
 | File | What |
 |---|---|
@@ -162,7 +170,7 @@ init` gives you the full default file, commented, as a starting point.
 
   "protocol": { "register": true },  // overshell:// for this user (HKCU), so toast clicks find their tab
   "endpoint": { "control": true },   // the control API + endpoint.json for OverShell mcp (§7); false keeps the endpoint to reports
-  "window": { "backdrop": "acrylic", "terminalOpacity": 1.0 },  // acrylic | mica | micaalt | none; below 1 the terminal body is translucent (see 13)
+  "window": { "backdrop": "acrylic", "terminalOpacity": 0.85 }, // acrylic | mica | micaalt | none; the terminal body's opacity, 1 for opaque (see 13)
 
   "notifications": { "sinks": { /* see §9 */ } },
 
@@ -767,22 +775,23 @@ metrics at the next start. Skins are your own files and are trusted like configu
 
 ### A translucent terminal body
 
-Windows Terminal's `opacity`, for OverShell:
+Windows Terminal's `opacity`, for OverShell - on by default at 0.85:
 
 ```jsonc
-"window": { "backdrop": "acrylic", "terminalOpacity": 0.85 }
+"window": { "backdrop": "acrylic", "terminalOpacity": 0.85 }   // 1.0 for a solid body
 ```
 
 `backdrop` is the Windows 11 material behind the window - `acrylic` (the default; shows what is
 behind the window), `mica` or `micaalt` (wallpaper-tinted), `none`; `OVERSHELL_BACKDROP` in the
 environment overrides it for one run. `terminalOpacity` is the opacity of the terminal's default
-background: at 1 the body is opaque, today's look; below 1 the backdrop shows through it, while
-text and cells with their own background colour stay opaque. The chrome bands have always been
-translucent; this extends it to the body.
+background: 0.85 by default, so the backdrop shows through it while text and cells with their own
+background colour stay opaque; 1 makes the body solid. The chrome bands have always been
+translucent; the body followed. The quickest way to try values is the palette: **Setting:
+Terminal body opacity** lists them with the current one marked, and the change applies live.
 
 Two things to know. The opacity follows the settings live, but the *mode* - translucent or not -
 is chosen when OverShell starts, because a terminal's window is created once: changing
-`terminalOpacity` across 1 asks for a restart in the status bar. And DWM paints acrylic only for
+`terminalOpacity` across 1 in either direction asks for a restart in the status bar. And DWM paints acrylic only for
 the active window; an inactive OverShell shows an opaque fallback behind the body, exactly as
 Windows Terminal does. With "Transparency effects" off in Windows Settings the body stays opaque.
 

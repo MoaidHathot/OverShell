@@ -335,18 +335,9 @@ public partial class App : Application
                 case "init":
                     out_.WriteLine();
                     Core.AppPaths.EnsureCreated();
-                    foreach (var (path, resource) in new[] { (Core.AppPaths.SettingsFile, "settings.jsonc"), (Core.AppPaths.KeybindingsFile, "keybindings.jsonc") })
+                    foreach (var (path, resource) in Core.Settings.SettingsFiles.Defaults)
                     {
-                        if (File.Exists(path))
-                        {
-                            out_.WriteLine($"  kept     {path}");
-                            continue;
-                        }
-
-                        var header = $"// Written by `OverShell settings init` from the built-in defaults. Every value here equals the{Environment.NewLine}" +
-                                     $"// default, so this file changes nothing until you edit it; delete a line to fall back.{Environment.NewLine}";
-                        File.WriteAllText(path, header + Core.EmbeddedResources.Read(resource), new System.Text.UTF8Encoding(false));
-                        out_.WriteLine($"  written  {path}");
+                        out_.WriteLine(Core.Settings.SettingsFiles.WriteDefault(path, resource, "`OverShell settings init`") ? $"  written  {path}" : $"  kept     {path}");
                     }
 
                     out_.WriteLine("  Saved changes apply live while OverShell runs.");
@@ -384,7 +375,7 @@ public partial class App : Application
         };
     }
 
-    private static string InformationalVersion
+    internal static string InformationalVersion
     {
         get
         {
@@ -446,7 +437,8 @@ public partial class App : Application
         out_.WriteLine("  OverShell mcp                               MCP server over stdio for an agent host; tools act on the running window");
         out_.WriteLine("  OverShell version");
         out_.WriteLine();
-        out_.WriteLine("  Guide: https://github.com/MoaidHathot/OverShell/blob/main/docs/GUIDE.md");
+        out_.WriteLine("  Tutorial: https://github.com/MoaidHathot/OverShell/blob/main/docs/TUTORIAL.md");
+        out_.WriteLine("  Guide:    https://github.com/MoaidHathot/OverShell/blob/main/docs/GUIDE.md");
         out_.Flush();
         return 0;
     }

@@ -28,7 +28,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency" or "settings";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -150,6 +150,9 @@ internal static class HerdSelfTest
                         break;
                     case "transparency":
                         await RunTransparencyAsync(window, firstTab);
+                        break;
+                    case "settings":
+                        await RunSettingsAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -279,6 +282,12 @@ internal static class HerdSelfTest
         }
 
         await Task.Delay(500);
+        // The user is in the tear-off when the window closes: the saved active tab follows the
+        // window activated last, and right after a detach the two windows trade activation for
+        // a few milliseconds, so the scenario says which one it means.
+        tearOff?.Activate();
+        await Task.Delay(300);
+        Log($"  windows: tearoff.IsActive={tearOff?.IsActive} main.IsActive={window.IsActive}");
         Log($"  before close: tabs={window.Tabs.Count} active={window.Tabs.IndexOf(window.ActiveTab!)} label='{tab.UserLabel}' group='{second.Group}' resume='{tab.ResumeCommand}' agent={tab.IsAgent} state={tab.State} main={window.Left:F0},{window.Top:F0} {window.Width:F0}x{window.Height:F0} detached={second.Detached} tearoff={(tearOff is null ? "-" : $"{tearOff.Left:F0},{tearOff.Top:F0} {tearOff.Width:F0}x{tearOff.Height:F0}")}");
         Log($"  {(tab.ResumeCommand == "Write-Host selftest-resumed" ? "PASS" : "FAIL")}  the integration's resume command is kept on the tab");
         Log($"  {(second.Detached ? "PASS" : "FAIL")}  the second tab is detached before the close");
@@ -2453,6 +2462,117 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
+    /// Settings from the palette (12.22): the picker lists the catalog with current values, a
+    /// knob's picker lists its values with the current one marked, choosing one writes the value
+    /// into settings.jsonc - written from the commented defaults first - without touching the
+    /// rest of the file, and the watcher applies it live exactly as a hand edit; typed numbers
+    /// are judged; the help commands exist. Nothing is typed into any window: the pickers are
+    /// driven through their item lists, as Enter would.
+    /// </summary>
+    private static async Task RunSettingsAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (settings) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        static List<Chrome.PaletteItem> Items(MainWindow w) =>
+            w.Palette?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Cast<Chrome.PaletteItem>().ToList() : [];
+
+        var settingsFile = AppPaths.SettingsFile;
+        var before = System.IO.File.Exists(settingsFile) ? System.IO.File.ReadAllText(settingsFile) : null;
+        if (before is not null)
+        {
+            // Other modes leave a file behind (summon writes { }); this one starts from none, so
+            // the first change has to write the commented defaults. Put back at the end.
+            System.IO.File.Delete(settingsFile);
+            await Task.Delay(800);
+        }
+
+        var status = (System.Windows.Controls.TextBlock)window.FindName("TxtMessage")!;
+        await WaitForPromptAsync(first);
+
+        // ---- the commands are there ----
+        Check(window.Commands.Find("settings.edit") is { IsEnabled: true } && window.Commands.Find("settings.editKeys") is { IsEnabled: true } && window.Commands.Find("settings.change") is { IsEnabled: true }, "Open settings.jsonc, Open keybindings.jsonc and Change a setting are commands");
+        Check(SettingsCatalog.Knobs.All(k => window.Commands.Find($"settings.set.{k.Path}") is { IsEnabled: true, Category: "Settings" }), $"every catalog entry is a command of its own ({SettingsCatalog.Knobs.Count})");
+        Check(window.Commands.Find("help.tutorial") is { Category: "Help" } && window.Commands.Find("help.guide") is not null && window.Commands.Find("help.keys") is not null && window.Commands.Find("help.about") is not null, "Help: Tutorial, User guide, Keyboard shortcuts and About are commands");
+        window.Commands.TryExecute("help.about");
+        await Task.Delay(200);
+        Check(status.Text.StartsWith("OverShell ", StringComparison.Ordinal) && status.Text.Contains(AppPaths.ConfigRoot, StringComparison.OrdinalIgnoreCase), $"About shows the version and the roots ('{status.Text}')");
+
+        // ---- the picker: every knob, with its current value ----
+        window.Commands.TryExecute("settings.change");
+        await Task.Delay(500);
+        var knobs = Items(window);
+        var opacityItem = knobs.FirstOrDefault(i => i.Title == "Terminal body opacity");
+        Log($"  picker: {knobs.Count} setting(s); opacity row detail='{opacityItem?.Detail}' hint='{opacityItem?.Hint}'");
+        Check(knobs.Count == SettingsCatalog.Knobs.Count && opacityItem is not null, "Change a setting lists the whole catalog");
+        Check(opacityItem?.Detail?.StartsWith($"{SettingKnob.Display(JsoncEdit.ToJson(WindowSettings.DefaultTerminalOpacity))} (default)", StringComparison.Ordinal) == true && opacityItem.Hint == "window.terminalOpacity", "a row shows the current value, that it is the default, and the key");
+
+        // Choosing the row opens its values (the invoke runs after the palette closed, as Enter does).
+        window.Palette!.Close();
+        await Task.Delay(150);
+        opacityItem!.Invoke();
+        await Task.Delay(500);
+        var values = Items(window);
+        var current = values.FirstOrDefault(v => v.Hint == "current");
+        var half = values.FirstOrDefault(v => v.Title == "0.5");
+        Log($"  values: {values.Count}; current='{current?.Title}'");
+        Check(values.Count >= 9 && current?.Title == "0.85" && half is not null, "the opacity picker lists the presets with the current one marked");
+
+        // ---- choosing a value writes the file and the watcher applies it ----
+        window.Palette!.Close();
+        await Task.Delay(150);
+        half!.Invoke();
+        await Task.Delay(1500);
+        var text = System.IO.File.ReadAllText(settingsFile);
+        Log($"  file: {text.Length} chars, starts '{text.Split('\n')[0]}'; opacity now {TerminalFactory.Composition.Opacity:F2}; status '{status.Text}'");
+        Check(text.StartsWith("// Written by OverShell from the built-in defaults", StringComparison.Ordinal) && text.Contains("// OverShell default settings.", StringComparison.Ordinal), "settings.jsonc was written from the commented defaults first");
+        Check(text.Contains("\"terminalOpacity\": 0.5\n", StringComparison.Ordinal) && !text.Contains("\"terminalOpacity\": 0.85", StringComparison.Ordinal), "...and the value was replaced in place, the comments around it kept");
+        Check(Math.Abs(TerminalFactory.Composition.Opacity - 0.5) < 0.001 && Math.Abs(first.Surface.BackgroundOpacity - 0.5) < 0.001, "the watcher applied it live: the composition and the surface are at 0.5");
+        Check(status.Text.Contains("Terminal body opacity = 0.5", StringComparison.Ordinal), "the reload's status line names the change");
+
+        // ---- a toggle and a choice, through the catalog directly ----
+        window.ApplySetting(SettingsCatalog.Find("tabs.twoLine")!, "false");
+        window.ApplySetting(SettingsCatalog.Find("theme")!, "\"light\"");
+        await Task.Delay(1500);
+        text = System.IO.File.ReadAllText(settingsFile);
+        Check(!TerminalTab.TabSettings.TwoLine && Chrome.ThemeManager.Current.Theme == "light", "a toggle and a choice applied live (tabs.twoLine false, theme light)");
+        Check(text.Contains("\"twoLine\": false", StringComparison.Ordinal) && text.Contains("\"theme\": \"light\"", StringComparison.Ordinal) && Jsonc.Parse(text, out _) is not null, "...both in the file, which still reads");
+
+        // ---- typed values ----
+        var opacity = SettingsCatalog.Find("window.terminalOpacity")!;
+        Check(opacity.JsonForTyped("0.73") == "0.73" && opacity.JsonForTyped("1") == "1.0" && opacity.JsonForTyped("2") is null && opacity.JsonForTyped("x") is null, "typed numbers are judged against the range");
+        window.ApplySetting(opacity, opacity.JsonForTyped("0.73")!);
+        await Task.Delay(1500);
+        Check(Math.Abs(TerminalFactory.Composition.Opacity - 0.73) < 0.001, "a typed 0.73 applied");
+
+        // ---- the extension sections are keyed by their whole id ----
+        window.ApplySetting(SettingsCatalog.Find("extensions.herd.mode.hints")!, "false");
+        await Task.Delay(1200);
+        text = System.IO.File.ReadAllText(settingsFile);
+        var node = Jsonc.Parse(text, out _);
+        Check(node?["extensions"]?["herd.mode"]?["hints"]?.GetValue<bool>() == false && window.CurrentSettings.ExtensionSettings<Extensions.HerdModeExtension.HerdModeSettings>("herd.mode", out _).Hints == false, "extensions[\"herd.mode\"].hints landed under the extension's id and the extension sees it");
+
+        // ---- back to how it was ----
+        if (before is null)
+        {
+            System.IO.File.Delete(settingsFile);
+        }
+        else
+        {
+            System.IO.File.WriteAllText(settingsFile, before);
+        }
+
+        await Task.Delay(1500);
+        Check(Chrome.ThemeManager.Current.Theme != "light" && TerminalTab.TabSettings.TwoLine, "the original file restored: theme and tabs back");
+
+        Log($"=== selftest (settings) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+    /// <summary>
     /// A translucent terminal body (§12.20) through the fork's control: with window.terminalOpacity
     /// below 1 the surface is composed, the frame extends over the whole window and the host behind
     /// the terminal is transparent; a lime window placed behind OverShell gives the acrylic
@@ -4035,6 +4155,12 @@ internal static class HerdSelfTest
         var attention = new List<AgentAttention>();
         tab.AttentionRequested += (_, a) => attention.Add(a);
 
+        // The state root is fresh, so this is a first start: the welcome note sits above the prompt.
+        await WaitForPromptAsync(tab);
+        tab.RequestScreen();
+        await Task.Delay(400);
+        Check(MainWindow.LooksLikeWelcome(tab.ScreenRows), "first run: the welcome note (the keys, Help: Tutorial) is above the first prompt");
+
         // A second tab makes the first one "not viewed": Done must then stick and toasts may show.
         var second = window.AddTab(tab.Profile, activate: true);
         await Task.Delay(1500);
@@ -4166,9 +4292,18 @@ internal static class HerdSelfTest
         await Task.Delay(300);
         var terminalHwnd = MainWindow.FindTerminalHwnd(tab.View);
         // The switch focuses the surface through the dispatcher; the round trip starts from an
-        // explicit focus so that what it measures is the palette, not the switch's timing.
+        // explicit focus so that what it measures is the palette, not the switch's timing. Asked
+        // twice: on a private desktop the WPF focus occasionally lands on the host while the two
+        // windows are still trading activation, and the child gets it on the next ask.
         tab.Surface.Focus();
         await Task.Delay(300);
+        if (ShortcutRouter.FocusedWindow() != terminalHwnd)
+        {
+            Log($"  focus did not reach the terminal at the first ask (0x{ShortcutRouter.FocusedWindow():X}); asking again");
+            tab.Surface.Focus();
+            await Task.Delay(300);
+        }
+
         var focusBefore = ShortcutRouter.FocusedWindow();
         Log($"  focus to start with: 0x{focusBefore:X} ({WindowClass(focusBefore)}); terminal 0x{terminalHwnd:X} ({WindowClass(terminalHwnd)}); active=0x{GetActiveWindow():X} ({WindowClass(GetActiveWindow())})");
         if (!window.IsActive)

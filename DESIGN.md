@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log`. Run through `tools\Invoke-SelfTest.ps1 -Mode <mode>`: a private desktop, so nothing takes the focus (§12.21); `-Visible` for the pixel checks |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log`. Run through `tools\Invoke-SelfTest.ps1 -Mode <mode>`: a private desktop, so nothing takes the focus (§12.21); `-Visible` for the pixel checks |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -809,6 +809,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **P9 — oversight** (§12.19) | **The herd log**: every tab opened or closed, state change and call for attention as a JSON line in `state\logs\<stamp>.jsonl` (one file per run, flushed per line, the newest 30 kept), fed from the API's events; `herd.log` (herd mode `L`) lists this run's entries newest first, Enter goes to the tab. **Changes while away**: when a turn ends in a tab out of view, `git status` is compared with the one from your last look; the files changed in between are counted on the item (`2 changed`) and listed by `tab.changes` (`D`), Enter opens one; count and list survive a restart. A P7 slip fixed (the mute glyph sat over the harness icon). 313 unit tests; `herdlog` 12/12, `changes` 15/15 |
 | **The control, built by us** (§12.20) | **`OverShell.Terminal.Wpf`**: the Windows Terminal WPF control built from source by our fork of microsoft/terminal on GitHub Actions and published to nuget.org through Trusted Publishing; a distributable OverShell bumps by version, synced to upstream by a weekly rebase PR. **Terminal-body transparency** (`window.terminalOpacity`): the fork's composed rendering mode draws the terminal through a DirectComposition visual on the top-level window so the backdrop shows through the body — the thing §7.6 had ruled out with the control as shipped. Two upstream-grade fixes found on the way (`dcomp.dll` never loaded under WPF; WPF cannot repaint under a child HWND). `transparency` 12/12 on real screen pixels; every earlier mode green with the fork's package |
 | **Self-tests on a private desktop** (§12.21) | `tools/Invoke-SelfTest.ps1` runs any mode on a private Win32 desktop: nothing on the user's screen, no focus change, the window manager blind to it; foreground checks judged there by thread-local activation (`CanJudgeActivation`), the acrylic reads and screenshots skipped unless `-Visible`; a tally line per run; the seeded modes (`history`, `jumplist`, `resilience`, `ghost`, `transparency`) seed themselves (`SeedState`). All 33 modes green hidden. |
+| **Settings from the palette, translucent by default, a way in** (§12.22) | `window.terminalOpacity` defaults to 0.85; `Change a setting…` (36 knobs with current values, value pickers, typed numbers/chords) and one `Setting: …` command per knob write one line into `settings.jsonc` through a comment-preserving JSONC edit and let the watcher apply it; `Open settings.jsonc` / `Open keybindings.jsonc` write the commented defaults first; `Help: Tutorial` / `User guide` / `Keyboard shortcuts` / `About`; `docs/TUTORIAL.md`; a one-time welcome note above the first prompt. |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -2533,6 +2534,66 @@ it.
 86-check run in 75 s, `transparency` 6 pass / 6 skipped (the pixel reads), `summon` 8 / 1 skipped
 (minimize-when-in-front: the feature itself asks Windows for the foreground). Nothing appeared
 on the user's desktop (0 windows of the process there) and no keystroke was lost.
+
+### 12.22 Settings from the palette, a translucent default, and a way in
+
+**Problem.** Three things a first user met at once. The body was opaque unless they found
+`window.terminalOpacity` in a file they did not have yet - the headline feature of §12.20 was off.
+Changing any setting meant knowing the key's name and writing JSONC by hand; the palette had
+*Create settings.jsonc* (which opened a folder) and nothing that changed a value. And nothing in
+the product said where to learn it: a 850-line guide on GitHub, no pointer from the window.
+
+**Decisions.**
+
+*The default is translucent*: `WindowSettings.DefaultTerminalOpacity = 0.85` (one constant, the
+embedded `settings.jsonc` carries the same number and a unit test holds them together). The
+machine without a backdrop (Windows 10, `backdrop: none`, transparency effects off) keeps an opaque
+body through the existing `TerminalComposition.From` fallback, and the reload note that used to say
+"restart to make the body translucent" now says why nothing would show through when that is the
+case. Every self-test mode runs composed now; one (`session2`) turned out to depend on which of
+two windows had activated last after a detach, which on a private desktop is a coin toss - the
+scenario now says which window it means (`tearOff.Activate()`), and the check is deterministic.
+
+*Settings change through the palette, into the file, never past it.* `Change a setting…` lists
+a catalog (`Core/Settings/SettingsCatalog.cs`: 36 knobs - the ones people turn - each with a
+title, one line on what it does, and the values it takes: a choice list, on/off, a number with
+presets and a range, or text with a validator; the extension knobs name their segments because
+an extension's section is keyed by its whole id, `extensions["herd.mode"].hints`). Each row
+shows the current value from the merged settings and whether the user's file sets it; choosing
+one opens the values with the current one marked; a number or a chord typed into the box is
+offered first when it is valid. Every knob is also a command of its own (`settings.set.<path>`,
+*Setting: Terminal body opacity*) so the palette's own search finds it. The chosen value goes
+into `settings.jsonc` through `JsoncEdit.Set`: a scanner over the text (comments and strings
+skipped the way the reader skips them) that finds the value span under the key path and replaces
+exactly that, or inserts the member - and the objects on the way to it - after the last member of
+its object, indented like its siblings, keeping a trailing-comma style and the file's line ending;
+the result must parse or nothing is written. The file is written from the commented defaults
+first when it does not exist, so the new line lands among its explanation rather than in a bare
+`{ }`. Nothing is applied by the palette itself: the file watcher reloads the file exactly as it
+would a hand edit, and the reload's status line names the change (*Reloaded Terminal body
+opacity = 0.5, terminal opacity 0.50, settings*) - one path for a setting to take effect, so the
+palette and the file can never disagree. *Open settings.jsonc* / *Open keybindings.jsonc* open
+the file in the editor, written from the defaults first; the CLI's `settings init` and the
+window share one writer (`SettingsFiles`) instead of two copies of the header.
+
+*A way in.* `docs/TUTORIAL.md` is a hands-on walk through the features in the order a user meets
+them, each step "do this, you see that"; the palette has *Help: Tutorial*, *Help: User guide*,
+*Help: Keyboard shortcuts* (the browser, `main`) and *Help: About* (version, executable, the two
+roots). The first start on a machine - no state file, no session, no history - writes a welcome
+note above the first prompt: five dim lines with the keys as bound (a rebinding shows its own
+chord) and where the tutorial is, through the same preamble channel the restored screen uses
+(§12.14) - output into the terminal, never input (§7.8) - and shows once.
+
+**Measured.** `settings` mode, 17 checks: the commands, the picker's 36 rows with values and
+default markers, the value picker's 9 presets with 0.85 marked, choosing 0.5 writes the file (its
+header and comments intact, the value replaced in place) and the watcher applies it to the
+composition and the surface with the status line naming it, a toggle and a choice through the
+catalog, a typed 0.73, an extension knob landing under `"herd.mode"`, the original file put back.
+The 86-check run gained the welcome note (87). 14 unit tests on the editor (in-place replace,
+insertion after a commented last member, trailing-comma style, CRLF, an empty object growing
+multi-line, comments-only files, a scalar where an object is needed, case-insensitive keys, the
+same key in another object left alone, braces inside strings and block comments, refusals) and
+6 on the catalog. 333 unit tests; all 35 self-test modes green hidden.
 
 ---
 

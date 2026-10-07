@@ -166,13 +166,18 @@ public sealed class WindowSettings
     public string Backdrop { get; init; } = "acrylic";
 
     /// <summary>
-    /// Opacity (0..1) of the terminal body's default background; 1 is opaque, today's look. Below 1 the
-    /// terminal renders through a composition visual so the backdrop shows through it, the way Windows
-    /// Terminal's own <c>opacity</c> does; text and coloured cells stay opaque. Needs the fork's control
-    /// (OverShell.Terminal.Wpf) and a backdrop; a tab opened before the setting changed keeps its mode
-    /// until it is reopened, its opacity follows live.
+    /// Opacity (0..1) of the terminal body's default background; 0.85 by default, so the backdrop
+    /// shows through the terminal the way Windows Terminal's own <c>opacity</c> does, text and
+    /// coloured cells staying opaque; 1 is an opaque body. Below 1 the terminal renders through a
+    /// composition visual, which needs the fork's control (OverShell.Terminal.Wpf) and a backdrop;
+    /// without one (window.backdrop none, transparency effects off, Windows 10) the body stays
+    /// opaque. A tab opened before the setting changed keeps its mode until it is reopened, its
+    /// opacity follows live.
     /// </summary>
-    public double TerminalOpacity { get; init; } = 1.0;
+    public double TerminalOpacity { get; init; } = DefaultTerminalOpacity;
+
+    /// <summary>The shipped default; the embedded settings.jsonc carries the same number.</summary>
+    public const double DefaultTerminalOpacity = 0.85;
 }
 
 /// <summary>The loopback endpoint integrations and the control API come through (12.18).</summary>

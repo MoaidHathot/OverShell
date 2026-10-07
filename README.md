@@ -50,7 +50,7 @@ backdrop). x64 only.
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
@@ -70,6 +70,12 @@ session) goes to the first of `OVERSHELL_STATE_DIR`, `$XDG_STATE_HOME\overshell`
 OverShell settings path    # which directories, chosen by which variable, and every file
 OverShell settings init    # a fully commented settings.jsonc + keybindings.jsonc to start from
 ```
+
+Or from the window: `Ctrl+Shift+P`, **Change a setting...** picks a setting and then its value
+(theme, accent, backdrop, terminal opacity, what comes back after a restart, notification sinks,
+the summon key, ...), each with its current value and a line on what it does; **Open
+settings.jsonc** opens the file in your editor, written from the commented defaults first. A
+change from the palette is one line written into the file, the rest of it untouched.
 
 All files are JSONC and reload live when saved: `settings.jsonc`, `keybindings.jsonc`,
 `snippets.jsonc`, `agents\*.jsonc`, `layouts\*.jsonc`, `skins\*.xaml`. Below,
@@ -252,11 +258,17 @@ not looking, counted on the tab and listed).
 Not yet confirmed by a human: see the test card (`tools\Show-LinkTestCard.ps1`) and
 [DESIGN.md 8](DESIGN.md#8-status).
 
-A translucent terminal body: `"window": { "terminalOpacity": 0.85 }` - the one thing the control
+A translucent terminal body, on by default (`"window": { "terminalOpacity": 0.85 }`; `1.0` for a
+solid one) - the one thing the control
 as Microsoft ships it could not do ([DESIGN.md 7.6](DESIGN.md#76-transparency-was-structurally-impossible-here-until-the-fork-1220)),
 and the reason the control is now built by our fork ([DESIGN.md 12.20](DESIGN.md#1220-the-terminal-control-built-by-us-a-fork-as-a-distributable-and-the-body-goes-translucent)).
 
 ## Documentation
+
+**[docs/TUTORIAL.md](docs/TUTORIAL.md)** - ten minutes, hands on: the window and the palette,
+tabs, the look, an agent and what OverShell shows about it, herd mode, the inbox, views, the
+prompt bar, spawning, leaving and coming back, the control API. In the palette: **Help:
+Tutorial**. The first start says so above the first prompt.
 
 **[docs/GUIDE.md](docs/GUIDE.md)** - the user guide: configuration and where it lives,
 every setting, keys and commands, views and layouts, agents and integrations,

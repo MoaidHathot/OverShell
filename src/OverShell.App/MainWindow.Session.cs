@@ -296,7 +296,7 @@ public partial class MainWindow
 
         if (Tabs.Count == 0 && _catalog.DefaultProfile is { } defaultProfile)
         {
-            AddTab(defaultProfile, activate: true);
+            AddTab(defaultProfile, activate: true, WelcomePreamble());
         }
 
         return view;

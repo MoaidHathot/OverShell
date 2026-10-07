@@ -557,7 +557,12 @@ public partial class MainWindow
             }
             else if (opacityWanted < 1.0)
             {
-                parts.Add("terminalOpacity: restart to make the terminal body translucent");
+                // Opaque at start while the file now asks for less: a restart switches the mode -
+                // unless nothing could show through anyway, which a restart does not change.
+                var backdropAvailable = WindowChromeInterop.Resolve() != BackdropKind.None && WindowChromeInterop.TransparencyEffectsEnabled();
+                parts.Add(backdropAvailable
+                    ? "terminalOpacity: restart to make the terminal body translucent"
+                    : "terminalOpacity below 1, but no backdrop shows through (window.backdrop none, or transparency effects off in Windows): the body stays opaque");
             }
             _notifications?.Dispose();
             _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
@@ -574,6 +579,12 @@ public partial class MainWindow
             }
 
             _trace.Write($"session: restart with Windows - {ApplicationRestart.Apply(_settings.Session.RestartWithWindows)}");
+
+            if (TakeSettingChangeNote() is { } changed)
+            {
+                // The palette wrote this value a moment ago: name it, so cause and effect read as one line.
+                parts.Insert(0, changed);
+            }
 
             parts.Add($"settings{(_settings.Problems.Count > 0 ? $" ({_settings.Problems.Count} problem(s))" : string.Empty)}");
         }
