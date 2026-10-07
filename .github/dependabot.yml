@@ -1,0 +1,18 @@
+# Keep the pinned actions in the workflows current, and the NuGet packages (including
+# OverShell.Terminal.Wpf, the fork's build of the terminal control) - weekly, one PR each.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci(actions)"
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps"

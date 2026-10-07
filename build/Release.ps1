@@ -6,9 +6,10 @@
 .DESCRIPTION
   Phase "build":   publish framework-dependent and self-contained win-x64, pack the .NET tool,
                    unpack the tool package - everything lands under artifacts/release/stage/ -
-                   and write stage/signing-catalog.txt, the exact list of our own binaries
-                   (OverShell*.exe, OverShell*.dll). The release workflow signs that catalog;
-                   the Terminal/ConPTY binaries are already Microsoft-signed and are left alone.
+                   and write stage/signing-catalog.txt, the exact list of binaries we sign:
+                   our own (OverShell*.exe, OverShell*.dll) and the terminal control's two, which
+                   our fork of microsoft/terminal builds unsigned. The ConPTY binaries keep their
+                   Microsoft signatures and are left alone.
   Phase "package": repack the tool package from the (signed) staging copy, zip both publish
                    flavours, write SHA-256 sums, render the winget manifests from winget/templates.
   Phase "all":     both, unsigned - what a local run does.
@@ -50,7 +51,10 @@ function Invoke-Dotnet([string[]] $arguments) {
 }
 
 function Get-Signable {
-    Get-ChildItem $stage -Recurse -File | Where-Object { $_.Name -like 'OverShell*.exe' -or $_.Name -like 'OverShell*.dll' }
+    # Our own assemblies, and the two terminal-control binaries: since OverShell.Terminal.Wpf they are
+    # built by our fork of microsoft/terminal and arrive unsigned, so they are ours to sign. The
+    # ConPTY binaries (conpty.dll, OpenConsole.exe) keep their Microsoft signatures.
+    Get-ChildItem $stage -Recurse -File | Where-Object { $_.Name -like 'OverShell*.exe' -or $_.Name -like 'OverShell*.dll' -or $_.Name -in 'Microsoft.Terminal.Wpf.dll', 'Microsoft.Terminal.Control.dll' }
 }
 
 if ($Phase -in 'build', 'all') {

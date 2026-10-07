@@ -1,5 +1,7 @@
 # Build, test and dry-run the release packaging on every push and pull request.
-# Warnings fail the build: the repository's standing rule is zero warnings.
+# Warnings fail the build: the repository's standing rule is zero warnings. Runs with a read-only
+# token and no secrets (pull_request, not pull_request_target), so a fork's pull request is safe to
+# run; actions are pinned to commits and Dependabot keeps them current.
 name: CI
 
 on:
@@ -24,9 +26,9 @@ jobs:
     name: Build, test, package (unsigned)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.x
 
@@ -42,7 +44,7 @@ jobs:
       - name: Release artifacts (dry run)
         run: ./build/Release.ps1 -Version 0.0.0-ci.${{ github.run_number }}
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: overshell-ci-${{ github.run_number }}

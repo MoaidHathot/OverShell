@@ -11,8 +11,14 @@
 #   AZURE_SIGNING_ENDPOINT   - e.g. https://eus.codesigning.azure.net/ (the account's region)
 #   AZURE_SIGNING_ACCOUNT    - Artifact Signing account name
 #   AZURE_SIGNING_PROFILE    - certificate profile name (Public Trust)
-#   NUGET_API_KEY            - nuget.org key scoped to push OverShell
+#   NUGET_USER               - the nuget.org profile name. The push uses Trusted Publishing: NuGet/login
+#                              exchanges this job's OIDC token for a one-hour key against a policy on
+#                              nuget.org that names this repository, this workflow file (release.yml)
+#                              and the "release" environment. No long-lived API key anywhere.
 #   WINGET_TOKEN             - GitHub PAT (public_repo) of the account that forks winget-pkgs
+#
+# Actions are pinned to commits (Dependabot keeps them current); the job only runs in this
+# repository, so a fork that pushes a tag publishes nothing.
 #
 # The job runs in the "release" environment so the OIDC subject is stable
 # (repo:MoaidHathot/OverShell:environment:release) instead of one subject per tag.
@@ -30,7 +36,7 @@ on:
 
 permissions:
   contents: write   # create the GitHub Release and upload its assets
-  id-token: write   # OIDC token for azure/login
+  id-token: write   # OIDC tokens for azure/login and NuGet/login
 
 env:
   DOTNET_NOLOGO: 1
@@ -39,17 +45,18 @@ env:
 jobs:
   release:
     name: Build, sign, package, publish
+    if: github.repository == 'MoaidHathot/OverShell'
     runs-on: windows-latest
     environment: release
     env:
       # Mapped once so steps can test whether a channel is configured (secrets cannot be tested in `if`).
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      NUGET_USER: ${{ secrets.NUGET_USER }}
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.x
 
@@ -80,7 +87,7 @@ jobs:
 
       - name: Azure login (OIDC)
         if: env.AZURE_CLIENT_ID != ''
-        uses: azure/login@v3
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -90,7 +97,7 @@ jobs:
       # three layouts); the Terminal and ConPTY binaries keep their Microsoft signatures.
       - name: Sign OverShell binaries (Azure Artifact Signing)
         if: env.AZURE_CLIENT_ID != ''
-        uses: azure/artifact-signing-action@v2
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2
         with:
           endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
           signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
@@ -107,14 +114,14 @@ jobs:
           $signed = '${{ env.AZURE_CLIENT_ID }}' -ne ''
           ./build/Release.ps1 -Version ${{ steps.version.outputs.version }} -Phase package -RequireSigned:$signed
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: overshell-${{ steps.version.outputs.version }}
           path: artifacts/release/dist/
 
       - name: GitHub Release
         if: steps.version.outputs.publish == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           name: OverShell ${{ steps.version.outputs.version }}
           prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
@@ -135,8 +142,17 @@ jobs:
             artifacts/release/dist/*.nupkg
             artifacts/release/dist/SHA256SUMS.txt
 
+      - name: NuGet login (OIDC -> short-lived API key)
+        if: steps.version.outputs.publish == 'true' && env.NUGET_USER != ''
+        id: nuget
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Publish the .NET tool to nuget.org
-        if: steps.version.outputs.publish == 'true' && env.NUGET_API_KEY != ''
+        if: steps.version.outputs.publish == 'true' && env.NUGET_USER != ''
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
         run: >
           dotnet nuget push artifacts/release/dist/OverShell.${{ steps.version.outputs.version }}.nupkg
           --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
