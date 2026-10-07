@@ -112,8 +112,9 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         Surface.View.Visibility = Visibility.Hidden;
 
         // Breathing room so glyphs never touch the window chrome. The host grid paints
-        // the same background, so this reads as terminal padding.
-        Surface.View.Margin = new Thickness(10, 6, 2, 6);
+        // the same background, so this reads as terminal padding (a composed body paints
+        // only this ring, see MainWindow.ApplyBackdrop).
+        Surface.View.Margin = ViewMargin;
 
         Session.OutputReceived += OnOutput;
         Session.Started += (_, _) => _dispatcher.BeginInvoke(() => Raise(nameof(IsRunning)));
@@ -142,6 +143,9 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     public ColorScheme Scheme { get; }
 
     public ITerminalSession Session { get; }
+
+    /// <summary>The margin every terminal view gets inside its host: padding between the glyphs and the chrome.</summary>
+    public static readonly Thickness ViewMargin = new(10, 6, 2, 6);
 
     public ITerminalSurface Surface { get; }
 

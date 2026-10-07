@@ -65,6 +65,12 @@ public interface ITerminalSurface : IDisposable
     TerminalPointer Pointer { get; set; }
 
     /// <summary>
+    /// Opacity (0..1) of the terminal body's default background. 1 for a surface that cannot be
+    /// translucent (no <see cref="SurfaceCapabilities.Transparency"/>); setting it there does nothing.
+    /// </summary>
+    double BackgroundOpacity { get; set; }
+
+    /// <summary>
     /// Where this surface's renderer would draw an underline in a cell of the given
     /// physical size. Null when the surface cannot say for these dimensions — the caller
     /// then falls back to a generic bar near the cell's bottom.

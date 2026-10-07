@@ -67,6 +67,8 @@ public sealed class ChildHost : HwndHost
 
     public event Action<string>? StatusChanged;
 
+    public nint Hwnd => _hwnd;
+
     protected override HandleRef BuildWindowCore(HandleRef parent)
     {
         var instance = GetModuleHandleW(null);
@@ -85,8 +87,18 @@ public sealed class ChildHost : HwndHost
         }
 
         var exStyle = MainWindow.Mode.Contains("noredir") ? WsExNoRedirectionBitmap : MainWindow.Mode.Contains("layered") ? WsExLayered : 0;
+        if (MainWindow.Mode.Contains("inputonly-redir")) { exStyle = 0; }
         _hwnd = CreateWindowExW(exStyle, "DcompSpikeChild", null, WsChild | WsVisible | WsClipSiblings | WsClipChildren, 0, 0, _width, _height, parent.Handle, 0, instance, 0);
         MainWindow.Log($"child hwnd=0x{_hwnd:X} err={Marshal.GetLastWin32Error()} exStyle=0x{exStyle:X}");
+
+        if (MainWindow.Mode.Contains("inputonly"))
+        {
+            // Spike 8b: the child exists for input, TSF and UIA only; the parent window composes the
+            // frame. Nothing is drawn here. Is the child still hit-testable, and does the parent's
+            // visual blend with the backdrop where the child sits?
+            StatusChanged?.Invoke("inputonly: non-redirected child with no graphics; the parent composes the frame at its rect");
+            return new HandleRef(this, _hwnd);
+        }
 
         try
         {

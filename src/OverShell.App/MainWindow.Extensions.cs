@@ -40,6 +40,9 @@ public partial class MainWindow
     /// <summary>The element the terminal body fills.</summary>
     internal System.Windows.FrameworkElement TerminalArea => TerminalHost;
 
+    /// <summary>The margin ring's opacity when the body is composed (12.20), else null. For the self-test.</summary>
+    internal double? TerminalBodyTintOpacity => TerminalBodyTint.Visibility == System.Windows.Visibility.Visible ? TerminalBodyTint.Opacity : null;
+
     /// <summary>The chords of a key sequence pressed so far.</summary>
     internal IReadOnlyList<KeyChord> PendingChords => _sequences?.Pending ?? [];
 

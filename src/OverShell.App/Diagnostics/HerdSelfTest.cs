@@ -11,6 +11,8 @@ using OverShell.Core.Input;
 using OverShell.Core.Integrations;
 using OverShell.Core.Search;
 using OverShell.Core.Settings;
+using OverShell.App.Terminal;
+using OverShell.App.Terminal.WindowsTerminal;
 
 namespace OverShell.App.Diagnostics;
 
@@ -26,7 +28,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -145,6 +147,9 @@ internal static class HerdSelfTest
                         break;
                     case "changes":
                         await RunChangesAsync(window, firstTab);
+                        break;
+                    case "transparency":
+                        await RunTransparencyAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -2357,7 +2362,219 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Tear-off chrome (§12.14): a tear-off wears the main window's chrome - no system    /// caption, a caption surface with the tab's dot, icon, label and detail, the three
+    /// A translucent terminal body (§12.20) through the fork's control: with window.terminalOpacity
+    /// below 1 the surface is composed, the frame extends over the whole window and the host behind
+    /// the terminal is transparent; a lime window placed behind OverShell gives the acrylic
+    /// something known to blur, and real screen pixels in the terminal's empty area come out
+    /// green-tinted - then flat, exactly the theme's background, when the opacity goes to 1 live,
+    /// and tinted again at 0.5; a torn-off tab keeps the visual (it follows the window), and so
+    /// does the tab brought back.
+    /// </summary>
+    private static async Task RunTransparencyAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (transparency) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        var composition = TerminalFactory.Composition;
+        Check(composition.Enabled && Math.Abs(composition.Opacity - 0.5) < 0.001, $"window.terminalOpacity 0.5 selects the composed terminal body (enabled={composition.Enabled}, opacity={composition.Opacity:F2})");
+        var surface = first.Surface as WindowsTerminalSurface;
+        Check(surface is { IsComposed: true } && first.Surface.Capabilities.HasFlag(SurfaceCapabilities.Transparency) && Math.Abs(first.Surface.BackgroundOpacity - 0.5) < 0.001, "the first tab's surface is composed, reports the Transparency capability and carries the opacity");
+        Check(window.TerminalArea is System.Windows.Controls.Panel { Background: System.Windows.Media.SolidColorBrush { Color.A: 0 } } && window.TerminalBodyTintOpacity is { } tint && Math.Abs(tint - 0.5) < 0.001, "the WPF host paints nothing under the terminal; the margin ring carries the body opacity");
+        if (surface is not { IsComposed: true })
+        {
+            Log("=== selftest (transparency) result: FAILED ===");
+            return;
+        }
+
+        await WaitForPromptAsync(first);
+        await Task.Delay(800);
+
+        // ---- a known colour behind the window ----
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        GetWindowRect(hwnd, out var windowRect);
+        var backing = new System.Windows.Window
+        {
+            WindowStyle = System.Windows.WindowStyle.None,
+            ResizeMode = System.Windows.ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Background = System.Windows.Media.Brushes.Lime,
+            Title = "overshell-selftest-backing",
+            WindowStartupLocation = System.Windows.WindowStartupLocation.Manual,
+            Left = 0,
+            Top = 0,
+            Width = 10,
+            Height = 10,
+        };
+        backing.SourceInitialized += (_, _) =>
+        {
+            // A tool window: tiling window managers leave those alone.
+            var h = new System.Windows.Interop.WindowInteropHelper(backing).Handle;
+            SetWindowLongPtr(h, -20, (nint)(GetWindowLongPtr(h, -20) | 0x80));
+        };
+        backing.Show();
+        var backingHwnd = new System.Windows.Interop.WindowInteropHelper(backing).Handle;
+
+        void PlaceBehind(nint target)
+        {
+            GetWindowRect(target, out var r);
+            // Directly beneath the target in the z-order, a little larger than it (so a pixel just
+            // outside the target proves the lime is there), never activated.
+            SetWindowPos(backingHwnd, target, r.Left - 40, r.Top - 40, r.Right - r.Left + 80, r.Bottom - r.Top + 80, 0x0010 | 0x0040);
+            GetWindowRect(backingHwnd, out var b);
+            var below = GetWindow(target, 2);
+            var outside = ScreenPixel(r.Right + 20, (r.Top + r.Bottom) / 2);
+            Log($"  backing placed for 0x{target:X}: target ({r.Left},{r.Top})-({r.Right},{r.Bottom}) backing ({b.Left},{b.Top})-({b.Right},{b.Bottom}) next-below=0x{below:X} (backing=0x{backingHwnd:X}) pixel beside the target #{outside.R:X2}{outside.G:X2}{outside.B:X2}");
+        }
+
+        PlaceBehind(hwnd);
+        await Task.Delay(1200);
+        GetWindowRect(backingHwnd, out var backingRect);
+        Check(backingRect.Left <= windowRect.Left && backingRect.Top <= windowRect.Top && backingRect.Right >= windowRect.Right, $"a lime window sits behind OverShell over its whole rectangle ({backingRect.Left},{backingRect.Top})-({backingRect.Right},{backingRect.Bottom})");
+
+        // The empty part of the terminal: well below the prompt, towards the right.
+        (int X, int Y) SampleAt(TerminalTab tab)
+        {
+            var origin = tab.View.PointToScreen(new System.Windows.Point(0, 0));
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(tab.View);
+            return ((int)(origin.X + tab.View.ActualWidth * dpi.DpiScaleX * 0.7), (int)(origin.Y + tab.View.ActualHeight * dpi.DpiScaleY * 0.75));
+        }
+
+        var themeBackground = ((System.Windows.Media.SolidColorBrush)first.Background).Color;
+        var at = SampleAt(first);
+        var tinted = ScreenPixel(at.X, at.Y);
+        Log($"  terminal pixel at ({at.X},{at.Y}) with opacity 0.5 over lime: #{tinted.R:X2}{tinted.G:X2}{tinted.B:X2}; theme background #{themeBackground.R:X2}{themeBackground.G:X2}{themeBackground.B:X2}");
+        SaveScreen(window, "overshell-selftest-transparency-0.5.png");
+        Check(tinted.G - Math.Max(tinted.R, tinted.B) >= 24 && Distance(tinted, themeBackground) >= 24, "...and the terminal's empty area is green-tinted: the lime shows through the acrylic through the terminal");
+
+        // ---- opaque again, live, through the settings ----
+        var settingsFile = AppPaths.SettingsFile;
+        var previous = System.IO.File.Exists(settingsFile) ? System.IO.File.ReadAllText(settingsFile) : null;
+        System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 1.0 } }""");
+        window.ReloadConfiguration(all: false, settings: true);
+        await Task.Delay(1500);
+        Check(Math.Abs(first.Surface.BackgroundOpacity - 1.0) < 0.001 && TerminalFactory.Composition.Enabled && Math.Abs(TerminalFactory.Composition.Opacity - 1.0) < 0.001, "terminalOpacity 1.0 reloaded: the surface's opacity follows live and the mode stays composed");
+        var opaque = ScreenPixel(at.X, at.Y);
+        Log($"  terminal pixel with opacity 1.0: #{opaque.R:X2}{opaque.G:X2}{opaque.B:X2}");
+        SaveScreen(window, "overshell-selftest-transparency-1.0.png");
+        Check(Distance(opaque, themeBackground) <= 6, "...and the same pixel is the theme's own background, opaque");
+
+        System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""");
+        window.ReloadConfiguration(all: false, settings: true);
+        await Task.Delay(1500);
+        var again = ScreenPixel(at.X, at.Y);
+        Check(again.G - Math.Max(again.R, again.B) >= 24, $"back to 0.5: tinted again (#{again.R:X2}{again.G:X2}{again.B:X2})");
+
+        // ---- the visual follows the tab into a tear-off and back ----
+        // Opaque for this part: DWM paints acrylic only for the active window and the tiling
+        // window manager on the reference machine moves a window that gets activated, so the
+        // proof that the visual moved with the tab is the theme background itself, exactly, in
+        // the tear-off's terminal area - where a visual left behind would show the backdrop.
+        // (A second tab first: the last tab cannot leave the main window.)
+        System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 1.0 } }""");
+        window.ReloadConfiguration(all: false, settings: true);
+        var keeper = window.AddTab(first.Profile, activate: false);
+        await WaitForPromptAsync(keeper);
+        var tearOff = window.Detach(first);
+        await Task.Delay(1200);
+        if (tearOff is null)
+        {
+            Check(false, "the tab detaches into a tear-off window");
+            backing.Close();
+            Log("=== selftest (transparency) result: FAILED ===");
+            return;
+        }
+
+        tearOff.Width = 900;
+        tearOff.Height = 640;
+        await Task.Delay(2000);
+        var tornAt = SampleAt(first);
+        var torn = ScreenPixel(tornAt.X, tornAt.Y);
+        Log($"  torn-off terminal pixel at ({tornAt.X},{tornAt.Y}), opaque: #{torn.R:X2}{torn.G:X2}{torn.B:X2}");
+        SaveScreen(tearOff, "overshell-selftest-transparency-tearoff.png");
+        Check(Distance(torn, themeBackground) <= 6, "a torn-off tab's terminal is drawn in its own window after a resize (the visual moved with it)");
+
+        window.Attach(first);
+        window.ActiveTab = first;
+        await Task.Delay(1200);
+        System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""");
+        window.ReloadConfiguration(all: false, settings: true);
+        window.Activate();
+        PlaceBehind(hwnd);
+        await Task.Delay(1500);
+        var backAt = SampleAt(first);
+        var back = ScreenPixel(backAt.X, backAt.Y);
+        Check(back.G - Math.Max(back.R, back.B) >= 24, $"...and brought back, translucent in the main window again (#{back.R:X2}{back.G:X2}{back.B:X2})");
+        // ---- a second tab: the hidden tab's visual leaves, the shown one's arrives ----
+        var second = window.AddTab(first.Profile, activate: true);
+        await WaitForPromptAsync(second);
+        await Task.Delay(800);
+        var secondAt = SampleAt(second);
+        var secondPixel = ScreenPixel(secondAt.X, secondAt.Y);
+        Check(second.Surface is WindowsTerminalSurface { IsComposed: true } && secondPixel.G - Math.Max(secondPixel.R, secondPixel.B) >= 24, $"a second tab is composed too and shows translucent while the first is hidden (#{secondPixel.R:X2}{secondPixel.G:X2}{secondPixel.B:X2})");
+        window.CloseTab(second);
+        window.CloseTab(keeper);
+        await Task.Delay(500);
+
+        backing.Close();
+        if (previous is null)
+        {
+            System.IO.File.Delete(settingsFile);
+        }
+        else
+        {
+            System.IO.File.WriteAllText(settingsFile, previous);
+        }
+
+        Log($"=== selftest (transparency) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    private static int Distance(System.Windows.Media.Color a, System.Windows.Media.Color b) =>
+        Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
+
+    /// <summary>One pixel of what is on screen, physical coordinates; black when the read fails.</summary>
+    private static System.Windows.Media.Color ScreenPixel(int x, int y)
+    {
+        var screen = GetDC(0);
+        try
+        {
+            var value = GetPixel(screen, x, y);
+            if (value == 0xFFFFFFFF)
+            {
+                return System.Windows.Media.Colors.Black;
+            }
+
+            return System.Windows.Media.Color.FromRgb((byte)(value & 0xFF), (byte)((value >> 8) & 0xFF), (byte)((value >> 16) & 0xFF));
+        }
+        finally
+        {
+            ReleaseDC(0, screen);
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("gdi32.dll")]
+    private static extern uint GetPixel(nint dc, int x, int y);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetWindow(nint hwnd, uint command);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(nint hwnd, nint insertAfter, int x, int y, int width, int height, uint flags);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern nint GetWindowLongPtr(nint hwnd, int index);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern nint SetWindowLongPtr(nint hwnd, int index, nint value);
+    /// <summary>
+    /// Tear-off chrome (§12.14): a tear-off wears the main window's chrome - no system
+    /// caption, a caption surface with the tab's dot, icon, label and detail, the three
     /// caption buttons; the terminal keeps working inside; the close button re-attaches
     /// rather than ending the session; maximize and restore keep the margins right.
     /// </summary>

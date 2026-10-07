@@ -27,3 +27,24 @@ says, captures itself with BitBlt three seconds later, samples the pixels into
 
 `result-active-window.png`: `parent-dcomp`, `parent-dcomp-mica`, `child-dcomp` (a run
 where the child blended with the backdrop), left to right.
+
+## Spike 8b (2026-10-07): the child stays for input, the visual goes on the top-level window
+
+The fork's design question before any C++: can the terminal keep its child HWND for input,
+focus, TSF and UIA while its pixels come from a composition visual on the **top-level** window?
+Modes `child-noredir-inputonly-topmost`, `child-noredir-inputonly`, `child-inputonly-redir-topmost`
+create the child with no graphics of its own (`WS_EX_NOREDIRECTIONBITMAP` for the `noredir` ones)
+and have the parent compose the frame at the child's rectangle; `ProbeChild` logs `WindowFromPoint`
+at the child's centre and `GetAncestor(GA_ROOT)`.
+
+| Mode | Result |
+|---|---|
+| `child-noredir-inputonly-topmost` | the frame blends with the backdrop where the visual is; `WindowFromPoint` returns the child; root is the top-level window; the part of the child the visual does not cover shows an opaque fill |
+| `child-inputonly-redir-topmost` | identical (a redirected child that never paints) |
+| `child-noredir-inputonly` (`topmost = FALSE`) | the child's region hides the visual: nothing of the frame shows |
+
+So: `topmost = TRUE`, the visual exactly the child's size - which is what the fork does
+(`TERMINAL_CREATE_COMPOSED` in MoaidHathot/terminal; DESIGN.md §12.20). One more lesson came from
+the real control rather than the spike: WPF cannot repaint under a child HWND, so the host has to
+switch `WS_CLIPCHILDREN` off, or whatever it painted there before the child covered it stays as a
+ghost under the translucent terminal.

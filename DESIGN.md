@@ -205,7 +205,7 @@ OverShell.slnx
 ### Dependency graph
 
 ```
-CI.Microsoft.Terminal.Wpf 1.25.260303002
+OverShell.Terminal.Wpf 1.25.260302.2        (our fork of microsoft/terminal, §12.20; was CI.Microsoft.Terminal.Wpf 1.25.260303002)
 ├── Microsoft.Terminal.Wpf.dll          (managed HwndHost wrapper, ITerminalConnection)
 └── Microsoft.Terminal.Control.dll      (native — the real WT control, 1.6 MB)
 Microsoft.Windows.Console.ConPTY 1.24.260710001
@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -325,8 +325,9 @@ foreground (§13.2).
 ### Build layout
 
 `UseArtifactsOutput` puts everything under `artifacts/` (already git-ignored).
-`Directory.Build.props` strips the native PDBs, which `CI.Microsoft.Terminal.Wpf` ships
-at ~82 MB **per architecture** — build output went from **246 MB → 2 MB**. Set
+`Directory.Build.props` strips any native PDBs a package carries (`CI.Microsoft.Terminal.Wpf`
+shipped ~82 MB **per architecture** — build output went from **246 MB → 2 MB**; the fork's
+package keeps them out and attaches them to its GitHub release instead, §12.20). Set
 `-p:OverShellKeepNativePdbs=true` to keep them when debugging Windows Terminal itself.
 
 ### ⚠ NuGet on this machine
@@ -515,7 +516,7 @@ flashes the desktop through. Reveal only after the surface's `Ready` plus one tu
 `DispatcherPriority.Render`, with a timeout fallback so a bad commandline cannot leave a
 permanently blank pane.
 
-### 7.6 Transparency is structurally impossible here
+### 7.6 Transparency was structurally impossible here (until the fork, §12.20)
 
 Asked and investigated properly. The `Microsoft.Terminal.Control.dll` C API exports
 19 functions and **none** touch opacity:
@@ -547,9 +548,13 @@ inside that DLL (it does export `DllGetActivationFactory`) has no projectable me
 and `SetTheme`'s `externalBackground` parameter is unrelated — it only paints the sliver
 where the WPF control is larger than the character grid.
 
-**What we do instead:** a Windows 11 system backdrop behind the title bar and status bar
-only, with the terminal body opaque. This matches `useAcrylicInTabRow: true` but *not*
-per-profile `useAcrylic` / `opacity`, which stay unreproducible with the control as shipped.
+**What we did instead, until §12.20:** a Windows 11 system backdrop behind the title bar and
+status bar only, with the terminal body opaque — `useAcrylicInTabRow: true` but *not* per-profile
+`useAcrylic` / `opacity`. **Now** (2026-10-07): with the control built by our own fork
+(`OverShell.Terminal.Wpf`, §12.20), `window.terminalOpacity` below 1 renders the body through a
+composition visual on the top-level window and the backdrop shows through it — measured on
+screen, `#0C6106` for a half-opaque `#0C0C0C` over acrylic-blurred lime. The rest of this
+section stands as the analysis of the control *as Microsoft ships it*.
 
 **What would work** (spike 8, §12.7, 2026-10-04): the terminal drawn into a composition
 swapchain with premultiplied alpha and composed as a DirectComposition visual on the
@@ -802,6 +807,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **P7 — triage** (§12.17) | **Reply channels** per tab: the harness's integration (a per-tab command queue the OpenCode plugin v2 long-polls and executes through OpenCode's own permission / question / prompt API), the rule file's `answers` keys, or typed text. The **inbox** (`Ctrl+Shift+I`): waiting tabs oldest first with the line that asked, `y`/`n`, a reply box, Enter jumps, approve-all with a question. **Toast actions**: Allow / Deny on in-window and native toasts (`overshell://reply`, nonce-gated). **Mute** (`tab.mute`, survives restart), **watch** (`tab.watch`, a regex over the screen), **auto-advance**. Two bugs fixed (a background tab's first Done unmarked; a forgotten queue's poll waiting out its hold). 291 unit tests; `inbox` 22/22, `triage` 13/13, `opencode-reply` live |
 | **P8 — orchestration** (§12.18) | **Spawn**: `agent.new` / `agent.newWorktree` open a tab with a harness, a directory (a fresh `git worktree` beside the repository) and a **first prompt**, delivered once the agent shows its composer (the rule file's idle marker on the whole screen - not quiet output, not "the plugin is listening": both measured wrong against the OpenCode TUI). **Control API** under `/v1/tabs` (describe, screen, send, reply, open, wait, close) = `ShellControl` on `IShell`/`ITab`; `endpoint.json` for the window's lifetime. **`OverShell mcp`**: an MCP server over stdio with seven tools, each one control call against the running window. Two detection bugs fixed (a quiet Unknown never re-evaluated; a Done flash when the plugin's first report ended a guessed Working). 309 unit tests; `spawn` 12/12, `spawn-opencode` 5/5 live, `mcp` 21/21 |
 | **P9 — oversight** (§12.19) | **The herd log**: every tab opened or closed, state change and call for attention as a JSON line in `state\logs\<stamp>.jsonl` (one file per run, flushed per line, the newest 30 kept), fed from the API's events; `herd.log` (herd mode `L`) lists this run's entries newest first, Enter goes to the tab. **Changes while away**: when a turn ends in a tab out of view, `git status` is compared with the one from your last look; the files changed in between are counted on the item (`2 changed`) and listed by `tab.changes` (`D`), Enter opens one; count and list survive a restart. A P7 slip fixed (the mute glyph sat over the harness icon). 313 unit tests; `herdlog` 12/12, `changes` 15/15 |
+| **The control, built by us** (§12.20) | **`OverShell.Terminal.Wpf`**: the Windows Terminal WPF control built from source by our fork of microsoft/terminal on GitHub Actions and published to nuget.org through Trusted Publishing; a distributable OverShell bumps by version, synced to upstream by a weekly rebase PR. **Terminal-body transparency** (`window.terminalOpacity`): the fork's composed rendering mode draws the terminal through a DirectComposition visual on the top-level window so the backdrop shows through the body — the thing §7.6 had ruled out with the control as shipped. Two upstream-grade fixes found on the way (`dcomp.dll` never loaded under WPF; WPF cannot repaint under a child HWND). `transparency` 12/12 on real screen pixels; every earlier mode green with the fork's package |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -882,10 +888,12 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 - [ ] Find: regular expressions (the UIA provider offers plain text only, §12.14) and a
       results list; both come free with an xterm.js surface (§11.4a).
-- [ ] Terminal-body transparency through a fork of the control: composition swapchain +
-      exported handle + input through the API, composed on the top-level window (spike 8,
-      §12.7 — the host side is verified; the C++ side and a Windows Terminal build in CI
-      are the work). Until then `OVERSHELL_BACKDROP` covers the chrome only.
+- [x] Terminal-body transparency through a fork of the control (§12.20): the fork builds
+      `OverShell.Terminal.Wpf` on GitHub Actions, the composed mode renders through a
+      composition visual on the top-level window, `window.terminalOpacity` opts in.
+- [ ] Upstream the additive API (`CreateTerminalEx`, `TerminalSetBackgroundOpacity`,
+      `TerminalUpdateComposition`, the engine's `undoXamlScale` and the `dcomp.dll` load) to
+      microsoft/terminal, so the fork shrinks to its workflows.
 - [ ] Import Windows Terminal's `actions` / `keybindings` into `keybindings.jsonc` (the
       object shape is already accepted).
 - [ ] Profile icons in the tab strip and new-tab menu (paths are already parsed).
@@ -901,8 +909,8 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 
 | Limitation | Cause | Recoverable? |
 |---|---|---|
-| No terminal-body transparency | HWND swapchain cannot alpha-blend (§7.6) | A fork rendering through a composition swapchain composed on the top-level window (spike 8, §12.7), or a different surface (§11.4) |
-| No acrylic / background image / retro effect | Same | Same |
+| Terminal-body transparency needs `window.terminalOpacity` < 1 and a restart to switch mode | A terminal's HWND is created once, in the mode chosen at start (§12.20); the opacity itself follows live | By design |
+| No background image / retro effect / per-profile acrylic | The composed mode gives the body an opacity over the window's backdrop (§12.20); the engine's image and shader paths are not wired through the C API | Additive exports in the fork, the same way |
 | Scrollback lost when moving a session | ConPTY repaints viewport only (§7.1) | No |
 | WPF cannot draw over the terminal in-tree | Airspace — same as WebView2 | `OverlayHost` (§7.12); HTML overlays inside an xterm.js surface |
 | Chrome text is grayscale-antialiased | Transparent composition target disables ClearType | `OVERSHELL_BACKDROP=none` |
@@ -914,7 +922,7 @@ Everything below is on `tools/Show-LinkTestCard.ps1` (§7.8), last sections; run
 | A URL ending in the last column of a non-wrapped row, or longer than 9 rows, gets approximate or no geometry | `FindText` off-by-one pushes such a match out of range (§7.10); the row walk is capped | Cosmetic; the link still opens |
 | A link whose text is not uniformly coloured is underlined in the scheme foreground | The colour attribute reports "mixed" for the range | Split by colour run if it ever matters |
 | x64 only | Native control not published AnyCPU | No |
-| `CI.Microsoft.Terminal.Wpf` is an unsigned CI-feed package | [microsoft/terminal#15404](https://github.com/microsoft/terminal/issues/15404) | Vendor it if it disappears |
+| The terminal control is unsigned by Microsoft | `OverShell.Terminal.Wpf` is built from source by our fork on GitHub Actions (§12.20); upstream signs its CI output with internal tooling, and there is still no release of the control ([microsoft/terminal#15404](https://github.com/microsoft/terminal/issues/15404)) | OverShell's release signs the two binaries with its own certificate when signing is configured |
 | Restored window placement can be a few pixels off on a mixed-DPI desktop | Placement is saved and clamped in the primary monitor's DIPs; a window on a monitor with another scale is converted by WPF at show time (§12.13) | Cosmetic; the window is always on a visible monitor |
 | A tiling window manager re-tiles restored windows | It moves every new window; OverShell asked for the saved rectangle (traced at `SourceInitialized`) and the manager overrode it | Expected with such a manager; nothing to do |
 
@@ -1459,6 +1467,7 @@ Run in-process with `OVERSHELL_SPIKES=1` (`Diagnostics/Spikes.cs`, log in
   persistence/restore + harness resume; `overshell://`; XAML skins; Claude hooks;
   explain panel.
 - **P3 Reach** ✅ 2026-09-14 — Codex `notify`; native toast sink; tear-off windows.
+- **The control, built by us** ✅ 2026-10-07 — the fork of microsoft/terminal as a distributable (`OverShell.Terminal.Wpf`, Trusted Publishing, weekly sync); the composed rendering mode; `window.terminalOpacity` (§12.20).
 - **P9 Oversight** ✅ 2026-10-06 — the herd log (one JSON line per event, a picker); changes while you were away (git status compared, counted on the item, listed) (§12.19).
 - **P8 Orchestration** ✅ 2026-10-06 — spawn agents on worktrees with a first prompt; the control API; `OverShell mcp` (§12.18).
 - **P7 Triage** ✅ 2026-10-06 — reply channels (integration / keys / typed); the inbox; toast actions; mute, watch, auto-advance (§12.17).
@@ -2379,6 +2388,96 @@ tooltip and in the properties; a turn that changed nothing adding nothing; a loo
 the mark and keeping the list; the picker from the tab itself, rendered; the next turn
 starting afresh; a tab outside any repository unmarked); `triage` 13/13 with the moved
 glyph, `herdmode` 24/24, 85-check 85/85.
+
+### 12.20 The terminal control, built by us: a fork as a distributable, and the body goes translucent
+
+**Why a fork, and why not a dependency on its source.** Everything OverShell draws in the terminal
+body comes from `Microsoft.Terminal.Control.dll`, and until now that binary arrived as
+`CI.Microsoft.Terminal.Wpf` - a third party's repack of Microsoft's CI output, unsigned, with no
+release behind it (§9). §7.6 had established that the one thing the herd wanted and could not
+have, a translucent terminal body, needed a change *inside* that binary. The decision: fork
+microsoft/terminal, but treat the result as a **distributable**, not as source. The fork
+([MoaidHathot/terminal](https://github.com/MoaidHathot/terminal), branch `overshell`) builds the
+control on GitHub-hosted runners and publishes it as the NuGet package **`OverShell.Terminal.Wpf`**;
+OverShell references the package by version and upgrades by bumping it. No submodule, no vendored
+binaries, no C++ toolchain on the consumer's machine. Upstream moves, the fork rebases, a new
+version comes out, the consumer bumps - the same relationship OverShell has with any package, with
+the fork's own README (`build/overshell/README.md`) as the contract: the upstream base commit,
+the patch series, the versioning scheme `A.B.YYMMDD.N` (upstream line, upstream base commit date,
+fork revision).
+
+**The pipeline.** `Build.ps1` is a port of the `buildWPF` path of upstream's own Azure Pipelines
+job (vcpkg from Visual Studio, `VCToolsVersion` pinned, the three restores, `msbuild
+OpenConsole.slnx /t:Terminal\Control\TerminalControl;Terminal\wpf\WpfTerminalControl`), and it
+built the unpatched tree on `windows-2022` (VS 2022, SDK 22621) in six minutes at the first
+attempt. `Pack.ps1` + a nuspec produce the same shape as upstream's pack target minus the 80 MB
+native PDBs, which go to the GitHub release. Three workflows: `overshell-ci` (PRs and pushes; x64
+build + dry-run pack), `overshell-release` (a `wpf-v*` tag: x64 + ARM64, pack, GitHub release with
+`SHA256SUMS.txt`, then nuget.org through **Trusted Publishing** - `NuGet/login` exchanges the job's
+OIDC token for a one-hour key against a policy that names the repository and the workflow file;
+the only secret is the nuget.org user name), `overshell-sync` (weekly: rebase the patch series onto
+upstream's newest release tag on a `sync/<tag>` branch, open a PR, start CI; conflicts become an
+issue). The first two releases: `1.25.260302.1`, unchanged upstream bits from commit `9ae724a`
+(the one `CI.Microsoft.Terminal.Wpf 1.25.260303002` was built from), consumed by OverShell with
+every self-test green - the mechanism proven before any C++ changed; and `1.25.260302.2` with the
+patches below.
+
+**The patch** (fork commits 2 and 3; upstream files touched are listed in the fork's README).
+`CreateTerminalEx(parent, TERMINAL_CREATE_COMPOSED)` keeps the child HWND for everything a HWND
+gives - focus, keyboard, mouse, text services, UI Automation - but with `WS_EX_NOREDIRECTIONBITMAP`,
+so it has no pixels; AtlasEngine renders into a **composition surface** instead (its XAML path),
+and the library wraps the surface handle in a DirectComposition visual on the child's **top-level
+window** (one device per process, one target per window, `topmost`), kept at the child's position
+and size, attached while the child is shown, moved when the child moves or is re-parented
+(`TerminalUpdateComposition` for a host that `SetParent`s). `TerminalSetBackgroundOpacity` gives
+cells with the default background an alpha - text and coloured cells stay opaque, as in Windows
+Terminal - and survives a theme change. The engine gained one switch (`TargetSettings.undoXamlScale`,
+default on: without a HWND it assumed a XAML SwapChainPanel and applied an inverse-DPI matrix that
+would have shrunk our visual) and one fix (`_createSwapChain` loads `dcomp.dll` itself; under
+XAML it was always loaded, under WPF `GetModuleHandle` returned null and the first frame threw, in
+silence - every frame, for ever: the trace in the composition path found it in one run). The
+managed control exposes `TerminalControl.UseComposition` (read once, at HWND creation) and
+`BackgroundOpacity`. Existing callers see no change: `CreateTerminal` is `CreateTerminalEx` with
+no flags, and the opaque path is byte-for-byte the old one.
+
+**Spike 8b** (`spikes/dcomp-transparency`, modes `child-noredir-inputonly*`) measured the shape
+before the C++ was written: a non-redirected child under a `topmost` target on the top-level window
+still hit-tests (`WindowFromPoint` returns it) and the visual blends with the backdrop; with
+`topmost = FALSE` the child's region covers the visual. Regions of the child not covered by the
+visual show an opaque fill, so the visual must always cover the child rectangle - it does, the
+swap chain is the child's size.
+
+**OverShell's side.** `window.terminalOpacity` (1 = opaque, today's look) and `window.backdrop`
+(`acrylic` | `mica` | `micaalt` | `none`; `OVERSHELL_BACKDROP` still overrides for a run). Below 1,
+with a backdrop in play and transparency effects on, `TerminalFactory.Composition` is decided once,
+before the first tab: every surface is created composed; the frame is extended over the **whole**
+client area (the bands-only extension of §7.6 existed to hide the HWND terminal's frame flash); the
+host paints nothing under the terminal and the views' margin ring carries the tab's background at
+the body's opacity; the opacity follows the settings live, the mode needs a restart (a HWND is
+created once). Two things the first run taught: (1) **WPF cannot repaint under a child HWND** -
+with `WS_CLIPCHILDREN` on, whatever WPF painted under that rectangle before the child covered it
+(a background, the margin ring at an earlier size) stays in the window's surface as a ghost under
+the translucent terminal; the composed mode switches `WS_CLIPCHILDREN` off on its windows, WPF
+repaints the whole client every frame, and the child has nothing to lose to that; (2) **DWM paints
+acrylic only for the active window** - an inactive window gets an opaque fallback (Windows
+Terminal shows the same), which the self-test has to respect.
+
+**Verified.** `transparency` 12/12 against real screen pixels: a lime window placed behind
+OverShell gives the acrylic something known to blur; the terminal's empty area at opacity 0.5 reads
+`#0C6106` (half of `#0C0C0C` over acrylic-blurred lime), at 1.0 exactly `#0C0C0C`, at 0.5 again
+`#0C6106`; a torn-off tab's terminal is drawn in its own window after a resize (the visual moved
+with it) and is translucent again when brought back; a second tab is composed and translucent
+while the first is hidden. Every earlier mode with the fork's package in the default, opaque mode:
+85/85, `find` 27, `tearoff` 10, `session1`/`session2` 15, `polish` 14, `theme` 12, `inject` 14,
+`cwd` 12; 313 unit tests. The fork's CI compiled the C++ and C# at the first attempt.
+
+**Not done.** The sliver inside the control where the character grid does not fill it is painted
+by the engine at the body's opacity (right); OverShell's own padding ring is WPF, which is why
+`WS_CLIPCHILDREN` had to go. A real Mica body (wallpaper-tinted, no windows behind) works the same
+way with `window.backdrop: mica`. The upstream pull request for the additive API (phase 2) is
+not opened yet. Signing: the fork's binaries are unsigned (upstream signs with Microsoft's
+certificate through internal tooling); OverShell's release signs them with its own certificate
+when signing is configured (`build/Release.ps1` catalogues them now).
 
 ---
 

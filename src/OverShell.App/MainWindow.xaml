@@ -124,7 +124,12 @@
                     <!-- Deliberately opaque: the text area reads as a solid panel with
                          translucent chrome above and below, matching useAcrylicInTabRow. -->
                     <Grid x:Name="TerminalHost"
-                          Background="{Binding ActiveTab.Background, FallbackValue={StaticResource Surface.Base}}" />
+                          Background="{Binding ActiveTab.Background, FallbackValue={StaticResource Surface.Base}}">
+                        <!-- A composed terminal body (12.20): the host paints nothing under the terminal (WPF cannot
+                             repaint under a child HWND, so anything painted there goes stale); this ring, the
+                             views' margin wide, carries the tab's background at the body's opacity instead. -->
+                        <Border x:Name="TerminalBodyTint" IsHitTestVisible="False" Visibility="Collapsed" BorderBrush="{Binding ActiveTab.Background, FallbackValue={StaticResource Surface.Base}}" />
+                    </Grid>
                     <chrome:DashboardView x:Name="Dashboard" Visibility="Collapsed" />
                 </Grid>
 

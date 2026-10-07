@@ -56,7 +56,7 @@ public partial class MainWindow : Window
             var hrBackdrop = DwmSetWindowAttribute(hwnd, 38, ref backdrop, sizeof(int));
             Log($"[{Mode}] window hwnd=0x{hwnd:X} extend-frame hr=0x{hrFrame:X8} backdrop={backdrop} hr=0x{hrBackdrop:X8}");
 
-            if (Mode.StartsWith("parent", StringComparison.Ordinal))
+            if (Mode.StartsWith("parent", StringComparison.Ordinal) || Mode.Contains("inputonly"))
             {
                 try
                 {
@@ -86,11 +86,34 @@ public partial class MainWindow : Window
                 timer.Stop();
                 Activate();
                 Log($"[{Mode}] IsActive={IsActive}");
+                ProbeChild();
                 Capture();
                 Application.Current.Shutdown();
             };
             timer.Start();
         };
+    }
+
+    [DllImport("user32.dll")] private static extern nint WindowFromPoint(Win32Point point);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint hwnd, uint flags);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint hwnd);
+    [DllImport("user32.dll")] private static extern nint GetWindowLongPtrW(nint hwnd, int index);
+    [StructLayout(LayoutKind.Sequential)] private struct Win32Point { public int X, Y; }
+
+    /// <summary>Spike 8b: is the input-only child still what the mouse would hit, and whose root is it?</summary>
+    private void ProbeChild()
+    {
+        if (Host.Hwnd == 0)
+        {
+            return;
+        }
+
+        GetWindowRect(Host.Hwnd, out var rect);
+        var centre = new Win32Point { X = (rect.Left + rect.Right) / 2, Y = (rect.Top + rect.Bottom) / 2 };
+        var hit = WindowFromPoint(centre);
+        var root = GetAncestor(Host.Hwnd, 2);
+        var top = new WindowInteropHelper(this).Handle;
+        Log($"[{Mode}] child hwnd=0x{Host.Hwnd:X} rect=({rect.Left},{rect.Top})-({rect.Right},{rect.Bottom}) visible={IsWindowVisible(Host.Hwnd)} exstyle=0x{GetWindowLongPtrW(Host.Hwnd, -20):X} | WindowFromPoint(centre)=0x{hit:X} hits-child={hit == Host.Hwnd} | GetAncestor(GA_ROOT)=0x{root:X} is-top-level={root == top}");
     }
 
     private void PlaceParentVisual()

@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -1138,10 +1139,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var top = CaptionHeight;
         var bottom = _statusVisible ? (double)FindResource("Metrics.StatusBarHeight") : 0;
 
-        var active = WindowChromeInterop.Apply(this, WindowChromeInterop.Resolve(), top, bottom);
+        var composed = Terminal.TerminalFactory.Composition.Enabled;
+        var active = WindowChromeInterop.Apply(this, WindowChromeInterop.Resolve(), top, bottom, wholeClient: composed);
 
-        // With no backdrop the composition target is opaque, so the root has to paint
-        // the base surface itself — otherwise the window renders flat black.
+        // A composed terminal body (12.20) is translucent over whatever WPF leaves unpainted
+        // beneath it, so the host paints nothing under the terminal: WPF cannot repaint under a
+        // child HWND, and anything painted there before the child covered it would stay as a
+        // ghost. The views' margin ring carries the tab's background at the body's opacity.
+        if (composed && active)
+        {
+            TerminalHost.Background = Brushes.Transparent;
+            TerminalBodyTint.BorderThickness = TerminalTab.ViewMargin;
+            TerminalBodyTint.Opacity = TerminalFactory.Composition.Opacity;
+            TerminalBodyTint.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            TerminalBodyTint.Visibility = Visibility.Collapsed;
+            if (TerminalHost.ReadLocalValue(Panel.BackgroundProperty) is Brush)
+            {
+                TerminalHost.SetBinding(Panel.BackgroundProperty, new Binding("ActiveTab.Background") { FallbackValue = FindResource("Surface.Base") });
+            }
+        }
+
+        // With no backdrop the composition target is opaque, so the root has to paint        // the base surface itself — otherwise the window renders flat black.
         WindowRoot.Background = active ? Brushes.Transparent : (Brush)FindResource("Surface.Base");
 
         TitleBarSurface.Background = (Brush)FindResource(

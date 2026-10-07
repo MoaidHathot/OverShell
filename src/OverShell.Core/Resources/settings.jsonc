@@ -93,6 +93,17 @@
     "register": true
   },
 
+  // The window's look beyond the theme colours. "backdrop": the Windows 11 material behind the
+  // chrome - acrylic | mica | micaalt | none (OVERSHELL_BACKDROP in the environment overrides it for
+  // a run). "terminalOpacity": 1 is an opaque terminal body, today's look; 0.85 lets the backdrop
+  // show through the terminal's default background like Windows Terminal's own "opacity" (text and
+  // coloured cells stay opaque). A tab opened before the value changed keeps its rendering mode until
+  // it is reopened; the opacity itself follows live.
+  "window": {
+    "backdrop": "acrylic",
+    "terminalOpacity": 1.0
+  },
+
   // The loopback endpoint. "control": false keeps it to the integrations' reports and polls:
   // no reading screens, sending text, replying or opening tabs over HTTP, and no endpoint.json
   // for `OverShell mcp`.

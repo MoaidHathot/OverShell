@@ -32,6 +32,7 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     private const int IdcHand = 32649;
 
     private readonly TerminalControl _control = new() { AutoResize = true };
+    private readonly bool _composed;
     private readonly SessionConnection _connection = new();
 
     private ITerminalSession? _session;
@@ -44,7 +45,25 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     private bool _readyRaised;
 
     public WindowsTerminalSurface()
+        : this(TerminalComposition.Opaque)
     {
+    }
+
+    /// <summary>
+    /// A composed surface (§12.20) renders through a DirectComposition visual the control places
+    /// on the top-level window, so its default background can be translucent over the backdrop;
+    /// the WPF background behind it goes transparent for the same reason. Decided here, once:
+    /// the control reads UseComposition when it creates its HWND.
+    /// </summary>
+    public WindowsTerminalSurface(TerminalComposition composition)
+    {
+        _composed = composition.Enabled;
+        if (_composed)
+        {
+            _control.UseComposition = true;
+            _control.BackgroundOpacity = composition.Opacity;
+            _control.Background = Brushes.Transparent;
+        }
         // Same navigation modes the previous wrapper used. They do not stop WPF from
         // claiming Tab and the arrows — ShortcutRouter handles that — but they keep focus
         // from wandering to a sibling when it does.
@@ -66,8 +85,22 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     public FrameworkElement View => _control;
 
     public SurfaceCapabilities Capabilities =>
-        SurfaceCapabilities.NativeHwnd | SurfaceCapabilities.LiveReattach;
+        SurfaceCapabilities.NativeHwnd | SurfaceCapabilities.LiveReattach | (_composed ? SurfaceCapabilities.Transparency : SurfaceCapabilities.None);
 
+    /// <summary>Whether this surface renders through the composition visual (fixed at creation).</summary>
+    public bool IsComposed => _composed;
+
+    public double BackgroundOpacity
+    {
+        get => _composed ? _control.BackgroundOpacity : 1.0;
+        set
+        {
+            if (_composed)
+            {
+                _control.BackgroundOpacity = value;
+            }
+        }
+    }
     public (int Columns, int Rows) Grid => (_control.Columns, _control.Rows);
 
     /// <summary>

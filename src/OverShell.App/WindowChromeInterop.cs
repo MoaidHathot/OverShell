@@ -55,13 +55,57 @@ internal static class WindowChromeInterop
     [DllImport("dwmapi.dll")]
     private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins margins);
 
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static extern IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    private const int GwlStyle = -16;
+    private const long WsClipChildren = 0x02000000;
+
     /// <summary>
-    /// Backdrop selection, overridable at launch with
-    /// <c>OVERSHELL_BACKDROP=acrylic|mica|micaalt|none</c> so the look can be compared
-    /// without a rebuild.
+    /// Whether the window clips its child windows out of its own painting. WPF sets it, and for an
+    /// opaque HWND terminal it is right. A composed terminal body (12.20) needs it off: its child
+    /// HWND has no pixels, and with clipping on, whatever WPF painted under that rectangle before
+    /// the child covered it - a background, the margin ring at an earlier size - stays in the
+    /// window's surface as a ghost under the translucent terminal, because WPF can never repaint
+    /// there. With clipping off WPF repaints the whole client every frame; the child has nothing
+    /// to lose to that, and the composition visual sits above both.
     /// </summary>
-    public static BackdropKind Resolve() =>
-        Environment.GetEnvironmentVariable("OVERSHELL_BACKDROP")?.Trim().ToLowerInvariant() switch
+    private static void SetClipsChildren(IntPtr handle, bool clip)
+    {
+        var style = GetWindowLongPtr(handle, GwlStyle).ToInt64();
+        var wanted = clip ? style | WsClipChildren : style & ~WsClipChildren;
+        if (wanted != style)
+        {
+            SetWindowLongPtr(handle, GwlStyle, new IntPtr(wanted));
+            // SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+            SetWindowPos(handle, IntPtr.Zero, 0, 0, 0, 0, 0x0020 | 0x0002 | 0x0001 | 0x0004 | 0x0010);
+        }
+    }
+
+    /// <summary><c>window.backdrop</c> as last loaded; what <see cref="Resolve"/> uses when no setting is passed (tear-offs).</summary>
+    public static string? ConfiguredBackdrop { get; set; }
+
+    /// <summary>
+    /// Backdrop selection: <c>window.backdrop</c> in settings, overridable at launch with
+    /// <c>OVERSHELL_BACKDROP=acrylic|mica|micaalt|none</c> so the look can be compared without
+    /// a rebuild or an edit. An unknown word means acrylic.
+    /// </summary>
+    public static BackdropKind Resolve(string? setting = null)
+    {
+        var word = Environment.GetEnvironmentVariable("OVERSHELL_BACKDROP");
+        if (string.IsNullOrWhiteSpace(word))
+        {
+            word = setting ?? ConfiguredBackdrop;
+        }
+
+        return word?.Trim().ToLowerInvariant() switch
         {
             "none" => BackdropKind.None,
             "mica" => BackdropKind.Mica,
@@ -69,6 +113,7 @@ internal static class WindowChromeInterop
             "acrylic" => BackdropKind.Acrylic,
             _ => BackdropKind.Acrylic,
         };
+    }
 
     /// <summary>
     /// The user can switch "Transparency effects" off in Settings; honouring it keeps us
@@ -94,8 +139,14 @@ internal static class WindowChromeInterop
     /// <param name="requested">Which backdrop to draw.</param>
     /// <param name="topBandDip">Title bar height, in DIPs.</param>
     /// <param name="bottomBandDip">Status bar height, in DIPs.</param>
+    /// <param name="wholeClient">
+    /// Extend the frame over the whole client area rather than the two chrome bands, so the
+    /// backdrop is also behind the terminal body (12.20). Only for a terminal that renders through
+    /// a composition visual: an HWND-hosted terminal over an extended frame flashes the desktop on
+    /// every frame it has not painted yet, which is why the bands were the rule.
+    /// </param>
     /// <returns>True when a system backdrop is actually active, so callers can pick brushes.</returns>
-    public static bool Apply(Window window, BackdropKind requested, double topBandDip, double bottomBandDip)
+    public static bool Apply(Window window, BackdropKind requested, double topBandDip, double bottomBandDip, bool wholeClient = false)
     {
         var handle = new WindowInteropHelper(window).Handle;
         if (handle == IntPtr.Zero)
@@ -115,6 +166,8 @@ internal static class WindowChromeInterop
         {
             wanted = BackdropKind.None;
         }
+
+        SetClipsChildren(handle, clip: !(wholeClient && wanted != BackdropKind.None));
 
         if (wanted == BackdropKind.None)
         {
@@ -139,13 +192,15 @@ internal static class WindowChromeInterop
         // flash on every tab open or switch, because any frame where the child hasn't
         // painted yet shows straight through to the desktop.
         var dpi = VisualTreeHelper.GetDpi(window);
-        var margins = new Margins
-        {
-            Left = 0,
-            Right = 0,
-            Top = (int)Math.Ceiling(topBandDip * dpi.DpiScaleY),
-            Bottom = (int)Math.Ceiling(bottomBandDip * dpi.DpiScaleY),
-        };
+        var margins = wholeClient
+            ? new Margins { Left = -1, Right = -1, Top = -1, Bottom = -1 }
+            : new Margins
+            {
+                Left = 0,
+                Right = 0,
+                Top = (int)Math.Ceiling(topBandDip * dpi.DpiScaleY),
+                Bottom = (int)Math.Ceiling(bottomBandDip * dpi.DpiScaleY),
+            };
 
         if (DwmExtendFrameIntoClientArea(handle, ref margins) != 0)
         {

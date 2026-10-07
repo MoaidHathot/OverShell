@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using OverShell.App.Chrome;
 using OverShell.App.Notifications;
+using OverShell.App.Terminal;
 using OverShell.Core;
 using OverShell.Core.Agents;
 using OverShell.Core.Layout;
@@ -526,6 +527,38 @@ public partial class MainWindow
                 tab.TabSettingsChanged();
             }
 
+            WindowChromeInterop.ConfiguredBackdrop = _settings.Window.Backdrop;
+
+            // The terminal body's opacity follows live; its rendering mode cannot (12.20): a
+            // terminal's HWND is created once, in the mode chosen at start.
+            var composition = TerminalFactory.Composition;
+            var opacityWanted = double.IsFinite(_settings.Window.TerminalOpacity) ? Math.Clamp(_settings.Window.TerminalOpacity, 0.0, 1.0) : 1.0;
+            if (composition.Enabled)
+            {
+                if (opacityWanted != composition.Opacity)
+                {
+                    TerminalFactory.Composition = composition with { Opacity = opacityWanted };
+                    foreach (var tab in Tabs)
+                    {
+                        tab.Surface.BackgroundOpacity = opacityWanted;
+                    }
+
+                    if (IsLoaded)
+                    {
+                        ApplyBackdrop();
+                        foreach (var tearOff in _tearOffs)
+                        {
+                            tearOff.ReapplyBackdrop();
+                        }
+                    }
+
+                    parts.Add($"terminal opacity {opacityWanted:F2}");
+                }
+            }
+            else if (opacityWanted < 1.0)
+            {
+                parts.Add("terminalOpacity: restart to make the terminal body translucent");
+            }
             _notifications?.Dispose();
             _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
             _counts = default;

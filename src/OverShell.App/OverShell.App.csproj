@@ -57,7 +57,7 @@
 
   <ItemGroup>
     <!-- Microsoft.Terminal.Wpf.dll (managed HwndHost) + Microsoft.Terminal.Control.dll (native). -->
-    <PackageReference Include="CI.Microsoft.Terminal.Wpf" />
+    <PackageReference Include="OverShell.Terminal.Wpf" />
     <!-- conpty.dll + OpenConsole.exe, the same pseudoconsole host Windows Terminal ships. -->
     <PackageReference Include="Microsoft.Windows.Console.ConPTY" />
   </ItemGroup>

@@ -162,6 +162,7 @@ init` gives you the full default file, commented, as a starting point.
 
   "protocol": { "register": true },  // overshell:// for this user (HKCU), so toast clicks find their tab
   "endpoint": { "control": true },   // the control API + endpoint.json for OverShell mcp (§7); false keeps the endpoint to reports
+  "window": { "backdrop": "acrylic", "terminalOpacity": 1.0 },  // acrylic | mica | micaalt | none; below 1 the terminal body is translucent (see 13)
 
   "notifications": { "sinks": { /* see §9 */ } },
 
@@ -764,6 +765,30 @@ metrics at the next start. Skins are your own files and are trusted like configu
 </ResourceDictionary>
 ```
 
+### A translucent terminal body
+
+Windows Terminal's `opacity`, for OverShell:
+
+```jsonc
+"window": { "backdrop": "acrylic", "terminalOpacity": 0.85 }
+```
+
+`backdrop` is the Windows 11 material behind the window - `acrylic` (the default; shows what is
+behind the window), `mica` or `micaalt` (wallpaper-tinted), `none`; `OVERSHELL_BACKDROP` in the
+environment overrides it for one run. `terminalOpacity` is the opacity of the terminal's default
+background: at 1 the body is opaque, today's look; below 1 the backdrop shows through it, while
+text and cells with their own background colour stay opaque. The chrome bands have always been
+translucent; this extends it to the body.
+
+Two things to know. The opacity follows the settings live, but the *mode* - translucent or not -
+is chosen when OverShell starts, because a terminal's window is created once: changing
+`terminalOpacity` across 1 asks for a restart in the status bar. And DWM paints acrylic only for
+the active window; an inactive OverShell shows an opaque fallback behind the body, exactly as
+Windows Terminal does. With "Transparency effects" off in Windows Settings the body stays opaque.
+
+This works because the terminal control OverShell ships is built by its own fork of Windows
+Terminal (`OverShell.Terminal.Wpf`, from [MoaidHathot/terminal](https://github.com/MoaidHathot/terminal))
+with a rendering mode the official control does not have; DESIGN.md §12.20 has the story.
 ## 14. Command line
 
 ```

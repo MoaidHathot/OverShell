@@ -51,6 +51,19 @@ public partial class MainWindow
 
         _settings = AppSettings.Load(System.IO.File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
         TerminalTab.TabSettings = _settings.Tabs;
+
+        // The terminal body's rendering mode is decided once, before the first tab (12.20): a
+        // translucent body needs the composition path and a backdrop to show through. With
+        // transparency effects off in Windows, or no backdrop asked for, it stays opaque.
+        WindowChromeInterop.ConfiguredBackdrop = _settings.Window.Backdrop;
+        var backdropWanted = WindowChromeInterop.Resolve() != BackdropKind.None && WindowChromeInterop.TransparencyEffectsEnabled();
+        Terminal.TerminalFactory.Composition = Terminal.TerminalComposition.From(_settings.Window.TerminalOpacity, backdropWanted);
+        if (_settings.Window.TerminalOpacity < 1.0)
+        {
+            _trace.Write(Terminal.TerminalFactory.Composition.Enabled
+                ? $"window: terminal body composed at opacity {Terminal.TerminalFactory.Composition.Opacity:F2}"
+                : "window: terminalOpacity below 1 but no backdrop (window.backdrop none, or transparency effects off) - the terminal body stays opaque");
+        }
         foreach (var problem in _settings.Problems)
         {
             _trace.Write($"settings: {problem}");

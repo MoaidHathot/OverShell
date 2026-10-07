@@ -155,6 +155,26 @@ public sealed class ProtocolSettings
     public bool Register { get; init; } = true;
 }
 
+/// <summary>The window's look where it is not a theme colour: the system backdrop and the terminal body's opacity (12.20).</summary>
+public sealed class WindowSettings
+{
+    /// <summary>
+    /// The Windows 11 backdrop behind the chrome - and behind the terminal when it is translucent:
+    /// <c>acrylic</c> (the default), <c>mica</c>, <c>micaalt</c>, <c>none</c>. <c>OVERSHELL_BACKDROP</c>
+    /// in the environment overrides it for one run.
+    /// </summary>
+    public string Backdrop { get; init; } = "acrylic";
+
+    /// <summary>
+    /// Opacity (0..1) of the terminal body's default background; 1 is opaque, today's look. Below 1 the
+    /// terminal renders through a composition visual so the backdrop shows through it, the way Windows
+    /// Terminal's own <c>opacity</c> does; text and coloured cells stay opaque. Needs the fork's control
+    /// (OverShell.Terminal.Wpf) and a backdrop; a tab opened before the setting changed keeps its mode
+    /// until it is reopened, its opacity follows live.
+    /// </summary>
+    public double TerminalOpacity { get; init; } = 1.0;
+}
+
 /// <summary>The loopback endpoint integrations and the control API come through (12.18).</summary>
 public sealed class EndpointSettings
 {
@@ -202,6 +222,8 @@ public sealed class AppSettings
     public ProtocolSettings Protocol { get; init; } = new();
 
     public EndpointSettings Endpoint { get; init; } = new();
+
+    public WindowSettings Window { get; init; } = new();
 
     public CompatibilitySettings Compatibility { get; init; } = new();
 

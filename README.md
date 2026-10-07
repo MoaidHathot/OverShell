@@ -4,10 +4,12 @@
 rendering engine in your own chrome, tabs and layout - and watches the AI coding agents
 running in its tabs so you know which one needs you.
 
-The terminal emulation is Microsoft's, unmodified: VT/ANSI parsing, the text buffer, the
-GPU-accelerated DirectWrite renderer, selection and scrollback all come from
-`Microsoft.Terminal.Control.dll`. Everything around it - window chrome, tab strip,
-layout, keybindings, agent detection, notifications - is ours.
+The terminal emulation is Microsoft's: VT/ANSI parsing, the text buffer, the GPU-accelerated
+DirectWrite renderer, selection and scrollback all come from `Microsoft.Terminal.Control.dll`,
+built from Windows Terminal's source by [our fork](https://github.com/MoaidHathot/terminal) and
+shipped as the `OverShell.Terminal.Wpf` package - upstream plus a short, documented patch series
+(a rendering mode that lets the terminal body be translucent). Everything around it - window
+chrome, tab strip, layout, keybindings, agent detection, notifications - is ours.
 
 It reads your existing **Windows Terminal `settings.json`**: profiles, colour schemes and
 fonts are shared, and there is no second configuration to maintain. OverShell never
@@ -47,7 +49,7 @@ backdrop). x64 only.
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
@@ -249,9 +251,9 @@ not looking, counted on the tab and listed).
 Not yet confirmed by a human: see the test card (`tools\Show-LinkTestCard.ps1`) and
 [DESIGN.md 8](DESIGN.md#8-status).
 
-Not possible on the default terminal surface: transparency of the terminal body - see
-[DESIGN.md 7.6](DESIGN.md#76-transparency-is-structurally-impossible-here) for why, and
-11 for the surface abstraction that would allow a second, translucent one.
+A translucent terminal body: `"window": { "terminalOpacity": 0.85 }` - the one thing the control
+as Microsoft ships it could not do ([DESIGN.md 7.6](DESIGN.md#76-transparency-was-structurally-impossible-here-until-the-fork-1220)),
+and the reason the control is now built by our fork ([DESIGN.md 12.20](DESIGN.md#1220-the-terminal-control-built-by-us-a-fork-as-a-distributable-and-the-body-goes-translucent)).
 
 ## Documentation
 

@@ -43,9 +43,11 @@
   </PropertyGroup>
 
   <!--
-    CI.Microsoft.Terminal.Wpf ships an ~82 MB PDB next to each native
-    Microsoft.Terminal.Control.dll. Useful if you are debugging Windows Terminal
-    itself; pure bloat otherwise. Set OverShellKeepNativePdbs=true to keep them.
+    No PDBs from the terminal control package in the output. OverShell.Terminal.Wpf keeps
+    the ~80 MB native PDBs out of the package (they are an asset of the fork's GitHub
+    release); this stays as the guard it was for CI.Microsoft.Terminal.Wpf, which shipped
+    them next to each native Microsoft.Terminal.Control.dll. Set OverShellKeepNativePdbs=true
+    to copy whatever a package does carry.
   -->
   <Target Name="OverShellTrimNativePdbs"
           AfterTargets="ResolvePackageAssets"

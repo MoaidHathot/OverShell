@@ -7,13 +7,15 @@
 
   <ItemGroup>
     <!--
-      The official Windows Terminal WPF control, repackaged from Microsoft's CI feed
-      (microsoft/terminal#15404 — there is no signed release of it):
+      The Windows Terminal WPF control, built from source by OverShell's fork of microsoft/terminal
+      (https://github.com/MoaidHathot/terminal, branch overshell; build/overshell/README.md names the
+      upstream commit and the patches). Version A.B.YYMMDD.N: upstream line A.B, upstream base commit
+      date, fork revision. Until 1.25.260302.1 this was CI.Microsoft.Terminal.Wpf, a third party's
+      repack of Microsoft's CI output (microsoft/terminal#15404 - there is no signed release of it).
         Microsoft.Terminal.Wpf.dll      managed HwndHost wrapper, ITerminalConnection
-        Microsoft.Terminal.Control.dll  native — the real WT parser, buffer and renderer
+        Microsoft.Terminal.Control.dll  native - the real WT parser, buffer and AtlasEngine renderer
     -->
-    <PackageVersion Include="CI.Microsoft.Terminal.Wpf" Version="1.25.260303002" />
-
+    <PackageVersion Include="OverShell.Terminal.Wpf" Version="1.25.260302.2" />
     <!--
       Microsoft's redistributable pseudoconsole: conpty.dll plus the OpenConsole.exe it
       launches, so ConPTY behaviour does not depend on the OS's conhost.exe.

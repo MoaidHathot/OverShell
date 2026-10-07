@@ -25,6 +25,7 @@ public sealed class TearOffWindow : Window
     private const double CaptionHeight = 36;
 
     private readonly Grid _host;
+    private readonly Border _hostTint;
     private readonly Border _root;
     private readonly Border _caption;
     private readonly Button _maximize;
@@ -57,7 +58,10 @@ public sealed class TearOffWindow : Window
             UseAeroCaptionButtons = false,
         });
 
-        _host = new Grid { Background = tab.Background };
+        // Nothing under a composed terminal from the first frame on (see WindowChromeInterop.SetClipsChildren).
+        _host = new Grid { Background = Terminal.TerminalFactory.Composition.Enabled ? Brushes.Transparent : tab.Background };
+        _hostTint = new Border { BorderBrush = tab.Background, BorderThickness = TerminalTab.ViewMargin, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+        _host.Children.Add(_hostTint);
         _maximize = CaptionButton("\uE922", "Maximize", (_, _) => ToggleMaximize());
         _caption = BuildCaption(tab);
 
@@ -268,8 +272,14 @@ public sealed class TearOffWindow : Window
     /// <summary>The same backdrop as the main window over the caption band; opaque fallbacks when there is none.</summary>
     private void ApplyBackdrop()
     {
-        var active = WindowChromeInterop.Apply(this, WindowChromeInterop.Resolve(), CaptionHeight, 0);
+        // A composed terminal body (12.20) needs the backdrop behind the whole window and nothing painted under it.
+        var composed = Terminal.TerminalFactory.Composition.Enabled;
+        var active = WindowChromeInterop.Apply(this, WindowChromeInterop.Resolve(), CaptionHeight, 0, wholeClient: composed);
         _root.Background = active ? Brushes.Transparent : (Brush)FindResource("Surface.Base");
+        // Nothing under a composed terminal (WPF cannot repaint under the child HWND); the margin ring carries the tint.
+        _host.Background = composed && active ? Brushes.Transparent : Tab.Background;
+        _hostTint.Opacity = Terminal.TerminalFactory.Composition.Opacity;
+        _hostTint.Visibility = composed && active ? Visibility.Visible : Visibility.Collapsed;
         _caption.SetResourceReference(Border.BackgroundProperty, active ? "Surface.ChromeTranslucent" : "Surface.Chrome");
         TextOptions.SetTextRenderingMode(this, active ? TextRenderingMode.Grayscale : TextRenderingMode.ClearType);
     }
