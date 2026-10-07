@@ -20,7 +20,7 @@
       Microsoft's redistributable pseudoconsole: conpty.dll plus the OpenConsole.exe it
       launches, so ConPTY behaviour does not depend on the OS's conhost.exe.
     -->
-    <PackageVersion Include="Microsoft.Windows.Console.ConPTY" Version="1.24.260710001" />
+    <PackageVersion Include="Microsoft.Windows.Console.ConPTY" Version="1.25.260930003" />
 
     <!-- Tests only. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
