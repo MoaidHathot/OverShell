@@ -21,13 +21,14 @@ Windows 10 19041+ (Windows 11 22621+ for the system backdrop), x64 only.
 
 | Channel | Command |
 |---|---|
-| winget | `winget install MoaidHathot.OverShell` - installs the .NET 10 Desktop Runtime if needed, puts `overshell` on your PATH |
+| winget | `winget install MoaidHathot.OverShell` - installs the .NET 10 Desktop Runtime if needed, puts `overshell` on your PATH. Pending: the first winget-pkgs submission has not been made yet |
 | .NET tool | `dotnet tool install -g OverShell` then `overshell` - or run it without installing: `dnx OverShell` |
 | Zip | From the [releases](https://github.com/MoaidHathot/OverShell/releases): `OverShell-<version>-win-x64.zip` (needs the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)) or `OverShell-<version>-win-x64-selfcontained.zip` (needs nothing). Unzip anywhere, run `OverShell.exe` |
 
 Every release ships `SHA256SUMS.txt`. Release assets are built by the
 [release workflow](.github/workflows/release.yml), which Authenticode-signs the OverShell
-binaries with Azure Artifact Signing; the Windows Terminal and ConPTY binaries carry
+binaries with Azure Artifact Signing; the Windows Terminal control binaries arrive signed the
+same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
 ## Build & run
