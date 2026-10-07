@@ -104,6 +104,7 @@ public partial class App : Application
         _ = SetCurrentProcessExplicitAppUserModelID(Notifications.NativeToast.AppUserModelId);
         var unfrozen = Chrome.SkinLoader.PrepareThemeForLiveRecolour();
         Diagnostics.TraceLog.Agents.Write($"theme: {unfrozen} brush(es) made recolourable");
+        Diagnostics.HerdSelfTest.SeedState();
         var settings = Core.Settings.AppSettings.Load(File.Exists(Core.AppPaths.SettingsFile) ? Core.AppPaths.SettingsFile : null);
         Diagnostics.TraceLog.Agents.Write($"theme: {Chrome.ThemeManager.Apply(settings)}");
         if (Chrome.SkinLoader.Apply(settings.Skin) is { } skinProblem)

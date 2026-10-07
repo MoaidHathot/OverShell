@@ -162,6 +162,7 @@ internal static class HerdSelfTest
             }
             finally
             {
+                Log($"=== selftest tally: pass={_passed} fail={_failed} skip={_skipped} desktop={(OnInputDesktop ? "input" : "private")} ===");
                 Log("=== selftest end ===");
             }
         };
@@ -169,7 +170,79 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// First half of the restart check: two tabs, a label, a group, a fake agent session
+    /// Before the window reads its state: the modes that start from a prepared history, a
+    /// workspace or a crash-looking session write it here, so a run needs nothing but the mode
+    /// name (tools/Invoke-SelfTest.ps1) and the seeds live next to the checks that read them.
+    /// </summary>
+    public static void SeedState()
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        try
+        {
+            var now = DateTimeOffset.Now;
+            switch (Mode)
+            {
+                case "history":
+                    Seed(now.AddMinutes(-30), SessionCloseReason.Closed, Shell("archived one", @"C:\"), Shell("archived two", @"C:\Windows"));
+                    break;
+                case "jumplist":
+                    Seed(now.AddMinutes(-30), SessionCloseReason.Closed, Shell("archived one", @"C:\"), Shell("archived two", @"C:\Windows"));
+                    _seededWorkspace = WorkspaceCatalog.Save(AppPaths.WorkspacesDir, new Workspace { Name = "Jump WS", Description = "seeded by the self-test", Tabs = [new WorkspaceTab { Cwd = @"C:\" }] });
+                    break;
+                case "resilience":
+                    // Two runs that died within a minute of starting, the live file being the newer
+                    // one (RestorePolicy.ShouldHold): the start must hold the restore.
+                    Seed(now.AddMinutes(-5), closeReason: null, Shell("first strike", @"C:\"));
+                    var agent = new SavedTab { Label = "agent", WorkingDirectory = @"C:\", Harness = "selftest", AgentRunning = true, ResumeCommand = "Write-Host resilience-resumed" };
+                    new SessionSnapshot { StartedAt = now.AddMinutes(-2), SavedAt = now.AddMinutes(-2).AddSeconds(20), CloseReason = null, ActiveIndex = 1, Tabs = [Shell("plain", @"C:\"), agent, Shell("third", @"C:\Windows")] }
+                        .Save(AppPaths.SessionFile, out _);
+                    break;
+                case "ghost":
+                    // An interrupted run (one that lived long, so nothing holds the restore) whose
+                    // only tab left a screen behind: the restored tab shows those rows dimmed.
+                    new SessionSnapshot { StartedAt = now.AddMinutes(-30), SavedAt = now.AddMinutes(-1), CloseReason = null, Tabs = [new SavedTab { Id = "ghost001", WorkingDirectory = @"C:\" }] }
+                        .Save(AppPaths.SessionFile, out _);
+                    var screens = new SessionScreens();
+                    screens.Tabs["ghost001"] = new SavedScreen { At = now.AddMinutes(-1), Rows = [@"PS C:\> Write-Host GHOST-MARKER-LINE", "GHOST-MARKER-LINE", @"PS C:\> "] };
+                    screens.Save(AppPaths.SessionScreensFile, out _);
+                    break;
+                case "transparency":
+                    // The composed body is decided before the first tab, from the settings as
+                    // loaded at start; the mode puts the original file back when it ends.
+                    _settingsBeforeSeed = System.IO.File.Exists(AppPaths.SettingsFile) ? System.IO.File.ReadAllText(AppPaths.SettingsFile) : null;
+                    System.IO.Directory.CreateDirectory(AppPaths.ConfigRoot);
+                    System.IO.File.WriteAllText(AppPaths.SettingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""");
+                    break;
+            }
+        }
+        catch (Exception e)
+        {
+            Log($"  seed: {e.Message}");
+        }
+
+        static SavedTab Shell(string label, string directory) => new() { Label = label, WorkingDirectory = directory };
+
+        // An archive of a run that started twenty seconds before it was saved: with a close
+        // reason a plain archived session, without one an early death.
+        static void Seed(DateTimeOffset savedAt, SessionCloseReason? closeReason, params SavedTab[] tabs)
+        {
+            var snapshot = new SessionSnapshot { StartedAt = savedAt.AddSeconds(-20), SavedAt = savedAt, CloseReason = closeReason, Tabs = [.. tabs] };
+            if (SessionHistory.Archive(AppPaths.StateRoot, snapshot, out var error) is null)
+            {
+                Log($"  seed: archive not written ({error ?? "same tabs as the newest archive"})");
+            }
+        }
+    }
+
+    /// <summary>The workspace file the jump-list seed wrote into the config root; removed when that mode ends.</summary>
+    private static string? _seededWorkspace;
+
+    /// <summary>What settings.jsonc held before the transparency seed replaced it (null: no file); put back when that mode ends.</summary>
+    private static string? _settingsBeforeSeed;
     /// with a harmless resume command, the main window moved, the second tab torn off and
     /// moved; the window then closes itself, which writes the session file the second half
     /// reads.
@@ -256,8 +329,17 @@ internal static class HerdSelfTest
         var fg = ShortcutRouter.ForegroundWindow();
         var tearOffHwnd = tearOff is null ? 0 : new System.Windows.Interop.WindowInteropHelper(tearOff).Handle;
         var mainHwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
-        Log($"  foreground=0x{fg:X} tearoff=0x{tearOffHwnd:X} (IsActive={tearOff?.IsActive}) main=0x{mainHwnd:X} (IsActive={window.IsActive}) focus=0x{ShortcutRouter.FocusedWindow():X} ours={ShortcutRouter.ForegroundIsOurs()}");
-        Check(tearOff is not null && (fg == tearOffHwnd || !ShortcutRouter.ForegroundIsOurs()), "the restored tear-off was brought forward as the window in use (or the foreground left us)");
+        Log($"  foreground=0x{fg:X} tearoff=0x{tearOffHwnd:X} (IsActive={tearOff?.IsActive}) main=0x{mainHwnd:X} (IsActive={window.IsActive}) focus=0x{ShortcutRouter.FocusedWindow():X} ours={ShortcutRouter.ForegroundIsOurs()} judge={CanJudgeActivation()}");
+        if (CanJudgeActivation())
+        {
+            // IsActive is the thread's own view of which window is in use: right on a private
+            // desktop, where SetForegroundWindow is refused yet the activation goes through.
+            Check(tearOff is { IsActive: true } || (tearOff is not null && fg == tearOffHwnd), "the restored tear-off was brought forward as the window in use");
+        }
+        else
+        {
+            Log("  SKIP  the restored tear-off was brought forward: another window holds the foreground");
+        }
 
         // The resume command is typed once the shell is quiet; the marker must show on screen.
         var deadline = DateTime.UtcNow.AddSeconds(15);
@@ -1904,31 +1986,34 @@ internal static class HerdSelfTest
 
         static async Task<string> ReadInsideAsync(TerminalTab tab)
         {
-            // One line the shell prints about its own environment; read back from the screen.
-            tab.SendText("Write-Host \"ENV|path=$($env:PATH)|stale=[$env:OVERSHELL_SELFTEST_STALE]|wt=$([bool]$env:WT_SESSION)|pid=$([bool]$env:WT_PROFILE_ID)|ep=$([bool]$env:OVERSHELL_ENDPOINT)|tab=$env:OVERSHELL_TAB_ID|wslenv=$env:WSLENV|user=$env:USERNAME|appdata=$env:APPDATA|temp=$env:TEMP|END\"\r");
-            await Task.Delay(1500);
-            tab.RequestScreen();
-            await Task.Delay(400);
-
-            // The line may wrap across rows; stitch from the ENV| row to the END marker.
-            var rows = tab.ScreenRows;
-            var start = rows.ToList().FindLastIndex(r => r.StartsWith("ENV|", StringComparison.Ordinal));
-            if (start < 0)
+            // One line the shell writes about its own environment. Into a file, not the screen:
+            // with the user's PATH in it the line runs to thousands of characters, more rows than
+            // a window that no window manager enlarged has, and the start would scroll away.
+            var file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"overshell-selftest-env-{Guid.NewGuid():N}.txt");
+            tab.SendText($"\"ENV|path=$($env:PATH)|stale=[$env:OVERSHELL_SELFTEST_STALE]|wt=$([bool]$env:WT_SESSION)|pid=$([bool]$env:WT_PROFILE_ID)|ep=$([bool]$env:OVERSHELL_ENDPOINT)|tab=$env:OVERSHELL_TAB_ID|wslenv=$env:WSLENV|user=$env:USERNAME|appdata=$env:APPDATA|temp=$env:TEMP|END\" | Set-Content -LiteralPath '{file}' -NoNewline\r");
+            var deadline = DateTime.UtcNow.AddSeconds(8);
+            while (DateTime.UtcNow < deadline)
             {
-                return string.Empty;
-            }
-
-            var sb = new System.Text.StringBuilder();
-            for (var i = start; i < rows.Count; i++)
-            {
-                sb.Append(rows[i]);
-                if (rows[i].Contains("|END", StringComparison.Ordinal))
+                await Task.Delay(250);
+                try
                 {
-                    break;
+                    if (System.IO.File.Exists(file))
+                    {
+                        var line = System.IO.File.ReadAllText(file);
+                        if (line.Contains("|END", StringComparison.Ordinal))
+                        {
+                            System.IO.File.Delete(file);
+                            return line;
+                        }
+                    }
+                }
+                catch (System.IO.IOException)
+                {
+                    // Still being written.
                 }
             }
 
-            return sb.ToString();
+            return string.Empty;
         }
 
         static string Field(string line, string name)
@@ -2315,6 +2400,12 @@ internal static class HerdSelfTest
     private static void SaveScreen(System.Windows.Window window, string fileName)
     {
         const uint SrcCopy = 0x00CC0020;
+        if (!OnInputDesktop)
+        {
+            Log($"  screen {fileName}: skipped (private desktop; the screen shows the user's desktop, not ours)");
+            return;
+        }
+
         try
         {
             var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
@@ -2390,7 +2481,39 @@ internal static class HerdSelfTest
             }
             else
             {
-                Log($"  SKIP  {what} (another window holds the foreground; acrylic is painted for the active window only)");
+                Log($"  SKIP  {what} ({(OnInputDesktop ? "another window holds the foreground; acrylic is painted for the active window only" : "private desktop: nothing is on screen")})");
+            }
+        }
+
+        // A pixel of our own window, opaque: on screen it is ours wherever the foreground is;
+        // on a private desktop the screen shows the user's desktop, not ours.
+        void CheckOnScreen(bool ok, string what)
+        {
+            if (OnInputDesktop)
+            {
+                Check(ok, what);
+            }
+            else
+            {
+                Log($"  SKIP  {what} (private desktop: nothing is on screen)");
+            }
+        }
+
+        Log(OnInputDesktop ? "  on the input desktop: the pixel checks run" : "  on a private desktop: the pixel checks are skipped (run with -Visible for those)");
+
+        // What goes back at the end is the file from before SeedState wrote the 0.5 (the config
+        // root is shared by the other modes), not the seed itself.
+        var settingsFile = AppPaths.SettingsFile;
+        var previous = _settingsBeforeSeed;
+        void RestoreSettings()
+        {
+            if (previous is null)
+            {
+                System.IO.File.Delete(settingsFile);
+            }
+            else
+            {
+                System.IO.File.WriteAllText(settingsFile, previous);
             }
         }
 
@@ -2401,6 +2524,7 @@ internal static class HerdSelfTest
         Check(window.TerminalArea is System.Windows.Controls.Panel { Background: System.Windows.Media.SolidColorBrush { Color.A: 0 } } && window.TerminalBodyTintOpacity is { } tint && Math.Abs(tint - 0.5) < 0.001, "the WPF host paints nothing under the terminal; the margin ring carries the body opacity");
         if (surface is not { IsComposed: true })
         {
+            RestoreSettings();
             Log("=== selftest (transparency) result: FAILED ===");
             return;
         }
@@ -2468,8 +2592,6 @@ internal static class HerdSelfTest
         CheckThroughBackdrop(inFront, tinted.G - Math.Max(tinted.R, tinted.B) >= 24 && Distance(tinted, themeBackground) >= 24, "...and the terminal's empty area is green-tinted: the lime shows through the acrylic through the terminal");
 
         // ---- opaque again, live, through the settings ----
-        var settingsFile = AppPaths.SettingsFile;
-        var previous = System.IO.File.Exists(settingsFile) ? System.IO.File.ReadAllText(settingsFile) : null;
         System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 1.0 } }""");
         window.ReloadConfiguration(all: false, settings: true);
         await Task.Delay(1500);
@@ -2477,7 +2599,7 @@ internal static class HerdSelfTest
         var opaque = ScreenPixel(at.X, at.Y);
         Log($"  terminal pixel with opacity 1.0: #{opaque.R:X2}{opaque.G:X2}{opaque.B:X2}");
         SaveScreen(window, "overshell-selftest-transparency-1.0.png");
-        Check(Distance(opaque, themeBackground) <= 6, "...and the same pixel is the theme's own background, opaque");
+        CheckOnScreen(Distance(opaque, themeBackground) <= 6, "...and the same pixel is the theme's own background, opaque");
 
         System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""");
         window.ReloadConfiguration(all: false, settings: true);
@@ -2502,6 +2624,7 @@ internal static class HerdSelfTest
         {
             Check(false, "the tab detaches into a tear-off window");
             backing.Close();
+            RestoreSettings();
             Log("=== selftest (transparency) result: FAILED ===");
             return;
         }
@@ -2513,7 +2636,7 @@ internal static class HerdSelfTest
         var torn = ScreenPixel(tornAt.X, tornAt.Y);
         Log($"  torn-off terminal pixel at ({tornAt.X},{tornAt.Y}), opaque: #{torn.R:X2}{torn.G:X2}{torn.B:X2}");
         SaveScreen(tearOff, "overshell-selftest-transparency-tearoff.png");
-        Check(Distance(torn, themeBackground) <= 6, "a torn-off tab's terminal is drawn in its own window after a resize (the visual moved with it)");
+        CheckOnScreen(Distance(torn, themeBackground) <= 6, "a torn-off tab's terminal is drawn in its own window after a resize (the visual moved with it)");
 
         window.Attach(first);
         window.ActiveTab = first;
@@ -2540,14 +2663,7 @@ internal static class HerdSelfTest
         await Task.Delay(500);
 
         backing.Close();
-        if (previous is null)
-        {
-            System.IO.File.Delete(settingsFile);
-        }
-        else
-        {
-            System.IO.File.WriteAllText(settingsFile, previous);
-        }
+        RestoreSettings();
 
         Log($"=== selftest (transparency) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
@@ -2559,6 +2675,13 @@ internal static class HerdSelfTest
     /// </summary>
     private static async Task<bool> BringToFrontAsync(System.Windows.Window window)
     {
+        if (!OnInputDesktop)
+        {
+            // Refused there anyway (the foreground belongs to the input desktop), and the screen
+            // behind the read would be the user's, not ours.
+            return false;
+        }
+
         for (var attempt = 0; attempt < 3; attempt++)
         {
             window.Activate();
@@ -2571,6 +2694,85 @@ internal static class HerdSelfTest
 
         return false;
     }
+
+    /// <summary>
+    /// Whether this process runs on the desktop the user sees. The harness runs the self-tests on
+    /// a private Win32 desktop (tools/Invoke-SelfTest.ps1) so a run never takes the user's focus:
+    /// there, our windows activate and focus among themselves exactly as on screen, but the
+    /// foreground belongs to the input desktop (GetForegroundWindow is never ours), nothing is
+    /// composed to the screen, and a pixel read from the screen DC shows the user's desktop. So
+    /// the checks about our own windows judge by IsActive/GetFocus, and the ones that need the
+    /// screen - the acrylic reads, the screenshots - are skipped unless the run is on the input
+    /// desktop.
+    /// </summary>
+    private static readonly bool OnInputDesktop = DetectInputDesktop();
+
+    /// <summary>
+    /// Whether our windows' activation state says anything: on a private desktop always (nothing
+    /// else is there to take it), on the input desktop only while we hold the foreground.
+    /// </summary>
+    private static bool CanJudgeActivation() => !OnInputDesktop || ShortcutRouter.ForegroundIsOurs();
+
+    private static bool DetectInputDesktop()
+    {
+        var input = OpenInputDesktop(0, false, 0x0001 /* DESKTOP_READOBJECTS */);
+        if (input == 0)
+        {
+            // The secure desktop, or a locked session: nobody sees us either way.
+            return false;
+        }
+
+        try
+        {
+            var ours = DesktopName(GetThreadDesktop(GetCurrentThreadId()));
+            return ours.Length > 0 && string.Equals(ours, DesktopName(input), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            CloseDesktop(input);
+        }
+    }
+
+    private static string DesktopName(nint desktop)
+    {
+        var buffer = new char[256];
+        return GetUserObjectInformation(desktop, 2 /* UOI_NAME */, buffer, buffer.Length * sizeof(char), out var bytes) && bytes >= sizeof(char)
+            ? new string(buffer, 0, bytes / sizeof(char) - 1)
+            : string.Empty;
+    }
+
+    /// <summary>The window class of a handle, for the focus lines: says which of our windows holds it.</summary>
+    private static string WindowClass(nint hwnd)
+    {
+        if (hwnd == 0)
+        {
+            return "none";
+        }
+
+        var buffer = new char[256];
+        var length = GetClassName(hwnd, buffer, buffer.Length);
+        return length > 0 ? new string(buffer, 0, length) : "?";
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetClassNameW", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetClassName(nint hwnd, [System.Runtime.InteropServices.Out] char[] name, int max);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetActiveWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    private static extern nint OpenInputDesktop(uint flags, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool inherit, uint access);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetThreadDesktop(uint threadId);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool CloseDesktop(nint desktop);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetUserObjectInformationW", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool GetUserObjectInformation(nint handle, int index, [System.Runtime.InteropServices.Out] char[] info, int length, out int lengthNeeded);
 
     private static int Distance(System.Windows.Media.Color a, System.Windows.Media.Color b) =>
         Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
@@ -2794,13 +2996,28 @@ internal static class HerdSelfTest
         window.HandleArguments(["overshell://history"]);
         await Task.Delay(900);
         var picker = window.Palette;
-        Check(picker is { IsVisible: true } || !ShortcutRouter.ForegroundIsOurs(), "overshell://history opened the history picker (or the foreground left us)");
+        if (CanJudgeActivation())
+        {
+            Check(picker is { IsVisible: true }, "overshell://history opened the history picker");
+        }
+        else
+        {
+            // An owned popup closes itself on Deactivated, by design: not judged while another
+            // application holds the foreground.
+            Log("  SKIP  overshell://history opened the history picker: another window holds the foreground");
+        }
         picker?.Close();
         await Task.Delay(300);
 
         foreach (var extra in window.Tabs.Skip(1).ToArray())
         {
             window.CloseTab(extra);
+        }
+
+        if (_seededWorkspace is not null)
+        {
+            // The config root is shared by the other modes; the seed must not become their workspace.
+            System.IO.File.Delete(_seededWorkspace);
         }
 
         Log($"=== selftest (jumplist) result: {(pass ? "ALL PASS" : "FAILED")} ===");
@@ -3948,7 +4165,12 @@ internal static class HerdSelfTest
         window.ActiveTab = tab;
         await Task.Delay(300);
         var terminalHwnd = MainWindow.FindTerminalHwnd(tab.View);
+        // The switch focuses the surface through the dispatcher; the round trip starts from an
+        // explicit focus so that what it measures is the palette, not the switch's timing.
+        tab.Surface.Focus();
+        await Task.Delay(300);
         var focusBefore = ShortcutRouter.FocusedWindow();
+        Log($"  focus to start with: 0x{focusBefore:X} ({WindowClass(focusBefore)}); terminal 0x{terminalHwnd:X} ({WindowClass(terminalHwnd)}); active=0x{GetActiveWindow():X} ({WindowClass(GetActiveWindow())})");
         if (!window.IsActive)
         {
             // Another application holds the foreground (the machine is in use): an owned window
@@ -3957,6 +4179,7 @@ internal static class HerdSelfTest
         }
         else
         {
+            Check(focusBefore == terminalHwnd, "the terminal takes the focus when asked (Surface.Focus)");
             window.Commands.TryExecute("palette.commands");
             await Task.Delay(700);
             var palette = window.Palette;
@@ -3978,8 +4201,15 @@ internal static class HerdSelfTest
                 palette?.Close();
                 await Task.Delay(700);
                 var focusAfter = ShortcutRouter.FocusedWindow();
-                Log($"  palette closed: focus after=0x{focusAfter:X} foreground-ours={ShortcutRouter.ForegroundIsOurs()}");
-                Check(focusAfter == terminalHwnd || !ShortcutRouter.ForegroundIsOurs(), "focus returned to the terminal after the palette closed (or the foreground left us)");
+                Log($"  palette closed: focus after=0x{focusAfter:X} foreground-ours={ShortcutRouter.ForegroundIsOurs()} judge={CanJudgeActivation()}");
+                if (CanJudgeActivation())
+                {
+                    Check(focusAfter == terminalHwnd, "focus returned to the terminal after the palette closed");
+                }
+                else
+                {
+                    Log("  SKIP  focus returned to the terminal after the palette closed: the foreground left us meanwhile");
+                }
             }
         }
 
@@ -4031,7 +4261,7 @@ internal static class HerdSelfTest
 
         window.Commands.TryExecute("view.terminal");
         await Task.Delay(700);
-        Log($"  terminal: layout={window.CurrentLayout.Name} caption={window.CaptionHeight} strip-in-caption={window.Strip.Parent is System.Windows.Controls.ContentControl { Name: "CaptionTabsHost" }} focus=0x{ShortcutRouter.FocusedWindow():X} terminal=0x{MainWindow.FindTerminalHwnd(window.ActiveTab!.View):X}");
+        Log($"  terminal: layout={window.CurrentLayout.Name} caption={window.CaptionHeight} strip-in-caption={window.Strip.Parent is System.Windows.Controls.ContentControl { Name: "CaptionTabsHost" }} focus=0x{ShortcutRouter.FocusedWindow():X} ({WindowClass(ShortcutRouter.FocusedWindow())}) terminal=0x{MainWindow.FindTerminalHwnd(window.ActiveTab!.View):X} active=0x{GetActiveWindow():X} ({WindowClass(GetActiveWindow())})");
         Check(window.CurrentLayout.Name == "top" && window.CaptionHeight > 50 && window.Strip.Parent is System.Windows.Controls.ContentControl, "view.terminal restores the top layout with the strip in the caption");
         Check(!window.IsActive || ShortcutRouter.FocusedWindow() == MainWindow.FindTerminalHwnd(window.ActiveTab!.View), "focus is back in the terminal (when the window is foreground)");
         Check(window.Tabs.All(t => !t.ScreenWatched), "screen watching stops when no view needs it");
@@ -4346,8 +4576,25 @@ internal static class HerdSelfTest
         }
     }
 
+    // One line a harness can parse, whatever mode ran: the result lines above are per mode and
+    // say nothing about what was skipped. Counted from the PASS/FAIL/SKIP lines as they are logged.
+    private static int _passed, _failed, _skipped;
+
     private static void Log(string message)
     {
+        if (message.StartsWith("  PASS", StringComparison.Ordinal))
+        {
+            _passed++;
+        }
+        else if (message.StartsWith("  FAIL", StringComparison.Ordinal))
+        {
+            _failed++;
+        }
+        else if (message.StartsWith("  SKIP", StringComparison.Ordinal))
+        {
+            _skipped++;
+        }
+
         try
         {
             System.IO.File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff}  {message}{Environment.NewLine}");

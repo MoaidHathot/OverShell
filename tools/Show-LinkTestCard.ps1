@@ -206,5 +206,6 @@ Case 102 "With the body translucent: resize the window several times, switch tab
 Case 103 "Edit terminalOpacity to 1.0 while running: the body goes opaque at once (status bar: 'terminal opacity 1.00'); back to 0.6: translucent again; set it from 1.0 to 0.85 in a run that started opaque: the status bar asks for a restart and nothing changes until then."
 Case 104 "Click OverShell away so it is inactive: the body behind the text turns to the opaque fallback (as Windows Terminal does); click back: translucent. Switch 'Transparency effects' off in Windows Settings and restart: opaque, no error."
 Case 105 "Select text with the mouse, Ctrl+Shift+C, paste into the shell; type with an IME or dead keys; use a screen reader or Accessibility Insights on the terminal: all unchanged with the translucent body (the input window is still there, only the pixels moved)."
+Case 106 "tools\Invoke-SelfTest.ps1 -Mode 1 while you keep typing in another program: nothing appears, the focus never moves, no window of yours is rearranged; the summary ends with 'tally: ... desktop=private' and exit code 0. -Mode transparency -Visible: the window appears, the pixel checks run instead of being skipped."
 Say ""
 Say "Report: one line per number (ok / what you saw), plus %TEMP%\overshell-links.log, overshell-agents.log (OVERSHELL_TRACE_AGENTS=1) and overshell-crash.log if present."

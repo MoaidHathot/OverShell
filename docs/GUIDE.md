@@ -819,7 +819,7 @@ a .NET tool the command is `overshell`; the wrapper returns at once for the wind
 | `OVERSHELL_TRACE_AGENTS=1` | `%TEMP%\overshell-agents.log`: detection, every state change with its reason, endpoint traffic, notifications, reloads |
 | `OVERSHELL_TRACE_KEYS=1` | `%TEMP%\overshell-keys.log`: every chord seen |
 | `OVERSHELL_TRACE_LINKS=1` | `%TEMP%\overshell-links.log`: link hover and click resolution |
-| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` / `opencode-resume` run it against the real OpenCode; `session1`/`session2` check restore across a restart, `sessionend` a sign-out, `history` the history, `icons` the icons; `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env` one feature each. `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST=1` | runs the in-process end-to-end self-test; `opencode` / `opencode-resume` run it against the real OpenCode; `session1`/`session2` check restore across a restart, `sessionend` a sign-out, `history` the history, `icons` the icons; `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env` one feature each. `%TEMP%\overshell-selftest.log`. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop: nothing appears on yours and nothing takes your focus; `-Visible` for the modes that read pixels off the screen |
 | `OVERSHELL_WT_SETTINGS` | read this Windows Terminal `settings.json` instead of the installed one |
 | `OVERSHELL_PROFILE_ROOT` | where `integrations install shell` looks for the PowerShell profile folders instead of Documents |
 

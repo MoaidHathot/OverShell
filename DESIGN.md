@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log` |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log`. Run through `tools\Invoke-SelfTest.ps1 -Mode <mode>`: a private desktop, so nothing takes the focus (§12.21); `-Visible` for the pixel checks |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -808,6 +808,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **P8 — orchestration** (§12.18) | **Spawn**: `agent.new` / `agent.newWorktree` open a tab with a harness, a directory (a fresh `git worktree` beside the repository) and a **first prompt**, delivered once the agent shows its composer (the rule file's idle marker on the whole screen - not quiet output, not "the plugin is listening": both measured wrong against the OpenCode TUI). **Control API** under `/v1/tabs` (describe, screen, send, reply, open, wait, close) = `ShellControl` on `IShell`/`ITab`; `endpoint.json` for the window's lifetime. **`OverShell mcp`**: an MCP server over stdio with seven tools, each one control call against the running window. Two detection bugs fixed (a quiet Unknown never re-evaluated; a Done flash when the plugin's first report ended a guessed Working). 309 unit tests; `spawn` 12/12, `spawn-opencode` 5/5 live, `mcp` 21/21 |
 | **P9 — oversight** (§12.19) | **The herd log**: every tab opened or closed, state change and call for attention as a JSON line in `state\logs\<stamp>.jsonl` (one file per run, flushed per line, the newest 30 kept), fed from the API's events; `herd.log` (herd mode `L`) lists this run's entries newest first, Enter goes to the tab. **Changes while away**: when a turn ends in a tab out of view, `git status` is compared with the one from your last look; the files changed in between are counted on the item (`2 changed`) and listed by `tab.changes` (`D`), Enter opens one; count and list survive a restart. A P7 slip fixed (the mute glyph sat over the harness icon). 313 unit tests; `herdlog` 12/12, `changes` 15/15 |
 | **The control, built by us** (§12.20) | **`OverShell.Terminal.Wpf`**: the Windows Terminal WPF control built from source by our fork of microsoft/terminal on GitHub Actions and published to nuget.org through Trusted Publishing; a distributable OverShell bumps by version, synced to upstream by a weekly rebase PR. **Terminal-body transparency** (`window.terminalOpacity`): the fork's composed rendering mode draws the terminal through a DirectComposition visual on the top-level window so the backdrop shows through the body — the thing §7.6 had ruled out with the control as shipped. Two upstream-grade fixes found on the way (`dcomp.dll` never loaded under WPF; WPF cannot repaint under a child HWND). `transparency` 12/12 on real screen pixels; every earlier mode green with the fork's package |
+| **Self-tests on a private desktop** (§12.21) | `tools/Invoke-SelfTest.ps1` runs any mode on a private Win32 desktop: nothing on the user's screen, no focus change, the window manager blind to it; foreground checks judged there by thread-local activation (`CanJudgeActivation`), the acrylic reads and screenshots skipped unless `-Visible`; a tally line per run; the seeded modes (`history`, `jumplist`, `resilience`, `ghost`, `transparency`) seed themselves (`SeedState`). All 33 modes green hidden. |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -2474,10 +2475,60 @@ while the first is hidden. Every earlier mode with the fork's package in the def
 **Not done.** The sliver inside the control where the character grid does not fill it is painted
 by the engine at the body's opacity (right); OverShell's own padding ring is WPF, which is why
 `WS_CLIPCHILDREN` had to go. A real Mica body (wallpaper-tinted, no windows behind) works the same
-way with `window.backdrop: mica`. The upstream pull request for the additive API (phase 2) is
-not opened yet. Signing: the fork's binaries are unsigned (upstream signs with Microsoft's
-certificate through internal tooling); OverShell's release signs them with its own certificate
-when signing is configured (`build/Release.ps1` catalogues them now).
+way with `window.backdrop: mica`. The upstream submissions (phase 2) are written — an issue and
+a pull request each for the dcomp.dll load and for the composed mode, texts in the fork's
+`build/overshell/UPSTREAMING.md`, branches `upstream/atlas-dcomp-load` and
+`upstream/wpf-composed-rendering` on upstream `main` — and are opened in the browser by hand, the
+fork owner's token being SAML-bound for the microsoft organisation. Signing: the fork's binaries
+are unsigned (upstream signs with Microsoft's certificate through internal tooling); OverShell's
+release signs them with its own certificate when signing is configured (`build/Release.ps1`
+catalogues them now).
+
+### 12.21 The self-tests on a private desktop
+
+**Problem.** Every self-test run took the desktop away from whoever was using the machine: the
+window is shown (and activates), tear-offs are shown, the session restore calls
+`SetForegroundWindow`, summon calls `Activate()`, the `transparency` mode brings the window to the
+front three times — and a tiling window manager re-arranged each new window. The checks that
+depended on the foreground were written as "X, or the foreground left us", so they passed either
+way, which is what the random failures in 2 runs out of 5 were: the user's keystrokes landing in
+the test instance, or the test's windows in the user's layout.
+
+**Decision.** The runner (`tools/Invoke-SelfTest.ps1`) starts the instance on a private Win32
+desktop (`CreateDesktop` + `CreateProcess` with `STARTUPINFO.lpDesktop`), never switched to.
+Measured there: `GetForegroundWindow` is `NULL` and `SetForegroundWindow` / `Window.Activate()`
+return false (the foreground belongs to the input desktop), yet `Show()` activates the window and
+`SetFocus` moves the keyboard focus *within the thread* exactly as on screen — `IsActive`,
+`GetFocus`, `GetActiveWindow` tell the truth, the palette takes and returns the focus, the restored
+tear-off is the active window. `EnumWindows` and WinEvents are per desktop, so the window manager
+never sees the instance; hotkeys cannot clash with the user's; the ConPTY children follow the
+desktop. What does not exist there is the screen: nothing is composed, `GetPixel` fails and a
+`BitBlt` from the screen DC would show the user's desktop. So `HerdSelfTest` tells the two apart
+(`OnInputDesktop`: the thread's desktop name against `OpenInputDesktop`'s) and (1) the foreground
+checks became `CanJudgeActivation()` — judged on a private desktop always, on the input desktop
+only while the foreground is ours, `SKIP` otherwise, never "pass either way"; (2) the acrylic reads
+and screenshots `SKIP` off the input desktop (`tools\Invoke-SelfTest.ps1 -Mode transparency
+-Visible` runs them on screen, when the desktop can be spared); (3) a tally line
+(`=== selftest tally: pass= fail= skip= desktop=private|input ===`) closes every run, so a skip is
+counted, not hidden. The runner waits for the end line, prints the FAIL and SKIP lines, closes the
+window with `WM_CLOSE` from a thread attached to that desktop, and exits non-zero on a failure.
+
+**What else moved.** The state some modes start from — an archive for `history` and `jumplist`
+(plus the `Jump WS` workspace), two early deaths for `resilience`, an interrupted run with a saved
+screen for `ghost`, the 0.5 opacity for `transparency` — used to be seeded by hand before the
+launch; it is written by `HerdSelfTest.SeedState()` before the window reads its files, and undone
+by the mode (the workspace deleted, the settings put back). Only `env` keeps a launcher-side
+precondition by nature (the launcher's PATH stripped of the user's registry entries, a variable of
+its own), which the runner provides. The `env` mode's one long line (a PATH of seventy entries)
+goes through a file instead of the screen: with no window manager enlarging the window, the line
+scrolled off the top. The palette focus round trip starts from an explicit `Surface.Focus()`
+rather than the tab switch's dispatched one, and the focus lines name the window class that holds
+it.
+
+**Measured.** All 33 modes green on the private desktop with the user working throughout: the
+86-check run in 75 s, `transparency` 6 pass / 6 skipped (the pixel reads), `summon` 8 / 1 skipped
+(minimize-when-in-front: the feature itself asks Windows for the foreground). Nothing appeared
+on the user's desktop (0 windows of the process there) and no keystroke was lost.
 
 ---
 
