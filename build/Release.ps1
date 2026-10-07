@@ -51,10 +51,15 @@ function Invoke-Dotnet([string[]] $arguments) {
 }
 
 function Get-Signable {
-    # Our own assemblies, and the two terminal-control binaries: since OverShell.Terminal.Wpf they are
-    # built by our fork of microsoft/terminal and arrive unsigned, so they are ours to sign. The
-    # ConPTY binaries (conpty.dll, OpenConsole.exe) keep their Microsoft signatures.
-    Get-ChildItem $stage -Recurse -File | Where-Object { $_.Name -like 'OverShell*.exe' -or $_.Name -like 'OverShell*.dll' -or $_.Name -in 'Microsoft.Terminal.Wpf.dll', 'Microsoft.Terminal.Control.dll' }
+    # Our own assemblies, and the two terminal-control binaries when they arrive unsigned: since
+    # OverShell.Terminal.Wpf they are built by our fork of microsoft/terminal, whose release signs
+    # them only when it has a signing account of its own - if it did, they are left as they are
+    # (a second signature would be noise). The ConPTY binaries keep their Microsoft signatures.
+    Get-ChildItem $stage -Recurse -File | Where-Object {
+        if ($_.Name -like 'OverShell*.exe' -or $_.Name -like 'OverShell*.dll') { return $true }
+        if ($_.Name -in 'Microsoft.Terminal.Wpf.dll', 'Microsoft.Terminal.Control.dll') { return (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' }
+        return $false
+    }
 }
 
 if ($Phase -in 'build', 'all') {
