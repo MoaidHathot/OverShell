@@ -2380,6 +2380,20 @@ internal static class HerdSelfTest
             Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
         }
 
+        // The reads through the backdrop need the window in front; when the desktop keeps the
+        // foreground they are logged as skipped (the same convention as the palette checks).
+        void CheckThroughBackdrop(bool inFront, bool ok, string what)
+        {
+            if (inFront)
+            {
+                Check(ok, what);
+            }
+            else
+            {
+                Log($"  SKIP  {what} (another window holds the foreground; acrylic is painted for the active window only)");
+            }
+        }
+
         var composition = TerminalFactory.Composition;
         Check(composition.Enabled && Math.Abs(composition.Opacity - 0.5) < 0.001, $"window.terminalOpacity 0.5 selects the composed terminal body (enabled={composition.Enabled}, opacity={composition.Opacity:F2})");
         var surface = first.Surface as WindowsTerminalSurface;
@@ -2446,11 +2460,12 @@ internal static class HerdSelfTest
         }
 
         var themeBackground = ((System.Windows.Media.SolidColorBrush)first.Background).Color;
+        var inFront = await BringToFrontAsync(window);
         var at = SampleAt(first);
         var tinted = ScreenPixel(at.X, at.Y);
-        Log($"  terminal pixel at ({at.X},{at.Y}) with opacity 0.5 over lime: #{tinted.R:X2}{tinted.G:X2}{tinted.B:X2}; theme background #{themeBackground.R:X2}{themeBackground.G:X2}{themeBackground.B:X2}");
+        Log($"  terminal pixel at ({at.X},{at.Y}) with opacity 0.5 over lime: #{tinted.R:X2}{tinted.G:X2}{tinted.B:X2}; theme background #{themeBackground.R:X2}{themeBackground.G:X2}{themeBackground.B:X2}; in front={inFront}");
         SaveScreen(window, "overshell-selftest-transparency-0.5.png");
-        Check(tinted.G - Math.Max(tinted.R, tinted.B) >= 24 && Distance(tinted, themeBackground) >= 24, "...and the terminal's empty area is green-tinted: the lime shows through the acrylic through the terminal");
+        CheckThroughBackdrop(inFront, tinted.G - Math.Max(tinted.R, tinted.B) >= 24 && Distance(tinted, themeBackground) >= 24, "...and the terminal's empty area is green-tinted: the lime shows through the acrylic through the terminal");
 
         // ---- opaque again, live, through the settings ----
         var settingsFile = AppPaths.SettingsFile;
@@ -2467,8 +2482,9 @@ internal static class HerdSelfTest
         System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""");
         window.ReloadConfiguration(all: false, settings: true);
         await Task.Delay(1500);
+        inFront = await BringToFrontAsync(window);
         var again = ScreenPixel(at.X, at.Y);
-        Check(again.G - Math.Max(again.R, again.B) >= 24, $"back to 0.5: tinted again (#{again.R:X2}{again.G:X2}{again.B:X2})");
+        CheckThroughBackdrop(inFront, again.G - Math.Max(again.R, again.B) >= 24, $"back to 0.5: tinted again (#{again.R:X2}{again.G:X2}{again.B:X2})");
 
         // ---- the visual follows the tab into a tear-off and back ----
         // Opaque for this part: DWM paints acrylic only for the active window and the tiling
@@ -2504,19 +2520,21 @@ internal static class HerdSelfTest
         await Task.Delay(1200);
         System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""");
         window.ReloadConfiguration(all: false, settings: true);
-        window.Activate();
+        inFront = await BringToFrontAsync(window);
         PlaceBehind(hwnd);
         await Task.Delay(1500);
         var backAt = SampleAt(first);
         var back = ScreenPixel(backAt.X, backAt.Y);
-        Check(back.G - Math.Max(back.R, back.B) >= 24, $"...and brought back, translucent in the main window again (#{back.R:X2}{back.G:X2}{back.B:X2})");
+        CheckThroughBackdrop(inFront, back.G - Math.Max(back.R, back.B) >= 24, $"...and brought back, translucent in the main window again (#{back.R:X2}{back.G:X2}{back.B:X2})");
         // ---- a second tab: the hidden tab's visual leaves, the shown one's arrives ----
         var second = window.AddTab(first.Profile, activate: true);
         await WaitForPromptAsync(second);
         await Task.Delay(800);
+        inFront = await BringToFrontAsync(window);
         var secondAt = SampleAt(second);
         var secondPixel = ScreenPixel(secondAt.X, secondAt.Y);
-        Check(second.Surface is WindowsTerminalSurface { IsComposed: true } && secondPixel.G - Math.Max(secondPixel.R, secondPixel.B) >= 24, $"a second tab is composed too and shows translucent while the first is hidden (#{secondPixel.R:X2}{secondPixel.G:X2}{secondPixel.B:X2})");
+        Check(second.Surface is WindowsTerminalSurface { IsComposed: true }, "a second tab is composed too");
+        CheckThroughBackdrop(inFront, secondPixel.G - Math.Max(secondPixel.R, secondPixel.B) >= 24, $"...and shows translucent while the first is hidden (#{secondPixel.R:X2}{secondPixel.G:X2}{secondPixel.B:X2})");
         window.CloseTab(second);
         window.CloseTab(keeper);
         await Task.Delay(500);
@@ -2532,6 +2550,26 @@ internal static class HerdSelfTest
         }
 
         Log($"=== selftest (transparency) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    /// <summary>
+    /// DWM paints acrylic only for the active window (an inactive one gets an opaque fallback), so a
+    /// pixel read through the backdrop needs the window in front. Asks for it and says whether it
+    /// got it; a desktop in use may keep the foreground, and that is a skip, not a failure.
+    /// </summary>
+    private static async Task<bool> BringToFrontAsync(System.Windows.Window window)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            window.Activate();
+            await Task.Delay(700);
+            if (ShortcutRouter.ForegroundIsOurs())
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int Distance(System.Windows.Media.Color a, System.Windows.Media.Color b) =>
