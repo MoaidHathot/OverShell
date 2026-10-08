@@ -60,7 +60,7 @@
 
   <PropertyGroup>
     <!-- The release workflow passes -p:Version=<tag without v>; this is the in-between default. -->
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Product>OverShell</Product>
     <Company>Moaid Hathot</Company>
     <Authors>Moaid Hathot</Authors>
