@@ -82,9 +82,9 @@
 
     <!-- ============================ Metrics =========================== -->
 
-    <!-- Tall enough for the two-line tab item (label / state · project). -->
-    <sys:Double x:Key="Metrics.TitleBarHeight">54</sys:Double>
-    <sys:Double x:Key="Metrics.TabHeight">46</sys:Double>
+    <!-- Two text rows plus clearance for the active/progress bars, including DPI rounding. -->
+    <sys:Double x:Key="Metrics.TitleBarHeight">44</sys:Double>
+    <sys:Double x:Key="Metrics.TabHeight">40</sys:Double>
     <sys:Double x:Key="Metrics.StatusBarHeight">26</sys:Double>
     <CornerRadius x:Key="Metrics.TabCorner">6,6,0,0</CornerRadius>
 

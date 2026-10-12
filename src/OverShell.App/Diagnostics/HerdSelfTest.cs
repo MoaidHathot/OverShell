@@ -2711,6 +2711,25 @@ internal static class HerdSelfTest
         SaveScreen(window, "overshell-selftest-transparency-0.5.png");
         CheckThroughBackdrop(inFront, tinted.G - Math.Max(tinted.R, tinted.B) >= 24 && Distance(tinted, themeBackground) >= 24, "...and the terminal's empty area is green-tinted: the lime shows through the acrylic through the terminal");
 
+        // ---- the shipped default, and the alpha it really gets ----
+        // From the 0.5 read, the acrylic's colour is h = 2*p50 - bg. Check every
+        // channel at the default: checking green alone missed blue leaking into red
+        // in Atlas's packed integer premultiplication.
+        var defaultOpacity = WindowSettings.DefaultTerminalOpacity;
+        System.IO.File.WriteAllText(settingsFile, $$"""{ "window": { "backdrop": "acrylic", "terminalOpacity": {{defaultOpacity.ToString(System.Globalization.CultureInfo.InvariantCulture)}} } }""");
+        window.ReloadConfiguration(all: false, settings: true);
+        await Task.Delay(1500);
+        // The foreground is judged at this read, not carried from the last one: on a live desktop
+        // it can leave between two reads, and an inactive window shows the acrylic's opaque
+        // fallback - a neutral grey, which would read as a wrong blend rather than a skipped one.
+        inFront = inFront && ShortcutRouter.ForegroundIsOurs();
+        var atDefault = ScreenPixel(at.X, at.Y);
+        byte Expected(byte half, byte background) => (byte)Math.Round(
+            (defaultOpacity * background) + ((1 - defaultOpacity) * Math.Clamp((2 * half) - background, 0, 255)));
+        var expected = Color.FromRgb(Expected(tinted.R, themeBackground.R), Expected(tinted.G, themeBackground.G), Expected(tinted.B, themeBackground.B));
+        Log($"  terminal pixel with the default opacity {defaultOpacity:F2}: #{atDefault.R:X2}{atDefault.G:X2}{atDefault.B:X2}; expected #{expected.R:X2}{expected.G:X2}{expected.B:X2}; in front={inFront}");
+        CheckThroughBackdrop(inFront, Distance(atDefault, expected) <= 14, $"the default opacity {defaultOpacity:F2} blends every channel correctly without a colour cast");
+
         // ---- opaque again, live, through the settings ----
         System.IO.File.WriteAllText(settingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 1.0 } }""");
         window.ReloadConfiguration(all: false, settings: true);
@@ -4397,7 +4416,7 @@ internal static class HerdSelfTest
         window.Commands.TryExecute("view.terminal");
         await Task.Delay(700);
         Log($"  terminal: layout={window.CurrentLayout.Name} caption={window.CaptionHeight} strip-in-caption={window.Strip.Parent is System.Windows.Controls.ContentControl { Name: "CaptionTabsHost" }} focus=0x{ShortcutRouter.FocusedWindow():X} ({WindowClass(ShortcutRouter.FocusedWindow())}) terminal=0x{MainWindow.FindTerminalHwnd(window.ActiveTab!.View):X} active=0x{GetActiveWindow():X} ({WindowClass(GetActiveWindow())})");
-        Check(window.CurrentLayout.Name == "top" && window.CaptionHeight > 50 && window.Strip.Parent is System.Windows.Controls.ContentControl, "view.terminal restores the top layout with the strip in the caption");
+        Check(window.CurrentLayout.Name == "top" && window.CaptionHeight == 44 && window.Strip.Parent is System.Windows.Controls.ContentControl, "view.terminal restores the compact top layout with the strip in the caption");
         Check(!window.IsActive || ShortcutRouter.FocusedWindow() == MainWindow.FindTerminalHwnd(window.ActiveTab!.View), "focus is back in the terminal (when the window is foreground)");
         Check(window.Tabs.All(t => !t.ScreenWatched), "screen watching stops when no view needs it");
 
@@ -4449,7 +4468,7 @@ internal static class HerdSelfTest
             System.IO.File.Delete(OverShell.Core.AppPaths.KeybindingsFile);
             await Task.Delay(1500);
             Log($"  after removing overrides: layout tabs={window.CurrentLayout.Tabs.Placement} caption={window.CaptionHeight}");
-            Check(window.CurrentLayout.Tabs.Placement == OverShell.Core.Layout.TabsPlacement.Top && window.CaptionHeight > 50, "deleting the override restores the preset live");
+            Check(window.CurrentLayout.Tabs.Placement == OverShell.Core.Layout.TabsPlacement.Top && window.CaptionHeight == 44, "deleting the override restores the compact preset live");
             Check(window.DispatchChord(System.Windows.Input.Key.T, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift), "…and Ctrl+Shift+T is bound again");
             await Task.Delay(800);
             window.CloseTab(window.Tabs[^1]);

@@ -19,7 +19,7 @@ namespace OverShell.App;
 /// </summary>
 public partial class MainWindow
 {
-    private const double CaptionWithTabs = 54;
+    private const double CaptionWithTabs = 44;
     private const double CaptionSlim = 38;
 
     private readonly TabStrip _tabStrip = new();

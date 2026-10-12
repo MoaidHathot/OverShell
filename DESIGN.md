@@ -205,7 +205,7 @@ OverShell.slnx
 ### Dependency graph
 
 ```
-OverShell.Terminal.Wpf 1.26.260930.2        (our fork of microsoft/terminal, signed, §12.20; was CI.Microsoft.Terminal.Wpf 1.25.260303002)
+OverShell.Terminal.Wpf 1.26.260930.3        (our fork of microsoft/terminal, signed, §12.20; was CI.Microsoft.Terminal.Wpf 1.25.260303002)
 ├── Microsoft.Terminal.Wpf.dll          (managed HwndHost wrapper, ITerminalConnection)
 └── Microsoft.Terminal.Control.dll      (native — the real WT control, 1.6 MB)
 Microsoft.Windows.Console.ConPTY 1.24.260710001
@@ -810,6 +810,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **The control, built by us** (§12.20) | **`OverShell.Terminal.Wpf`**: the Windows Terminal WPF control built from source by our fork of microsoft/terminal on GitHub Actions and published to nuget.org through Trusted Publishing; a distributable OverShell bumps by version, synced to upstream by a weekly rebase PR. **Terminal-body transparency** (`window.terminalOpacity`): the fork's composed rendering mode draws the terminal through a DirectComposition visual on the top-level window so the backdrop shows through the body — the thing §7.6 had ruled out with the control as shipped. Two upstream-grade fixes found on the way (`dcomp.dll` never loaded under WPF; WPF cannot repaint under a child HWND). `transparency` 12/12 on real screen pixels; every earlier mode green with the fork's package |
 | **Self-tests on a private desktop** (§12.21) | `tools/Invoke-SelfTest.ps1` runs any mode on a private Win32 desktop: nothing on the user's screen, no focus change, the window manager blind to it; foreground checks judged there by thread-local activation (`CanJudgeActivation`), the acrylic reads and screenshots skipped unless `-Visible`; a tally line per run; the seeded modes (`history`, `jumplist`, `resilience`, `ghost`, `transparency`) seed themselves (`SeedState`). All 33 modes green hidden. |
 | **Settings from the palette, translucent by default, a way in** (§12.22) | `window.terminalOpacity` defaults to 0.85; `Change a setting…` (36 knobs with current values, value pickers, typed numbers/chords) and one `Setting: …` command per knob write one line into `settings.jsonc` through a comment-preserving JSONC edit and let the watcher apply it; `Open settings.jsonc` / `Open keybindings.jsonc` write the commented defaults first; `Help: Tutorial` / `User guide` / `Keyboard shortcuts` / `About`; `docs/TUTORIAL.md`; a one-time welcome note above the first prompt. |
+| **The red body, compact tabs, local control builds, CI diet** (§12.23) | Atlas premultiplied the packed red/blue pair with one division and leaked blue into red at every alpha but 0 and 255 (fork patch 4, `wpf-v1.26.260930.3`; 0.85 now `#0A250A`, was `#4D1717`); the transparency test checks all channels; caption glyph instead of the blue tile, tabs 46->40 DIP with every indicator kept; `Build.ps1` names the missing UWP C++ component and restores with the repo config only, the control builds locally in 7 min; fork CI skips docs-only pushes, already-built commits, and caches vcpkg. |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -2597,6 +2598,64 @@ same key in another object left alone, braces inside strings and block comments,
 
 ---
 
+### 12.23 The red body: a renderer arithmetic bug, and compact tabs
+
+**Problem.** With the body translucent by default (§12.22) the first thing a user saw was a
+*red* terminal - `#4D1717` where the theme says `#0C0C0C`. Not the profile (Campbell, opaque
+black), not the backdrop (acrylic over a brown wallpaper would tint everything, not only the
+terminal), and gone at opacity 1.0.
+
+**Cause.** `u32ColorPremultiply` in Atlas (`src/renderer/atlas/Backend.h`, upstream code)
+premultiplies the per-cell background colour before it goes into the colour bitmap. It scales
+the packed red/blue pair with one integer division - `rb = (rb * m / 0xff) & 0x00ff00ff` -
+which is not a per-channel division: the remainder of blue's division lands in the low sixteen
+bits and is added to red. For `#0C0C0C` at alpha 0xD9 (0.85) the result is `#400A0A` instead
+of `#0A0A0A`, 54 units of red out of nothing; at alpha 0x80 (0.5) 6 units - which the first
+transparency test had recorded, `#0C6106` at 0.5, and not noticed, because its check asked only
+whether the pixel was green-tinted. Alpha 0 and 255 are exact, and those are the only two values
+Windows Terminal ever produces (its default background goes through `til::color` to
+`COLORREF`, which drops alpha; the XAML brush behind the swap chain supplies the tint), so
+upstream never met the bug. The composed mode's `TerminalSetBackgroundOpacity` is the first
+caller with an alpha in between.
+
+**Fix.** Fork patch 4 (`wpf-v1.26.260930.3`): each channel scaled on its own, with
+`static_assert`s for alpha 0, 0x80, 0xD9, 0xFF and a blue-only input. Measured with the DLL built
+locally, on screen over an acrylic-blurred lime: 0.5 `#0C6106` -> `#066106`; 0.85 `#4D1717` ->
+`#0A250A` (expected `#0A260A`); 1.0 `#0C0C0C` unchanged; the tear-off and second-tab reads
+exact. The transparency self-test now checks all three channels at the default opacity against the
+blend predicted from the 0.5 read, so a cast in any channel fails it. The fix is a one-function
+upstream item (`upstream/atlas-premultiply`, UPSTREAMING.md issue 3): small, provable, no upstream
+code path reaches it.
+
+**Also.** The caption's blue tile became a muted monochrome terminal glyph (`Text.Secondary`,
+14 DIP); tabs 46 -> 40 DIP and the tabbed caption 54 -> 44, both text rows, the state dot, the
+unread/muted/changed marks and the progress bar kept - at 150 % the two text lines measure 30.7 DIP
+inside the 40. The self-test asserts the new caption height. On the first visible pixel run the
+geometry checks tripped over the user's own windows (the tiling window manager had moved the
+backing window); on a quiet desktop 13/13.
+
+**Building the control locally** turned out to need one Visual Studio component this machine's
+two instances both lacked: the C++ (v145) Universal Windows Platform tools
+(`Microsoft.VisualStudio.ComponentGroup.UWP.VC`) - the TerminalControl path is C++/WinRT built as
+a Windows Store component, so a Desktop-C++-only install fails with MSB8036/MSB8020. It is an
+upstream requirement from day one (the repository's `.vsconfig`), unexercised here because nothing
+native had been built on this machine before. `Build.ps1` now checks for it (and for the SDK the
+tree names) before building and prints the installer command; it also restores with the
+repository's `NuGet.Config` alone, since this machine's global package-source mapping otherwise
+loses `StyleCop.Analyzers` for the WPF project. With the component installed (two minutes), the
+whole control builds locally in about seven - which is where fork iterations happen from now on,
+not on CI.
+
+**CI usage.** All three repositories are public, so GitHub-hosted runners are free there and
+nothing is billed (`billable: {}` on every workflow); the account's included minutes are for
+private repositories only. The fork still spent 254 runner-minutes in a month, 150 of them on
+`overshell-ci` runs for pushes that changed no build input (README, UPSTREAMING, workflow edits).
+Now: path filters on push and pull request, a push whose commit `overshell-ci` or
+`overshell-release` already built green is skipped (the sync lands with a fast-forward; a tag
+pushed before its branch), and vcpkg's binary cache is carried between runs (about eighty seconds
+of every build). OverShell's CI (1.4 min a run) skips documentation-only changes, and Dependabot
+delivers one grouped pull request per ecosystem instead of one per package (six bumps one Monday
+had cost twelve runs).
 ## 13. Distribution
 
 ### 13.1 Channels - and why each artefact is what it is

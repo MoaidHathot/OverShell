@@ -113,7 +113,7 @@ namespace OverShellSelfTest
             {
                 var cmd = new StringBuilder().Append('"').Append(exe).Append('"');
                 foreach (var a in args ?? new string[0]) { cmd.Append(' ').Append(a.IndexOfAny(new[] { ' ', '"' }) < 0 ? a : "\"" + a.Replace("\"", "\\\"") + "\""); }
-                var si = new STARTUPINFOW { cb = Marshal.SizeOf(typeof(STARTUPINFOW)), lpDesktop = desktopName };
+                var si = new STARTUPINFOW { cb = Marshal.SizeOf(typeof(STARTUPINFOW)), lpDesktop = string.IsNullOrEmpty(desktopName) ? null : desktopName };
                 PROCESS_INFORMATION pi;
                 if (!CreateProcessW(null, cmd, IntPtr.Zero, IntPtr.Zero, false, CREATE_UNICODE_ENVIRONMENT, envPtr, null, ref si, out pi))
                 {
@@ -172,7 +172,7 @@ namespace OverShellSelfTest
         // throwaway thread attached to it; the handles found are usable from any thread.
         private static void Enumerate(string desktopName, Action<IntPtr> visit)
         {
-            if (desktopName == null)
+            if (string.IsNullOrEmpty(desktopName))
             {
                 EnumWindows((hwnd, _) => { visit(hwnd); return true; }, IntPtr.Zero);
                 return;

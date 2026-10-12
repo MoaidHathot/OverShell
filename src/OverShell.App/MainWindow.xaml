@@ -58,23 +58,17 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- brand mark -->
+                    <!-- Quiet terminal glyph; the application icon stays in the shell. -->
                     <Border Grid.Column="0"
                             Width="42"
                             VerticalAlignment="Stretch"
                             Background="Transparent">
-                        <Border Width="16" Height="16"
-                                CornerRadius="4"
-                                Background="{StaticResource Accent.Base}"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center">
-                            <TextBlock Text="&#xE756;"
-                                       FontFamily="{StaticResource Font.Icons}"
-                                       FontSize="9"
-                                       Foreground="{StaticResource Accent.OnAccent}"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
-                        </Border>
+                        <TextBlock Text="&#xE756;"
+                                   FontFamily="{StaticResource Font.Icons}"
+                                   FontSize="14"
+                                   Foreground="{StaticResource Text.Secondary}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
                     </Border>
 
                     <!-- the tab strip lives here in "top" layouts; otherwise the title -->

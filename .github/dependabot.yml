@@ -1,5 +1,8 @@
 # Keep the pinned actions in the workflows current, and the NuGet packages (including
-# OverShell.Terminal.Wpf, the fork's build of the terminal control) - weekly, one PR each.
+# OverShell.Terminal.Wpf, the fork's build of the terminal control) - weekly, grouped: one pull
+# request per ecosystem per week rather than one per package, since every pull request is a CI
+# run and every merge another; six separate bumps one Monday cost twelve runs for two groups' worth
+# of change. A major-version bump still comes on its own, where it deserves a look of its own.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -9,6 +12,9 @@ updates:
       day: monday
     commit-message:
       prefix: "ci(actions)"
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: nuget
     directory: /
     schedule:
@@ -16,3 +22,7 @@ updates:
       day: monday
     commit-message:
       prefix: "deps"
+    groups:
+      nuget-minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]

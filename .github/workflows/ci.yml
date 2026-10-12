@@ -2,12 +2,27 @@
 # Warnings fail the build: the repository's standing rule is zero warnings. Runs with a read-only
 # token and no secrets (pull_request, not pull_request_target), so a fork's pull request is safe to
 # run; actions are pinned to commits and Dependabot keeps them current.
+#
+# Documentation-only changes (Markdown, docs/, the Dependabot and CODEOWNERS files) do not build:
+# nothing they touch reaches the compiler, the tests or the package.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE*'
+      - '.github/dependabot.yml'
+      - '.github/CODEOWNERS'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE*'
+      - '.github/dependabot.yml'
+      - '.github/CODEOWNERS'
   workflow_dispatch:
 
 concurrency:
