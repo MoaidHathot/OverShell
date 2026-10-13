@@ -95,6 +95,8 @@ public partial class MainWindow
         ActiveTab = tab;
         _trace.Write($"[{tab.Id}] attached back (terminal 0x{FindTerminalHwnd(tab.View):X})");
         UpdateViewed();
+        // Back under this window's activation state, not the tear-off's.
+        ApplyBodyOpacity();
     }
 
     /// <summary>The user closed a tear-off with the X: the tab comes home rather than dying.</summary>
@@ -109,6 +111,7 @@ public partial class MainWindow
         var view = window.Release();
         _tearOffs.Remove(window);
         TerminalHost.Children.Add(view);
+        ApplyBodyOpacity();
         if (!tab.IsRunning && tab.HasStarted)
         {
             // A dead shell coming back is not worth showing over the live one.

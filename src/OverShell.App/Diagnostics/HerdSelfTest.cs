@@ -28,7 +28,7 @@ internal static class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency" or "settings";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency" or "settings" or "unfocused";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -153,6 +153,9 @@ internal static class HerdSelfTest
                         break;
                     case "settings":
                         await RunSettingsAsync(window, firstTab);
+                        break;
+                    case "unfocused":
+                        await RunUnfocusedAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -1866,6 +1869,32 @@ internal static class HerdSelfTest
         // Tab alone is the terminal's.
         Check(!window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.None), "Tab outside the switcher goes to the terminal");
 
+        // Tabs that open without becoming active - a restored session's, a workspace's, one spawned
+        // in the background - must be in the list too, after the visited ones: the switcher once
+        // learned a tab only when it was activated, and a tab never visited since the start was
+        // simply not offered, so Ctrl+Tab "skipped" it (and which one depended on the clicks).
+        window.ActiveTab = first;
+        var back1 = window.AddTab(first.Profile, activate: false);
+        back1.UserLabel = "quiet-one";
+        var back2 = window.AddTab(first.Profile, activate: false);
+        back2.UserLabel = "quiet-two";
+        await Task.Delay(300);
+        Log($"  order with two background tabs: {string.Join(" > ", mru.Order.Select(t => t.Label))}");
+        Check(mru.Order.Count == window.Tabs.Count && mru.Order.Select(t => t.Label).SequenceEqual(["ay", "bee", "quiet-one", "quiet-two"]), "tabs opened in the background are in the list, after the visited ones, in the order they opened");
+        window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2);
+        window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2);
+        window.DispatchChord(ctrlTab.Item1, ctrlTab.Item2);
+        Check(mru.IsOpen && mru.Selected == 3 && mru.Overlay!.Labels[3] == "quiet-two", "three Tabs with Ctrl held reach the last background tab");
+        mru.Commit();
+        await Task.Delay(200);
+        Check(ReferenceEquals(window.ActiveTab, back2) && mru.Order[0] == back2, "...and releasing Ctrl lands on it, which makes it the most recent");
+        window.ActiveTab = first;
+        window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift);
+        Check(mru.IsOpen && mru.Selected == window.Tabs.Count - 1 && mru.Overlay!.Labels[mru.Selected] == "quiet-one", "Ctrl+Shift+Tab from the top selects the least recently used tab - the one never visited");
+        mru.Cancel();
+        window.CloseTab(back2);
+        window.CloseTab(back1);
+
         window.CloseTab(b);
         Log($"=== selftest (mru) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
@@ -2531,7 +2560,7 @@ internal static class HerdSelfTest
         var text = System.IO.File.ReadAllText(settingsFile);
         Log($"  file: {text.Length} chars, starts '{text.Split('\n')[0]}'; opacity now {TerminalFactory.Composition.Opacity:F2}; status '{status.Text}'");
         Check(text.StartsWith("// Written by OverShell from the built-in defaults", StringComparison.Ordinal) && text.Contains("// OverShell default settings.", StringComparison.Ordinal), "settings.jsonc was written from the commented defaults first");
-        Check(text.Contains("\"terminalOpacity\": 0.5\n", StringComparison.Ordinal) && !text.Contains("\"terminalOpacity\": 0.85", StringComparison.Ordinal), "...and the value was replaced in place, the comments around it kept");
+        Check(text.Contains("\"terminalOpacity\": 0.5,\n    \"terminalOpacityUnfocused\": 1.0\n", StringComparison.Ordinal) && !text.Contains("\"terminalOpacity\": 0.85", StringComparison.Ordinal), "...and the value was replaced in place, its comma and the sibling line kept");
         Check(Math.Abs(TerminalFactory.Composition.Opacity - 0.5) < 0.001 && Math.Abs(first.Surface.BackgroundOpacity - 0.5) < 0.001, "the watcher applied it live: the composition and the surface are at 0.5");
         Check(status.Text.Contains("Terminal body opacity = 0.5", StringComparison.Ordinal), "the reload's status line names the change");
 
@@ -2571,6 +2600,191 @@ internal static class HerdSelfTest
         Check(Chrome.ThemeManager.Current.Theme != "light" && TerminalTab.TabSettings.TwoLine, "the original file restored: theme and tabs back");
 
         Log($"=== selftest (settings) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+    /// <summary>
+    /// The window that is not the active one (12.24): Windows paints acrylic for the active
+    /// window only, so an inactive window used to show the body's translucency over DWM's flat
+    /// fallback - a grey terminal. Measured here on screen: body, caption band and status band,
+    /// active and inactive, with a lime window behind; the body of an inactive window must be the
+    /// theme's own background, opaque, and back to translucent when the window is active again.
+    /// The property side (the surfaces' opacity following the window's activation) is checked on
+    /// any desktop; the pixels on the input desktop only.
+    /// </summary>
+    private static async Task RunUnfocusedAsync(MainWindow window, TerminalTab first)
+    {
+        Log("=== selftest (unfocused) start ===");
+        var pass = true;
+        void Check(bool ok, string what)
+        {
+            pass &= ok;
+            Log($"  {(ok ? "PASS" : "FAIL")}  {what}");
+        }
+
+        void CheckOnScreen(bool inFront, bool ok, string what)
+        {
+            if (OnInputDesktop && inFront)
+            {
+                Check(ok, what);
+            }
+            else
+            {
+                Log($"  SKIP  {what} ({(OnInputDesktop ? "another window holds the foreground" : "private desktop: nothing is on screen")})");
+            }
+        }
+
+        var composition = TerminalFactory.Composition;
+        var configured = window.CurrentSettings.Window.TerminalOpacity;
+        var unfocused = window.CurrentSettings.Window.TerminalOpacityUnfocused;
+        Log($"  composition enabled={composition.Enabled} opacity={composition.Opacity:F2}; settings terminalOpacity={configured:F2} terminalOpacityUnfocused={unfocused:F2}");
+        Check(composition.Enabled && Math.Abs(composition.Opacity - configured) < 0.001 && configured < 1.0, "the default settings give a composed, translucent body");
+        if (!composition.Enabled)
+        {
+            Log("=== selftest (unfocused) result: FAILED ===");
+            return;
+        }
+
+        await WaitForPromptAsync(first);
+        await Task.Delay(500);
+
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+        var backing = new System.Windows.Window
+        {
+            WindowStyle = System.Windows.WindowStyle.None,
+            ResizeMode = System.Windows.ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Background = System.Windows.Media.Brushes.Lime,
+            Title = "overshell-selftest-backing",
+            WindowStartupLocation = System.Windows.WindowStartupLocation.Manual,
+            Left = 0,
+            Top = 0,
+            Width = 10,
+            Height = 10,
+        };
+        backing.SourceInitialized += (_, _) =>
+        {
+            var h = new System.Windows.Interop.WindowInteropHelper(backing).Handle;
+            SetWindowLongPtr(h, -20, (nint)(GetWindowLongPtr(h, -20) | 0x80));
+        };
+        backing.Show();
+        var backingHwnd = new System.Windows.Interop.WindowInteropHelper(backing).Handle;
+        GetWindowRect(hwnd, out var r);
+        SetWindowPos(backingHwnd, hwnd, r.Left - 40, r.Top - 40, r.Right - r.Left + 80, r.Bottom - r.Top + 80, 0x0010 | 0x0040);
+        var inFront = await BringToFrontAsync(window);
+        await Task.Delay(800);
+
+        // Three places: the terminal's empty area, the caption band right of the tabs, the status band's middle.
+        var origin = first.View.PointToScreen(new System.Windows.Point(0, 0));
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(first.View);
+        var body = ((int)(origin.X + first.View.ActualWidth * dpi.DpiScaleX * 0.7), (int)(origin.Y + first.View.ActualHeight * dpi.DpiScaleY * 0.75));
+        var caption = (r.Left + (int)((r.Right - r.Left) * 0.62), r.Top + (int)(22 * dpi.DpiScaleY));
+        var status = (r.Left + (int)((r.Right - r.Left) * 0.62), r.Bottom - (int)(12 * dpi.DpiScaleY));
+        var theme = ((System.Windows.Media.SolidColorBrush)first.Background).Color;
+
+        string Read(string when)
+        {
+            var b = ScreenPixel(body.Item1, body.Item2);
+            var c = ScreenPixel(caption.Item1, caption.Item2);
+            var s = ScreenPixel(status.Item1, status.Item2);
+            Log($"  {when}: body #{b.R:X2}{b.G:X2}{b.B:X2}  caption #{c.R:X2}{c.G:X2}{c.B:X2}  status #{s.R:X2}{s.G:X2}{s.B:X2}  (theme background #{theme.R:X2}{theme.G:X2}{theme.B:X2}; window.IsActive={window.IsActive}; surface opacity {first.Surface.BackgroundOpacity:F2}; ring {window.TerminalBodyTintOpacity:F2})");
+            return $"{b.R:X2}{b.G:X2}{b.B:X2}";
+        }
+
+        Read("active");
+        var activeBody = ScreenPixel(body.Item1, body.Item2);
+        CheckOnScreen(inFront, activeBody.G - Math.Max(activeBody.R, activeBody.B) >= 12, "active: the body is translucent (the lime behind shows through the acrylic)");
+        Check(Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - configured) < 0.001, $"active: the surface and the margin ring are at terminalOpacity {configured:F2}");
+
+        // Another window of ours takes the activation - the main window is inactive the way it is
+        // when the user works elsewhere - without any other process: on a private desktop (the
+        // hidden runs) no other process can take the foreground, and on the input desktop the
+        // tiling window manager tiles an ordinary window over the very pixels measured, while it
+        // leaves a tool window alone. Placed beside OverShell: left of it when there is room (the
+        // other monitor, usually), else right of it, else over its bottom-left corner, away from
+        // the three sample points. Measured on the way, for the record: with a window of ours or a
+        // foreign tool window holding the foreground, Windows kept painting the acrylic behind the
+        // inactive OverShell; with a foreign ordinary window on the same monitor it switched to its
+        // flat fallback (the caption band read #2C2E32 instead of the acrylic). The body's opacity
+        // is OverShell's own doing either way, which is what this mode checks.
+        var virtualLeft = (int)(System.Windows.SystemParameters.VirtualScreenLeft * dpi.DpiScaleX);
+        var virtualRight = (int)((System.Windows.SystemParameters.VirtualScreenLeft + System.Windows.SystemParameters.VirtualScreenWidth) * dpi.DpiScaleX);
+        var (dx, dy) = r.Left - virtualLeft >= 320 ? (r.Left - 300, r.Top + 60)
+            : virtualRight - r.Right >= 320 ? (r.Right + 40, r.Top + 60)
+            : (r.Left + 4, r.Bottom - 70);
+        var distractor = new System.Windows.Window
+        {
+            WindowStyle = System.Windows.WindowStyle.None,
+            ResizeMode = System.Windows.ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Background = System.Windows.Media.Brushes.DimGray,
+            Title = "overshell-selftest-distractor",
+            WindowStartupLocation = System.Windows.WindowStartupLocation.Manual,
+            Left = dx / dpi.DpiScaleX,
+            Top = dy / dpi.DpiScaleY,
+            Width = 160,
+            Height = 48,
+        };
+        distractor.SourceInitialized += (_, _) =>
+        {
+            var h = new System.Windows.Interop.WindowInteropHelper(distractor).Handle;
+            SetWindowLongPtr(h, -20, (nint)(GetWindowLongPtr(h, -20) | 0x80));
+        };
+        distractor.Show();
+        await Task.Delay(300);
+        distractor.Activate();
+        await Task.Delay(1200);
+        GetWindowRect(new System.Windows.Interop.WindowInteropHelper(distractor).Handle, out var fr);
+        bool Covered((int X, int Y) at) => at.X >= fr.Left && at.X < fr.Right && at.Y >= fr.Top && at.Y < fr.Bottom;
+        Log($"  distractor at ({fr.Left},{fr.Top})-({fr.Right},{fr.Bottom}); OverShell at ({r.Left},{r.Top})-({r.Right},{r.Bottom}); window.IsActive={window.IsActive} distractor.IsActive={distractor.IsActive} foreground-ours={ShortcutRouter.ForegroundIsOurs()}");
+        var foreignInFront = !window.IsActive && !Covered(body) && !Covered(caption) && !Covered(status);
+        Check(!window.IsActive && distractor.IsActive, "the main window is inactive while another window is the active one");        Read("inactive");
+        var inactiveBody = ScreenPixel(body.Item1, body.Item2);
+        SaveScreen(window, "overshell-selftest-unfocused.png");
+        Check(Math.Abs(first.Surface.BackgroundOpacity - unfocused) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - unfocused) < 0.001, $"inactive: the surface and the margin ring follow terminalOpacityUnfocused {unfocused:F2}");
+        if (unfocused >= 1.0)
+        {
+            CheckOnScreen(inFront && foreignInFront, Distance(inactiveBody, theme) <= 6, $"inactive: the body is the theme's background, opaque (#{inactiveBody.R:X2}{inactiveBody.G:X2}{inactiveBody.B:X2})");
+        }
+
+        // A tab opened while the window is inactive gets the inactive opacity too, not the configured one.
+        var late = window.AddTab(first.Profile, activate: false);
+        await Task.Delay(400);
+        Check(Math.Abs(late.Surface.BackgroundOpacity - unfocused) < 0.001, "a tab opened while the window is inactive starts at the inactive opacity");
+
+        // Back in front: translucent again. Activate() works within the thread on any desktop;
+        // the pixel read additionally wants the foreground, which only the input desktop grants.
+        window.Activate();
+        await Task.Delay(1000);
+        var again = window.IsActive && (!OnInputDesktop || await BringToFrontAsync(window));
+        Read("active again");
+        var activeAgain = ScreenPixel(body.Item1, body.Item2);
+        Check(window.IsActive && Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs(late.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - configured) < 0.001, $"active again: every surface and the ring are back at {configured:F2}");
+        CheckOnScreen(again, activeAgain.G - Math.Max(activeAgain.R, activeAgain.B) >= 12, "active again: the body is translucent again");
+
+        // A tear-off follows its own window's activation: torn off while the main window is active,
+        // the tear-off is the active window and the main window is not.
+        var keeper = window.AddTab(first.Profile, activate: false);
+        await WaitForPromptAsync(keeper);
+        var tearOff = window.Detach(first);
+        await Task.Delay(800);
+        // Detach shows the tear-off without activating it; the user clicking into it is the case.
+        tearOff?.Activate();
+        await Task.Delay(800);
+        Log($"  torn off: tearOff.IsActive={tearOff?.IsActive} main.IsActive={window.IsActive} first.opacity={first.Surface.BackgroundOpacity:F2} keeper.opacity={keeper.Surface.BackgroundOpacity:F2}");
+        Check(tearOff is { IsActive: true } && Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs(keeper.Surface.BackgroundOpacity - unfocused) < 0.001, "the active tear-off's tab is translucent; the now-inactive main window's tabs are at the inactive opacity");
+        window.Activate();
+        await Task.Delay(600);
+        Log($"  main active again: main.IsActive={window.IsActive} tearOff.IsActive={tearOff?.IsActive} first.opacity={first.Surface.BackgroundOpacity:F2} keeper.opacity={keeper.Surface.BackgroundOpacity:F2}");
+        Check(window.IsActive && Math.Abs(first.Surface.BackgroundOpacity - unfocused) < 0.001 && Math.Abs(keeper.Surface.BackgroundOpacity - configured) < 0.001, "...and the other way round once the main window is active again");
+
+        window.Attach(first);
+        await Task.Delay(600);
+        window.CloseTab(keeper);
+        window.CloseTab(late);
+        distractor.Close();
+        backing.Close();
+        Log($"=== selftest (unfocused) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
     /// <summary>
     /// A translucent terminal body (§12.20) through the fork's control: with window.terminalOpacity
@@ -2941,6 +3155,9 @@ internal static class HerdSelfTest
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern nint GetWindow(nint hwnd, uint command);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern nint FindWindowW(string? className, string? windowName);
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]

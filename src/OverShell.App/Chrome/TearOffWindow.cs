@@ -97,13 +97,28 @@ public sealed class TearOffWindow : Window
             }
         };
 
-        Activated += (_, _) => Tab.Surface.Focus();
+        // The body's opacity follows this window's activation (12.24), as the main window's does its own.
+        Activated += (_, _) => { Tab.Surface.Focus(); ApplyBodyOpacity(); };
+        Deactivated += (_, _) => ApplyBodyOpacity();
         StateChanged += (_, _) => SyncMaximizeState();
         SourceInitialized += (_, _) => ApplyBackdrop();
         DpiChanged += (_, _) => ApplyBackdrop();
     }
 
     public TerminalTab Tab { get; }
+
+    /// <summary>The tab's surface and the margin ring at the opacity this window's activation calls for.</summary>
+    internal void ApplyBodyOpacity()
+    {
+        if (!Terminal.TerminalFactory.Composition.Enabled)
+        {
+            return;
+        }
+
+        var opacity = Terminal.TerminalFactory.BodyOpacityFor(IsActive);
+        _hostTint.Opacity = opacity;
+        Tab.Surface.BackgroundOpacity = opacity;
+    }
 
     /// <summary>This window's find bar, over its one tab.</summary>
     internal FindBarController Find { get; }
@@ -278,7 +293,7 @@ public sealed class TearOffWindow : Window
         _root.Background = active ? Brushes.Transparent : (Brush)FindResource("Surface.Base");
         // Nothing under a composed terminal (WPF cannot repaint under the child HWND); the margin ring carries the tint.
         _host.Background = composed && active ? Brushes.Transparent : Tab.Background;
-        _hostTint.Opacity = Terminal.TerminalFactory.Composition.Opacity;
+        ApplyBodyOpacity();
         _hostTint.Visibility = composed && active ? Visibility.Visible : Visibility.Collapsed;
         _caption.SetResourceReference(Border.BackgroundProperty, active ? "Surface.ChromeTranslucent" : "Surface.Chrome");
         TextOptions.SetTextRenderingMode(this, active ? TextRenderingMode.Grayscale : TextRenderingMode.ClearType);

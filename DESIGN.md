@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log`. Run through `tools\Invoke-SelfTest.ps1 -Mode <mode>`: a private desktop, so nothing takes the focus (§12.21); `-Visible` for the pixel checks |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log`. Run through `tools\Invoke-SelfTest.ps1 -Mode <mode>`: a private desktop, so nothing takes the focus (§12.21); `-Visible` for the pixel checks |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -811,6 +811,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Self-tests on a private desktop** (§12.21) | `tools/Invoke-SelfTest.ps1` runs any mode on a private Win32 desktop: nothing on the user's screen, no focus change, the window manager blind to it; foreground checks judged there by thread-local activation (`CanJudgeActivation`), the acrylic reads and screenshots skipped unless `-Visible`; a tally line per run; the seeded modes (`history`, `jumplist`, `resilience`, `ghost`, `transparency`) seed themselves (`SeedState`). All 33 modes green hidden. |
 | **Settings from the palette, translucent by default, a way in** (§12.22) | `window.terminalOpacity` defaults to 0.85; `Change a setting…` (36 knobs with current values, value pickers, typed numbers/chords) and one `Setting: …` command per knob write one line into `settings.jsonc` through a comment-preserving JSONC edit and let the watcher apply it; `Open settings.jsonc` / `Open keybindings.jsonc` write the commented defaults first; `Help: Tutorial` / `User guide` / `Keyboard shortcuts` / `About`; `docs/TUTORIAL.md`; a one-time welcome note above the first prompt. |
 | **The red body, compact tabs, local control builds, CI diet** (§12.23) | Atlas premultiplied the packed red/blue pair with one division and leaked blue into red at every alpha but 0 and 255 (fork patch 4, `wpf-v1.26.260930.3`; 0.85 now `#0A250A`, was `#4D1717`); the transparency test checks all channels; caption glyph instead of the blue tile, tabs 46->40 DIP with every indicator kept; `Build.ps1` names the missing UWP C++ component and restores with the repo config only, the control builds locally in 7 min; fork CI skips docs-only pushes, already-built commits, and caches vcpkg. |
+| **Switcher completeness, the inactive body** (§12.24) | The MRU switcher lists every open tab (background-opened ones last) and drops a closing one at once - no tab is ever skipped; `window.terminalOpacityUnfocused` (default 1.0) makes an inactive window's body the theme's own background instead of the translucency over DWM's grey fallback, per window, live; `unfocused` self-test mode measures it on screen. |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -2656,6 +2657,45 @@ pushed before its branch), and vcpkg's binary cache is carried between runs (abo
 of every build). OverShell's CI (1.4 min a run) skips documentation-only changes, and Dependabot
 delivers one grouped pull request per ecosystem instead of one per package (six bumps one Monday
 had cost twelve runs).
+
+### 12.24 Two things the first day of dogfooding found: the switcher skipped tabs, the inactive window was grey
+
+**The switcher.** With three tabs, Ctrl+Tab "always skipped one - sometimes the middle one,
+sometimes the first". The MRU extension learned a tab only when it was *activated*
+(`ActiveTabChanged`), so a tab never visited since the start - every tab of a restored session
+but the one that came back in front, a workspace's tabs, a tab spawned in the background - was
+not in its list at all; which one was "skipped" depended on which the user had clicked. The
+extension now hears `TabOpened` too and puts a tab that opens without becoming active at the
+*end* of the order (the least recently used - which is right: it has never been used), keeps the
+list closed under the open tabs (any open tab the list does not know is appended, so a missed
+opening can never hide one), and treats a tab whose `TabClosed` has fired as gone even though
+the host raises that event while the tab is still in its collection. The `mru` mode gained
+the scenario: two tabs opened in the background land after the visited ones, three Tabs reach
+the last one, Ctrl+Shift+Tab from the top selects the never-visited one (19 checks).
+
+**The inactive window.** Windows paints acrylic for the active window only; behind an inactive
+one it paints a flat grey, and the translucent body over that read as a grey terminal - a far
+larger change than "not focused" should make. Measured before deciding (lime behind the window,
+real pixels): the active body `#0A250A`; the same body with an *ordinary* window of another
+process in front on the same monitor `#696969`, and the caption band `#2C2E32` instead of its
+acrylic; with a *tool* window or a window of our own holding the activation, Windows kept the
+acrylic - the fallback is DWM's decision and depends on what took the foreground, so it is not
+something OverShell can rely on either way. What OverShell owns is the body's alpha. New setting
+`window.terminalOpacityUnfocused`, default `1.0`: while a window is not the active one, every
+composed surface it hosts and its margin ring go to that value - the theme's own background,
+opaque, which is what Windows Terminal's acrylic falls back to - and back to `terminalOpacity`
+on activation. Per window: an active tear-off is translucent while the main window behind it is
+opaque, and the other way round (`TerminalFactory.BodyOpacityFor(windowActive)`; a tab opened
+or re-attached into an inactive window starts at the inactive value). The same number as
+`terminalOpacity` keeps the old behaviour for whoever prefers the grey. In the palette:
+*Terminal body opacity when the window is not active*. The `unfocused` mode measures it: active
+`#0A250A`, inactive `#0C0C0C` exactly (another window of ours activated - another process cannot
+take the foreground on the private desktop, and on the input desktop the tiling window manager
+tiles a foreign ordinary window over the very pixels measured), active again `#0A250A`, the
+tear-off both ways; 11 checks on screen, 8 hidden (the pixel reads skipped).
+
+---
+
 ## 13. Distribution
 
 ### 13.1 Channels - and why each artefact is what it is

@@ -533,26 +533,30 @@ public partial class MainWindow
             // terminal's HWND is created once, in the mode chosen at start.
             var composition = TerminalFactory.Composition;
             var opacityWanted = double.IsFinite(_settings.Window.TerminalOpacity) ? Math.Clamp(_settings.Window.TerminalOpacity, 0.0, 1.0) : 1.0;
+            var unfocusedWanted = double.IsFinite(_settings.Window.TerminalOpacityUnfocused) ? Math.Clamp(_settings.Window.TerminalOpacityUnfocused, 0.0, 1.0) : 1.0;
             if (composition.Enabled)
             {
-                if (opacityWanted != composition.Opacity)
+                var opacityChanged = opacityWanted != composition.Opacity || unfocusedWanted != TerminalFactory.UnfocusedOpacity;
+                if (opacityChanged)
                 {
+                    if (opacityWanted != composition.Opacity)
+                    {
+                        parts.Add($"terminal opacity {opacityWanted:F2}");
+                    }
+
+                    if (unfocusedWanted != TerminalFactory.UnfocusedOpacity)
+                    {
+                        parts.Add($"unfocused opacity {unfocusedWanted:F2}");
+                    }
+
                     TerminalFactory.Composition = composition with { Opacity = opacityWanted };
-                    foreach (var tab in Tabs)
+                    TerminalFactory.UnfocusedOpacity = unfocusedWanted;
+                    // Each window applies the value its own activation calls for (12.24).
+                    ApplyBodyOpacity();
+                    foreach (var tearOff in _tearOffs)
                     {
-                        tab.Surface.BackgroundOpacity = opacityWanted;
+                        tearOff.ApplyBodyOpacity();
                     }
-
-                    if (IsLoaded)
-                    {
-                        ApplyBackdrop();
-                        foreach (var tearOff in _tearOffs)
-                        {
-                            tearOff.ReapplyBackdrop();
-                        }
-                    }
-
-                    parts.Add($"terminal opacity {opacityWanted:F2}");
                 }
             }
             else if (opacityWanted < 1.0)

@@ -58,6 +58,7 @@ public partial class MainWindow
         WindowChromeInterop.ConfiguredBackdrop = _settings.Window.Backdrop;
         var backdropWanted = WindowChromeInterop.Resolve() != BackdropKind.None && WindowChromeInterop.TransparencyEffectsEnabled();
         Terminal.TerminalFactory.Composition = Terminal.TerminalComposition.From(_settings.Window.TerminalOpacity, backdropWanted);
+        Terminal.TerminalFactory.UnfocusedOpacity = double.IsFinite(_settings.Window.TerminalOpacityUnfocused) ? Math.Clamp(_settings.Window.TerminalOpacityUnfocused, 0.0, 1.0) : 1.0;
         if (_settings.Window.TerminalOpacity < 1.0)
         {
             _trace.Write(Terminal.TerminalFactory.Composition.Enabled

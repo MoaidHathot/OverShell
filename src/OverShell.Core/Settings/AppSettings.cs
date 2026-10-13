@@ -178,6 +178,15 @@ public sealed class WindowSettings
 
     /// <summary>The shipped default; the embedded settings.jsonc carries the same number.</summary>
     public const double DefaultTerminalOpacity = 0.85;
+
+    /// <summary>
+    /// The body's opacity while its window is not the active one. Windows paints acrylic for the
+    /// active window only; behind an inactive one it paints a flat grey, and a translucent body over
+    /// that was a grey terminal. 1 (the default) makes the inactive body the theme's own background,
+    /// opaque - what Windows Terminal's acrylic falls back to; the same value as
+    /// <see cref="TerminalOpacity"/> keeps the translucency over whatever Windows paints.
+    /// </summary>
+    public double TerminalOpacityUnfocused { get; init; } = 1.0;
 }
 
 /// <summary>The loopback endpoint integrations and the control API come through (12.18).</summary>

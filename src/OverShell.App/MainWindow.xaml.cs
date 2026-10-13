@@ -117,9 +117,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SizeChanged += (_, _) => ClearLinkHover();
         Deactivated += (_, _) => ClearLinkHover();
 
-        // "Viewed" means the active tab in a foreground window; Done clears only then.
-        Activated += (_, _) => UpdateViewed();
-        Deactivated += (_, _) => UpdateViewed();
+        // "Viewed" means the active tab in a foreground window; Done clears only then. The body's
+        // opacity follows the activation too (12.24): translucent in the active window, the theme's
+        // own background in an inactive one.
+        Activated += (_, _) => { UpdateViewed(); ApplyBodyOpacity(); };
+        Deactivated += (_, _) => { UpdateViewed(); ApplyBodyOpacity(); };
 
         Loaded += (_, _) =>
         {
@@ -217,6 +219,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Tabs.Add(tab);
         _tabsById[tab.Id] = tab;
         TerminalHost.Children.Add(tab.View);
+        // The surface was created at the configured opacity; the window it lands in may be inactive.
+        tab.Surface.BackgroundOpacity = TerminalFactory.BodyOpacityFor(IsActive);
 
         if (activate)
         {
@@ -1150,8 +1154,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             TerminalHost.Background = Brushes.Transparent;
             TerminalBodyTint.BorderThickness = TerminalTab.ViewMargin;
-            TerminalBodyTint.Opacity = TerminalFactory.Composition.Opacity;
             TerminalBodyTint.Visibility = Visibility.Visible;
+            ApplyBodyOpacity();
         }
         else
         {
@@ -1176,6 +1180,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         TextOptions.SetTextRenderingMode(
             this,
             active ? TextRenderingMode.Grayscale : TextRenderingMode.ClearType);
+    }
+
+    /// <summary>
+    /// Puts every terminal this window hosts, and the margin ring, at the opacity the window's
+    /// activation calls for (§12.24): the configured one while the window is active, the unfocused
+    /// one otherwise. Windows paints acrylic for the active window only; behind an inactive window
+    /// it paints a flat grey, and a translucent body over that read as a grey terminal. Called on
+    /// Activated/Deactivated, when a tab arrives (opened or re-attached), and when the settings
+    /// change. Tear-offs do the same for their own window.
+    /// </summary>
+    internal void ApplyBodyOpacity()
+    {
+        if (!TerminalFactory.Composition.Enabled)
+        {
+            return;
+        }
+
+        var opacity = TerminalFactory.BodyOpacityFor(IsActive);
+        TerminalBodyTint.Opacity = opacity;
+        foreach (var tab in Tabs)
+        {
+            if (!tab.Detached)
+            {
+                tab.Surface.BackgroundOpacity = opacity;
+            }
+        }
     }
 
     /// <summary>

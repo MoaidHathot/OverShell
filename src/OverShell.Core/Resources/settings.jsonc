@@ -97,12 +97,16 @@
   // chrome - acrylic | mica | micaalt | none (OVERSHELL_BACKDROP in the environment overrides it for
   // a run). "terminalOpacity": the backdrop shows through the terminal's default background like
   // Windows Terminal's own "opacity" (text and coloured cells stay opaque); 1 is an opaque body.
-  // Windows paints acrylic for the active window only, so an inactive window shows an opaque
-  // fallback behind the text. Crossing 1 in either direction takes a restart (a terminal's window
-  // is created once, in one rendering mode); the value itself follows live.
+  // Crossing 1 in either direction takes a restart (a terminal's window is created once, in one
+  // rendering mode); the value itself follows live. "terminalOpacityUnfocused": the body while the
+  // window is not the active one - Windows paints acrylic for the active window only and a flat
+  // grey behind the others, so 1 (opaque, the theme's own background, what Windows Terminal's
+  // acrylic falls back to) keeps an inactive window looking like itself; the same number as
+  // terminalOpacity keeps the translucency over the grey.
   "window": {
     "backdrop": "acrylic",
-    "terminalOpacity": 0.85
+    "terminalOpacity": 0.85,
+    "terminalOpacityUnfocused": 1.0
   },
 
   // The loopback endpoint. "control": false keeps it to the integrations' reports and polls:

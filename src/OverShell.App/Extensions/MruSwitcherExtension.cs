@@ -21,6 +21,7 @@ public sealed class MruSwitcherExtension : IExtension
 {
     private IShell _shell = null!;
     private readonly List<ITab> _mru = [];
+    private readonly HashSet<ITab> _closing = [];
     private SwitcherOverlay? _overlay;
     private int _selected = -1;
     private bool _open;
@@ -64,15 +65,26 @@ public sealed class MruSwitcherExtension : IExtension
             ]);
         }
 
+        shell.TabOpened += Add;
         shell.ActiveTabChanged += tab => { if (tab is not null && !_open) Touch(tab); };
-        shell.TabClosed += tab => { _mru.Remove(tab); if (_open) Refresh(); };
+        shell.TabClosed += tab =>
+        {
+            // Raised while the tab is still in the shell's list (the host closes it afterwards):
+            // remembered as gone, so the walk order does not offer a tab that is closing.
+            _mru.Remove(tab);
+            _closing.Add(tab);
+            if (_open)
+            {
+                Refresh();
+            }
+        };
         shell.Keys.ControlReleased += Commit;
         shell.Keys.Intercept(() => _open, OnChordWhileOpen);
         shell.SettingsChanged += () => _settings = shell.ExtensionSettings<MruSettings>(Id);
     }
 
     /// <summary>Most recent first.</summary>
-    internal IReadOnlyList<ITab> Order => _mru;
+    internal IReadOnlyList<ITab> Order => Ordered();
 
     internal bool IsOpen => _open;
 
@@ -86,9 +98,44 @@ public sealed class MruSwitcherExtension : IExtension
         _mru.Insert(0, tab);
     }
 
+    /// <summary>
+    /// A tab that opened without becoming active - a restored session's tabs, a workspace's, one
+    /// spawned in the background - is the least recently used one: it goes to the end of the
+    /// list, so the switcher offers it after the tabs that were visited. Without this the
+    /// switcher only ever knew the tabs it had seen activated, and a tab never visited since the
+    /// start was not in the list at all - Ctrl+Tab "skipped" it.
+    /// </summary>
+    private void Add(ITab tab)
+    {
+        if (!_mru.Contains(tab))
+        {
+            _mru.Add(tab);
+        }
+    }
+
+    /// <summary>
+    /// The list the switcher walks: the MRU order over the open tabs, then any open tab the list
+    /// does not have (in strip order) - so a tab is reachable even if its opening was missed.
+    /// </summary>
+    private List<ITab> Ordered()
+    {
+        var open = _shell.Tabs;
+        _closing.RemoveWhere(t => !open.Contains(t));
+        var ordered = _mru.Where(t => open.Contains(t) && !_closing.Contains(t)).ToList();
+        foreach (var tab in open)
+        {
+            if (!ordered.Contains(tab) && !_closing.Contains(tab))
+            {
+                ordered.Add(tab);
+            }
+        }
+
+        return ordered;
+    }
+
     private void Step(int direction)
     {
-        var tabs = _mru.Where(t => _shell.Tabs.Contains(t)).ToList();
+        var tabs = Ordered();
         if (tabs.Count < 2)
         {
             return;
@@ -137,7 +184,7 @@ public sealed class MruSwitcherExtension : IExtension
             return;
         }
 
-        var tabs = _mru.Where(t => _shell.Tabs.Contains(t)).ToList();
+        var tabs = Ordered();
         var target = _selected >= 0 && _selected < tabs.Count ? tabs[_selected] : null;
         CloseOverlay();
         if (target is not null)
@@ -164,8 +211,7 @@ public sealed class MruSwitcherExtension : IExtension
         }
 
         _overlay ??= new SwitcherOverlay(owner, area);
-        var tabs = _mru.Where(t => _shell.Tabs.Contains(t)).ToList();
-        _overlay.ShowTabs(tabs, _selected);
+        _overlay.ShowTabs(Ordered(), _selected);
     }
 
     public void Dispose()

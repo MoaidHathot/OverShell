@@ -32,6 +32,18 @@ internal static class TerminalFactory
     /// <summary>Set by the main window from the settings before the first tab; every surface created afterwards follows it.</summary>
     public static TerminalComposition Composition { get; set; } = TerminalComposition.Opaque;
 
+    /// <summary>
+    /// The body's opacity while its window is not the active one (<c>window.terminalOpacityUnfocused</c>,
+    /// §12.24). Windows paints acrylic for the active window only and a flat grey behind the others,
+    /// so the default, 1, makes an inactive body the theme's own background - opaque, what Windows
+    /// Terminal's acrylic falls back to - instead of that grey seen through the translucency.
+    /// </summary>
+    public static double UnfocusedOpacity { get; set; } = 1.0;
+
+    /// <summary>What a surface in a window should be at: the configured opacity when the window is active, the unfocused one otherwise; 1 when not composed.</summary>
+    public static double BodyOpacityFor(bool windowActive) =>
+        !Composition.Enabled ? 1.0 : windowActive ? Composition.Opacity : Math.Clamp(UnfocusedOpacity, 0.0, 1.0);
+
     public static (ITerminalSession Session, ITerminalSurface Surface) Create(SessionDescriptor descriptor) =>
         (new ConPtySession(descriptor), new WindowsTerminalSurface(Composition));
 }

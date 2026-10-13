@@ -170,7 +170,7 @@ init` gives you the full default file, commented, as a starting point.
 
   "protocol": { "register": true },  // overshell:// for this user (HKCU), so toast clicks find their tab
   "endpoint": { "control": true },   // the control API + endpoint.json for OverShell mcp (§7); false keeps the endpoint to reports
-  "window": { "backdrop": "acrylic", "terminalOpacity": 0.85 }, // acrylic | mica | micaalt | none; the terminal body's opacity, 1 for opaque (see 13)
+  "window": { "backdrop": "acrylic", "terminalOpacity": 0.85, "terminalOpacityUnfocused": 1.0 }, // acrylic | mica | micaalt | none; the body's opacity, and its opacity while the window is not the active one (see 13)
 
   "notifications": { "sinks": { /* see §9 */ } },
 
@@ -279,7 +279,10 @@ can be (your own sequences included); keys marked ↻ *repeat* - the mode stays 
 
 **MRU switching.** `Ctrl+Tab` is Windows Terminal's most-recently-used switcher: hold
 Ctrl, tap Tab to walk the tabs in the order you last used them (an overlay shows the list
-with the selected tab's screen), release Ctrl to land; Shift+Tab walks back, Esc cancels.
+with the selected tab's screen), release Ctrl to land; Shift+Tab walks back, Esc cancels. Every
+open tab is in the list: the ones you have visited first, most recent on top, then the ones you
+have not (a restored session's, a workspace's, one spawned in the background) in the order
+they opened - so `Ctrl+Shift+Tab` from the top goes to the tab you have been away from longest.
 A quick `Ctrl+Tab` bounces to the previous tab. `Ctrl+PgUp`/`PgDn` still cycle in strip
 order; `"extensions": { "tabs.mru": { "switcherMode": "inOrder" } }` makes Ctrl+Tab cycle
 too.
@@ -791,9 +794,14 @@ Terminal body opacity** lists them with the current one marked, and the change a
 
 Two things to know. The opacity follows the settings live, but the *mode* - translucent or not -
 is chosen when OverShell starts, because a terminal's window is created once: changing
-`terminalOpacity` across 1 in either direction asks for a restart in the status bar. And DWM paints acrylic only for
-the active window; an inactive OverShell shows an opaque fallback behind the body, exactly as
-Windows Terminal does. With "Transparency effects" off in Windows Settings the body stays opaque.
+`terminalOpacity` across 1 in either direction asks for a restart in the status bar. And Windows paints
+acrylic for the *active* window only - behind an inactive one it paints a flat grey - so while
+OverShell is not the window you are in, its body goes to `terminalOpacityUnfocused`: `1.0` by
+default, the theme's own background, opaque (what Windows Terminal's acrylic falls back to), which
+makes the inactive window look like itself rather than grey. `"terminalOpacityUnfocused": 0.85`
+keeps the translucency over whatever Windows paints. Each window follows its own activation: an
+active tear-off is translucent while the main window behind it is not. With "Transparency
+effects" off in Windows Settings the body stays opaque.
 
 This works because the terminal control OverShell ships is built by its own fork of Windows
 Terminal (`OverShell.Terminal.Wpf`, from [MoaidHathot/terminal](https://github.com/MoaidHathot/terminal))
