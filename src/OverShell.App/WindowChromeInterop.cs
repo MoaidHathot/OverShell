@@ -68,6 +68,41 @@ internal static class WindowChromeInterop
     private const int GwlStyle = -16;
     private const long WsClipChildren = 0x02000000;
 
+    [DllImport("user32.dll", EntryPoint = "DefWindowProcW")]
+    private static extern IntPtr DefWindowProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    private const int WmNcActivate = 0x0086;
+
+    /// <summary>
+    /// Keeps the frame "active" for DWM while the window is not (12.25). DWM paints its material
+    /// for the active window only and a flat fallback behind the others, and it takes the window's
+    /// state from WM_NCACTIVATE as DefWindowProc processes it. Answering with wParam TRUE whatever
+    /// was asked - lParam -1 as WPF's WindowChrome does, so nothing is painted over the caption -
+    /// keeps the frame active, and the acrylic stays behind an inactive window the way Windows
+    /// Terminal's does; measured over lime: a plain window reads the blur while active and DWM's
+    /// grey the moment another window is active, and with this answer the blur in both. Needs
+    /// WindowStyle None: with the caption style kept, DWM shows the fallback regardless. Hooks
+    /// added later run first, so this one, added after the chrome's, is the one that answers.
+    /// </summary>
+    public static void HookNcActivate(Window window)
+    {
+        if (PresentationSource.FromVisual(window) is not HwndSource source)
+        {
+            return;
+        }
+
+        source.AddHook((IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+        {
+            if (msg != WmNcActivate)
+            {
+                return IntPtr.Zero;
+            }
+
+            handled = true;
+            return DefWindowProc(hwnd, msg, (IntPtr)1, (IntPtr)(-1));
+        });
+    }
+
     /// <summary>
     /// Whether the window clips its child windows out of its own painting. WPF sets it, and for an
     /// opaque HWND terminal it is right. A composed terminal body (12.20) needs it off: its child

@@ -797,16 +797,16 @@ Terminal body opacity** lists them with the current one marked, and the change a
 
 Two things to know. The opacity follows the settings live, but the *mode* - translucent or not -
 is chosen when OverShell starts, because a terminal's window is created once: changing
-`terminalOpacity` across 1 in either direction asks for a restart in the status bar. And the body
-keeps its opacity when OverShell is not the window you are in, like Windows Terminal's does; what
-changes is behind it: Windows paints its acrylic for the *active* window only and a flat grey
-behind the others (every Windows 11 window with a material goes flat when inactive), so an
-inactive body reads as a dimmer version of itself. `"terminalOpacityUnfocused": 1.0` (palette:
-*Terminal body opacity when the window is not active*) makes an inactive body the theme's own
-background, opaque, instead; any number below 1 is its own translucency for the inactive window;
-`null`, the default, means the same as `terminalOpacity`. Each window follows its own activation:
-with the override, an active tear-off is translucent while the main window behind it is opaque.
-With "Transparency effects" off in Windows Settings the body stays opaque.
+`terminalOpacity` across 1 in either direction asks for a restart in the status bar. And an
+inactive OverShell window looks exactly like an active one, acrylic and all, as Windows Terminal's
+does (Windows normally paints a flat grey instead of the material behind an inactive window;
+OverShell keeps its frame "active" for the compositor, so the blur stays). If you would rather
+see which window is inactive, `"terminalOpacityUnfocused": 1.0` (palette: *Terminal body opacity
+when the window is not active*) makes an inactive body the theme's own background, opaque; a
+number below 1 is its own translucency for the inactive window; `null`, the default, means the
+same as `terminalOpacity`. Each window follows its own activation: with the override, an active
+tear-off is translucent while the main window behind it is opaque. With "Transparency effects"
+off in Windows Settings the body stays opaque.
 
 This works because the terminal control OverShell ships is built by its own fork of Windows
 Terminal (`OverShell.Terminal.Wpf`, from [MoaidHathot/terminal](https://github.com/MoaidHathot/terminal))

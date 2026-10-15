@@ -101,7 +101,7 @@ public sealed class TearOffWindow : Window
         Activated += (_, _) => { Tab.Surface.Focus(); ApplyBodyOpacity(); };
         Deactivated += (_, _) => ApplyBodyOpacity();
         StateChanged += (_, _) => SyncMaximizeState();
-        SourceInitialized += (_, _) => ApplyBackdrop();
+        SourceInitialized += (_, _) => { ApplyBackdrop(); WindowChromeInterop.HookNcActivate(this); };
         DpiChanged += (_, _) => ApplyBackdrop();
     }
 

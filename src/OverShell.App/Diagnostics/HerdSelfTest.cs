@@ -2624,8 +2624,8 @@ internal static class HerdSelfTest
     }
     /// <summary>
     /// The window that is not the active one (12.24, 12.25): by default the body keeps its opacity
-    /// when the window is deactivated, as Windows Terminal's does (Windows paints its flat fallback
-    /// instead of the acrylic behind an inactive window; that part is Windows'). terminalOpacityUnfocused
+    /// when the window is deactivated and the acrylic stays live (the frame is kept active for DWM),
+    /// as Windows Terminal's does. terminalOpacityUnfocused
     /// 1.0, set live through the catalog, makes an inactive body the theme's own background, opaque,
     /// and back to translucent when the window is active again; measured on screen with a lime window behind.
     /// The property side (the surfaces' opacity following the window's activation) is checked on
@@ -2763,12 +2763,12 @@ internal static class HerdSelfTest
         var inactiveBody = ScreenPixel(body.Item1, body.Item2);
         SaveScreen(window, "overshell-selftest-unfocused.png");
 
-        // The default (12.25): nothing changes on deactivation. The body stays at terminalOpacity, as
-        // Windows Terminal's does; what shows through is whatever Windows paints behind an inactive
-        // window (its flat fallback instead of the acrylic), which is Windows' decision.
+        // The default (12.25): nothing changes on deactivation. The body stays at terminalOpacity and
+        // the acrylic stays live - the window answers WM_NCACTIVATE as active, so DWM keeps painting
+        // the material instead of its flat fallback - as Windows Terminal's does.
         Check(unfocused is null && TerminalFactory.UnfocusedOpacity is null, "the default leaves terminalOpacityUnfocused unset: the inactive body is to be the same as the active one");
         Check(Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - configured) < 0.001, $"inactive: the surface and the margin ring stay at terminalOpacity {configured:F2} - no alpha swap on deactivation");
-        CheckOnScreen(inFront && foreignInFront, Distance(inactiveBody, theme) > 4, $"inactive: the body is still translucent, not the opaque theme background (#{inactiveBody.R:X2}{inactiveBody.G:X2}{inactiveBody.B:X2} over Windows' inactive fallback)");
+        CheckOnScreen(inFront && foreignInFront, inactiveBody.G - Math.Max(inactiveBody.R, inactiveBody.B) >= 12, $"inactive: the body is still translucent and the acrylic still live - the lime shows through as when active (#{inactiveBody.R:X2}{inactiveBody.G:X2}{inactiveBody.B:X2}), the frame kept active for DWM");
 
         // A tab opened while the window is inactive gets the same opacity.
         var late = window.AddTab(first.Profile, activate: false);
@@ -4474,6 +4474,7 @@ internal static class HerdSelfTest
             var icon = window.CaptionIconState;
             Log($"  caption icon: source={icon.PixelWidth}px shown={icon.ShownDip:F2} dip at scale {icon.Scale:F2}");
             Check(icon.PixelWidth > 0 && Math.Abs(icon.ShownDip * icon.Scale - icon.PixelWidth) < 0.01, "the caption shows the application icon's frame for this DPI at exactly its pixel size (crisp, not a scaled glyph)");
+            Check(window.WindowStyle == System.Windows.WindowStyle.None, "the main window has no caption style: with it DWM paints the backdrop's fallback whenever it re-evaluates the window (12.25)");
             var ring = window.TerminalBodyTintThickness;
             Check(ring is null || (Math.Abs(ring.Value.Right - (TerminalTab.ViewMargin.Right + (scroll?.ActualWidth ?? 0))) < 0.5), $"the body-tint ring runs under the scrollbar column too (right {ring?.Right:F1} dip), so the column reads as body, not as bare backdrop");
         }

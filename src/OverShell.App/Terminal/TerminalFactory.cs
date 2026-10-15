@@ -34,10 +34,10 @@ internal static class TerminalFactory
 
     /// <summary>
     /// The body's opacity while its window is not the active one (<c>window.terminalOpacityUnfocused</c>,
-    /// §12.24, §12.25), or null for the same as the active one - the default: the body stays as
-    /// translucent as it is when active, as Windows Terminal's does. Windows paints its acrylic for
-    /// the active window only and a flat grey behind the others, so an inactive body is the theme's
-    /// background over that grey; 1 makes it the theme's own background, opaque, instead.
+    /// §12.24, §12.25), or null for the same as the active one - the default: an inactive window
+    /// looks exactly like an active one, as Windows Terminal's does (the window keeps its frame
+    /// active for DWM, so the acrylic stays - WindowChromeInterop.HookNcActivate); 1 makes the
+    /// inactive body the theme's own background, opaque, instead.
     /// </summary>
     public static double? UnfocusedOpacity { get; set; }
 

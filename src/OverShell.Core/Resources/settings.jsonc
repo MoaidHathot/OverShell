@@ -99,11 +99,10 @@
   // Windows Terminal's own "opacity" (text and coloured cells stay opaque); 1 is an opaque body.
   // Crossing 1 in either direction takes a restart (a terminal's window is created once, in one
   // rendering mode); the value itself follows live. "terminalOpacityUnfocused": the body while the
-  // window is not the active one; null (the default) means the same as terminalOpacity - the body
-  // stays as translucent as when active, like Windows Terminal's. Windows paints its acrylic for
-  // the active window only and a flat grey behind the others, so an inactive body is the theme's
-  // background over that grey, a dimmer version of itself; 1 makes it the theme's own background,
-  // opaque, instead.
+  // window is not the active one; null (the default) means the same as terminalOpacity - an inactive
+  // window looks exactly like an active one, acrylic and all, like Windows Terminal's. 1 makes the
+  // inactive body the theme's own background, opaque, so the inactive window shows as such; a number
+  // below 1 is its own translucency.
   "window": {
     "backdrop": "acrylic",
     "terminalOpacity": 0.85,

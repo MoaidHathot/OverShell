@@ -103,6 +103,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SourceInitialized += (_, _) =>
         {
             ApplyBackdrop();
+            WindowChromeInterop.HookNcActivate(this);
             HookSettingChange();
             _shell?.RaiseReady();
         };

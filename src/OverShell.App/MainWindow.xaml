@@ -9,6 +9,7 @@
         MinHeight="320"
         MinWidth="520"
         WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
         Background="Transparent"
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
@@ -19,7 +20,10 @@
         <!-- GlassFrameThickness must stay 0: any other value hands the non-client frame
              to DWM, which then draws its own caption buttons over ours and turns the
              whole client area into glass. The backdrop is extended manually instead,
-             over the chrome bands only - see WindowChromeInterop. -->
+             over the chrome bands only - see WindowChromeInterop.
+             WindowStyle None (above) is load-bearing too: with the caption style kept, DWM
+             paints the backdrop's flat fallback whenever it re-evaluates the window, active
+             or not (12.25, measured over lime); without it the material follows the window. -->
         <WindowChrome CaptionHeight="0"
                       CornerRadius="0"
                       GlassFrameThickness="0"

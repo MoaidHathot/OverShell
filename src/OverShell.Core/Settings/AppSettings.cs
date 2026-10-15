@@ -181,11 +181,10 @@ public sealed class WindowSettings
 
     /// <summary>
     /// The body's opacity while its window is not the active one, or null (the default) for the
-    /// same as <see cref="TerminalOpacity"/>: the body stays as translucent as it is when active,
-    /// the way Windows Terminal's does (12.25). Windows paints its acrylic for the active window
-    /// only and a flat grey behind the others, so an inactive body is the theme's background over
-    /// that grey - a dimmer version of itself, like any Windows 11 window with a material. 1 makes
-    /// the inactive body the theme's own background, opaque, for whoever prefers that.
+    /// same as <see cref="TerminalOpacity"/>: an inactive window looks exactly like an active one,
+    /// the way Windows Terminal's does (12.25; the window keeps its frame "active" for DWM, so the
+    /// acrylic stays). 1 makes the inactive body the theme's own background, opaque, for whoever
+    /// wants the inactive window to show as such; anything between is its own translucency.
     /// </summary>
     public double? TerminalOpacityUnfocused { get; init; }
 }

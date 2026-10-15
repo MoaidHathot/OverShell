@@ -127,7 +127,7 @@ public static class SettingsCatalog
                 new("0.5", "0.5"),
             ]) { Min = 0.0, Max = 1.0 },
         new("window.terminalOpacityUnfocused", "Terminal body opacity when the window is not active",
-            "The body while another window is active. Same as the body opacity keeps it translucent, like Windows Terminal (Windows paints a flat grey instead of the acrylic behind an inactive window, so it reads dimmer); 1 makes it the theme's own background, opaque.",
+            "The body while another window is active. Same as the body opacity: an inactive window looks exactly like an active one, acrylic and all, like Windows Terminal; 1 makes it the theme's own background, opaque, so the inactive window shows as such.",
             SettingKind.Number,
             [
                 new("null", "same as the body opacity", "stays translucent (default)"),
