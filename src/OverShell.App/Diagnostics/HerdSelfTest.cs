@@ -2581,7 +2581,7 @@ internal static class HerdSelfTest
         var text = System.IO.File.ReadAllText(settingsFile);
         Log($"  file: {text.Length} chars, starts '{text.Split('\n')[0]}'; opacity now {TerminalFactory.Composition.Opacity:F2}; status '{status.Text}'");
         Check(text.StartsWith("// Written by OverShell from the built-in defaults", StringComparison.Ordinal) && text.Contains("// OverShell default settings.", StringComparison.Ordinal), "settings.jsonc was written from the commented defaults first");
-        Check(text.Contains("\"terminalOpacity\": 0.5,\n    \"terminalOpacityUnfocused\": 1.0\n", StringComparison.Ordinal) && !text.Contains("\"terminalOpacity\": 0.85", StringComparison.Ordinal), "...and the value was replaced in place, its comma and the sibling line kept");
+        Check(text.Contains("\"terminalOpacity\": 0.5,\n    \"terminalOpacityUnfocused\": null\n", StringComparison.Ordinal) && !text.Contains("\"terminalOpacity\": 0.85", StringComparison.Ordinal), "...and the value was replaced in place, its comma and the sibling line kept");
         Check(Math.Abs(TerminalFactory.Composition.Opacity - 0.5) < 0.001 && Math.Abs(first.Surface.BackgroundOpacity - 0.5) < 0.001, "the watcher applied it live: the composition and the surface are at 0.5");
         Check(status.Text.Contains("Terminal body opacity = 0.5", StringComparison.Ordinal), "the reload's status line names the change");
 
@@ -2623,11 +2623,11 @@ internal static class HerdSelfTest
         Log($"=== selftest (settings) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
     /// <summary>
-    /// The window that is not the active one (12.24): Windows paints acrylic for the active
-    /// window only, so an inactive window used to show the body's translucency over DWM's flat
-    /// fallback - a grey terminal. Measured here on screen: body, caption band and status band,
-    /// active and inactive, with a lime window behind; the body of an inactive window must be the
-    /// theme's own background, opaque, and back to translucent when the window is active again.
+    /// The window that is not the active one (12.24, 12.25): by default the body keeps its opacity
+    /// when the window is deactivated, as Windows Terminal's does (Windows paints its flat fallback
+    /// instead of the acrylic behind an inactive window; that part is Windows'). terminalOpacityUnfocused
+    /// 1.0, set live through the catalog, makes an inactive body the theme's own background, opaque,
+    /// and back to translucent when the window is active again; measured on screen with a lime window behind.
     /// The property side (the surfaces' opacity following the window's activation) is checked on
     /// any desktop; the pixels on the input desktop only.
     /// </summary>
@@ -2656,7 +2656,7 @@ internal static class HerdSelfTest
         var composition = TerminalFactory.Composition;
         var configured = window.CurrentSettings.Window.TerminalOpacity;
         var unfocused = window.CurrentSettings.Window.TerminalOpacityUnfocused;
-        Log($"  composition enabled={composition.Enabled} opacity={composition.Opacity:F2}; settings terminalOpacity={configured:F2} terminalOpacityUnfocused={unfocused:F2}");
+        Log($"  composition enabled={composition.Enabled} opacity={composition.Opacity:F2}; settings terminalOpacity={configured:F2} terminalOpacityUnfocused={(unfocused is { } u0 ? u0.ToString("F2") : "null (same as the body)")}");
         Check(composition.Enabled && Math.Abs(composition.Opacity - configured) < 0.001 && configured < 1.0, "the default settings give a composed, translucent body");
         if (!composition.Enabled)
         {
@@ -2762,16 +2762,33 @@ internal static class HerdSelfTest
         Check(!window.IsActive && distractor.IsActive, "the main window is inactive while another window is the active one");        Read("inactive");
         var inactiveBody = ScreenPixel(body.Item1, body.Item2);
         SaveScreen(window, "overshell-selftest-unfocused.png");
-        Check(Math.Abs(first.Surface.BackgroundOpacity - unfocused) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - unfocused) < 0.001, $"inactive: the surface and the margin ring follow terminalOpacityUnfocused {unfocused:F2}");
-        if (unfocused >= 1.0)
-        {
-            CheckOnScreen(inFront && foreignInFront, Distance(inactiveBody, theme) <= 6, $"inactive: the body is the theme's background, opaque (#{inactiveBody.R:X2}{inactiveBody.G:X2}{inactiveBody.B:X2})");
-        }
 
-        // A tab opened while the window is inactive gets the inactive opacity too, not the configured one.
+        // The default (12.25): nothing changes on deactivation. The body stays at terminalOpacity, as
+        // Windows Terminal's does; what shows through is whatever Windows paints behind an inactive
+        // window (its flat fallback instead of the acrylic), which is Windows' decision.
+        Check(unfocused is null && TerminalFactory.UnfocusedOpacity is null, "the default leaves terminalOpacityUnfocused unset: the inactive body is to be the same as the active one");
+        Check(Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - configured) < 0.001, $"inactive: the surface and the margin ring stay at terminalOpacity {configured:F2} - no alpha swap on deactivation");
+        CheckOnScreen(inFront && foreignInFront, Distance(inactiveBody, theme) > 4, $"inactive: the body is still translucent, not the opaque theme background (#{inactiveBody.R:X2}{inactiveBody.G:X2}{inactiveBody.B:X2} over Windows' inactive fallback)");
+
+        // A tab opened while the window is inactive gets the same opacity.
         var late = window.AddTab(first.Profile, activate: false);
         await Task.Delay(400);
-        Check(Math.Abs(late.Surface.BackgroundOpacity - unfocused) < 0.001, "a tab opened while the window is inactive starts at the inactive opacity");
+        Check(Math.Abs(late.Surface.BackgroundOpacity - configured) < 0.001, "a tab opened while the window is inactive starts at the same opacity");
+
+        // The override (12.24's behaviour, opt-in since 12.25): 1 makes an inactive body the theme's own
+        // background, opaque. Set through the catalog, applied by the file watcher while inactive.
+        var knob = SettingsCatalog.Find("window.terminalOpacityUnfocused")!;
+        var settingsBefore = System.IO.File.Exists(AppPaths.SettingsFile) ? System.IO.File.ReadAllText(AppPaths.SettingsFile) : null;
+        window.ApplySetting(knob, "1.0");
+        await Task.Delay(1500);
+        // The reload's status line and focus restore bring the main window forward; the other window takes the activation again.
+        distractor.Activate();
+        await Task.Delay(800);
+        Log($"  override 1.0: UnfocusedOpacity={TerminalFactory.UnfocusedOpacity?.ToString("F2") ?? "null"}; window.IsActive={window.IsActive}; first={first.Surface.BackgroundOpacity:F2} late={late.Surface.BackgroundOpacity:F2} ring={window.TerminalBodyTintOpacity:F2}");
+        Check(TerminalFactory.UnfocusedOpacity == 1.0 && !window.IsActive && Math.Abs(first.Surface.BackgroundOpacity - 1.0) < 0.001 && Math.Abs(late.Surface.BackgroundOpacity - 1.0) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - 1.0) < 0.001, "terminalOpacityUnfocused 1.0, applied live while the window is inactive: every surface and the ring go opaque");
+        Read("inactive, override 1.0");
+        var inactiveOpaque = ScreenPixel(body.Item1, body.Item2);
+        CheckOnScreen(inFront && foreignInFront, Distance(inactiveOpaque, theme) <= 6, $"...and the body reads exactly the theme's background (#{inactiveOpaque.R:X2}{inactiveOpaque.G:X2}{inactiveOpaque.B:X2})");
 
         // Back in front: translucent again. Activate() works within the thread on any desktop;
         // the pixel read additionally wants the foreground, which only the input desktop grants.
@@ -2783,8 +2800,9 @@ internal static class HerdSelfTest
         Check(window.IsActive && Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs(late.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs((window.TerminalBodyTintOpacity ?? -1) - configured) < 0.001, $"active again: every surface and the ring are back at {configured:F2}");
         CheckOnScreen(again, activeAgain.G - Math.Max(activeAgain.R, activeAgain.B) >= 12, "active again: the body is translucent again");
 
-        // A tear-off follows its own window's activation: torn off while the main window is active,
-        // the tear-off is the active window and the main window is not.
+        // A tear-off follows its own window's activation (the override still on, so the two windows
+        // differ): torn off while the main window is active, the tear-off is the active window and
+        // the main window is not.
         var keeper = window.AddTab(first.Profile, activate: false);
         await WaitForPromptAsync(keeper);
         var tearOff = window.Detach(first);
@@ -2793,11 +2811,17 @@ internal static class HerdSelfTest
         tearOff?.Activate();
         await Task.Delay(800);
         Log($"  torn off: tearOff.IsActive={tearOff?.IsActive} main.IsActive={window.IsActive} first.opacity={first.Surface.BackgroundOpacity:F2} keeper.opacity={keeper.Surface.BackgroundOpacity:F2}");
-        Check(tearOff is { IsActive: true } && Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs(keeper.Surface.BackgroundOpacity - unfocused) < 0.001, "the active tear-off's tab is translucent; the now-inactive main window's tabs are at the inactive opacity");
+        Check(tearOff is { IsActive: true } && Math.Abs(first.Surface.BackgroundOpacity - configured) < 0.001 && Math.Abs(keeper.Surface.BackgroundOpacity - 1.0) < 0.001, "the active tear-off's tab is translucent; the now-inactive main window's tabs are at the inactive opacity");
         window.Activate();
         await Task.Delay(600);
         Log($"  main active again: main.IsActive={window.IsActive} tearOff.IsActive={tearOff?.IsActive} first.opacity={first.Surface.BackgroundOpacity:F2} keeper.opacity={keeper.Surface.BackgroundOpacity:F2}");
-        Check(window.IsActive && Math.Abs(first.Surface.BackgroundOpacity - unfocused) < 0.001 && Math.Abs(keeper.Surface.BackgroundOpacity - configured) < 0.001, "...and the other way round once the main window is active again");
+        Check(window.IsActive && Math.Abs(first.Surface.BackgroundOpacity - 1.0) < 0.001 && Math.Abs(keeper.Surface.BackgroundOpacity - configured) < 0.001, "...and the other way round once the main window is active again");
+
+        // Back to the default, through the same path; the file is put back as it was.
+        window.ApplySetting(knob, "null");
+        await Task.Delay(1500);
+        Check(TerminalFactory.UnfocusedOpacity is null && Math.Abs(keeper.Surface.BackgroundOpacity - configured) < 0.001, "terminalOpacityUnfocused back to null: the inactive body follows the body opacity again");
+        if (settingsBefore is null) { System.IO.File.Delete(AppPaths.SettingsFile); } else { System.IO.File.WriteAllText(AppPaths.SettingsFile, settingsBefore); }
 
         window.Attach(first);
         await Task.Delay(600);

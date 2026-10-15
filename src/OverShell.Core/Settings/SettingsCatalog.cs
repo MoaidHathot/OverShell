@@ -46,6 +46,14 @@ public sealed record SettingKnob(string Path, string Title, string Description, 
     /// <summary>Extra choices computed when the picker opens (the skin files on disk).</summary>
     public Func<IEnumerable<SettingChoice>>? MoreChoices { get; init; }
 
+    /// <summary>What to show for a JSON null when null means something for this setting ("same as the body opacity"); "none" otherwise.</summary>
+    public string? NullDisplay { get; init; }
+
+    /// <summary>A value as the picker shows it for this knob: <see cref="NullDisplay"/> for null, else <see cref="Display(JsonNode?)"/>.</summary>
+    public string DisplayValue(JsonNode? value) => value is null && NullDisplay is not null ? NullDisplay : Display(value);
+
+    /// <summary>The same for a JSON literal.</summary>
+    public string DisplayValue(string json) => DisplayValue(string.Equals(json, "null", StringComparison.Ordinal) ? null : JsonNode.Parse(json));
     /// <summary>
     /// The JSON to write for text typed into the box, or null when it is not a value for this
     /// setting: a number within range for <see cref="SettingKind.Number"/>, what <see cref="Validate"/>
@@ -119,15 +127,15 @@ public static class SettingsCatalog
                 new("0.5", "0.5"),
             ]) { Min = 0.0, Max = 1.0 },
         new("window.terminalOpacityUnfocused", "Terminal body opacity when the window is not active",
-            "Windows paints acrylic for the active window only; 1 makes an inactive body the theme's own background, opaque. The same value as the opacity keeps the translucency over the grey Windows paints behind inactive windows.",
+            "The body while another window is active. Same as the body opacity keeps it translucent, like Windows Terminal (Windows paints a flat grey instead of the acrylic behind an inactive window, so it reads dimmer); 1 makes it the theme's own background, opaque.",
             SettingKind.Number,
             [
-                new("1.0", "1.0", "opaque, the theme's background (default)"),
+                new("null", "same as the body opacity", "stays translucent (default)"),
+                new("1.0", "1.0", "opaque, the theme's background"),
                 new("0.95", "0.95"),
                 new("0.9", "0.9"),
-                new("0.85", "0.85", "the same as the default active opacity"),
                 new("0.7", "0.7"),
-            ]) { Min = 0.0, Max = 1.0 },
+            ]) { Min = 0.0, Max = 1.0, NullDisplay = "same as the body opacity" },
         new("window.backdrop", "Window backdrop",
             "The Windows 11 material behind the window - and behind a translucent terminal body.",
             SettingKind.Choice,

@@ -109,7 +109,7 @@ public partial class MainWindow
             var order = 0;
             foreach (var knob in SettingsCatalog.Knobs)
             {
-                var current = SettingKnob.Display(snapshot.Current(knob.Segments));
+                var current = knob.DisplayValue(snapshot.Current(knob.Segments));
                 var score = FuzzyMatcher.Score(query.Text, knob.Title, knob.Path, knob.Description);
                 if (score is null)
                 {
@@ -145,7 +145,7 @@ public partial class MainWindow
         }
 
         var snapshot = SettingsFiles.Snapshot();
-        var current = SettingKnob.Display(snapshot.Current(knob.Segments));
+        var current = knob.DisplayValue(snapshot.Current(knob.Segments));
         var choices = knob.Choices.Concat(knob.MoreChoices?.Invoke() ?? []).ToList();
         var hint = knob.Kind switch
         {
@@ -158,7 +158,7 @@ public partial class MainWindow
             var items = new List<PaletteItem>();
             if (knob.JsonForTyped(query.Text) is { } typedJson)
             {
-                var typed = SettingKnob.Display(typedJson);
+                var typed = knob.DisplayValue(typedJson);
                 items.Add(new PaletteItem
                 {
                     Title = $"Use {typed}",
@@ -176,7 +176,7 @@ public partial class MainWindow
                     continue;
                 }
 
-                var isCurrent = string.Equals(SettingKnob.Display(choice.Json), current, StringComparison.OrdinalIgnoreCase);
+                var isCurrent = string.Equals(knob.DisplayValue(choice.Json), current, StringComparison.OrdinalIgnoreCase);
                 var captured = choice;
                 items.Add(new PaletteItem
                 {
@@ -201,7 +201,7 @@ public partial class MainWindow
     /// </summary>
     internal bool ApplySetting(SettingKnob knob, string json)
     {
-        var display = SettingKnob.Display(json);
+        var display = knob.DisplayValue(json);
         if (!SettingsFiles.Set(knob.Segments, json, "OverShell", out var error))
         {
             ShowStatusMessage($"{knob.Title}: not changed - {error}");

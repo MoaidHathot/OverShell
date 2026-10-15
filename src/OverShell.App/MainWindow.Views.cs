@@ -536,7 +536,7 @@ public partial class MainWindow
             // terminal's HWND is created once, in the mode chosen at start.
             var composition = TerminalFactory.Composition;
             var opacityWanted = double.IsFinite(_settings.Window.TerminalOpacity) ? Math.Clamp(_settings.Window.TerminalOpacity, 0.0, 1.0) : 1.0;
-            var unfocusedWanted = double.IsFinite(_settings.Window.TerminalOpacityUnfocused) ? Math.Clamp(_settings.Window.TerminalOpacityUnfocused, 0.0, 1.0) : 1.0;
+            var unfocusedWanted = TerminalFactory.UnfocusedFrom(_settings.Window.TerminalOpacityUnfocused);
             if (composition.Enabled)
             {
                 var opacityChanged = opacityWanted != composition.Opacity || unfocusedWanted != TerminalFactory.UnfocusedOpacity;
@@ -549,7 +549,7 @@ public partial class MainWindow
 
                     if (unfocusedWanted != TerminalFactory.UnfocusedOpacity)
                     {
-                        parts.Add($"unfocused opacity {unfocusedWanted:F2}");
+                        parts.Add(unfocusedWanted is { } u ? $"unfocused opacity {u:F2}" : "unfocused opacity: same as the body");
                     }
 
                     TerminalFactory.Composition = composition with { Opacity = opacityWanted };

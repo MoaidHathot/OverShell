@@ -180,13 +180,14 @@ public sealed class WindowSettings
     public const double DefaultTerminalOpacity = 0.85;
 
     /// <summary>
-    /// The body's opacity while its window is not the active one. Windows paints acrylic for the
-    /// active window only; behind an inactive one it paints a flat grey, and a translucent body over
-    /// that was a grey terminal. 1 (the default) makes the inactive body the theme's own background,
-    /// opaque - what Windows Terminal's acrylic falls back to; the same value as
-    /// <see cref="TerminalOpacity"/> keeps the translucency over whatever Windows paints.
+    /// The body's opacity while its window is not the active one, or null (the default) for the
+    /// same as <see cref="TerminalOpacity"/>: the body stays as translucent as it is when active,
+    /// the way Windows Terminal's does (12.25). Windows paints its acrylic for the active window
+    /// only and a flat grey behind the others, so an inactive body is the theme's background over
+    /// that grey - a dimmer version of itself, like any Windows 11 window with a material. 1 makes
+    /// the inactive body the theme's own background, opaque, for whoever prefers that.
     /// </summary>
-    public double TerminalOpacityUnfocused { get; init; } = 1.0;
+    public double? TerminalOpacityUnfocused { get; init; }
 }
 
 /// <summary>The loopback endpoint integrations and the control API come through (12.18).</summary>

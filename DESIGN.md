@@ -812,7 +812,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Settings from the palette, translucent by default, a way in** (§12.22) | `window.terminalOpacity` defaults to 0.85; `Change a setting…` (36 knobs with current values, value pickers, typed numbers/chords) and one `Setting: …` command per knob write one line into `settings.jsonc` through a comment-preserving JSONC edit and let the watcher apply it; `Open settings.jsonc` / `Open keybindings.jsonc` write the commented defaults first; `Help: Tutorial` / `User guide` / `Keyboard shortcuts` / `About`; `docs/TUTORIAL.md`; a one-time welcome note above the first prompt. |
 | **The red body, compact tabs, local control builds, CI diet** (§12.23) | Atlas premultiplied the packed red/blue pair with one division and leaked blue into red at every alpha but 0 and 255 (fork patch 4, `wpf-v1.26.260930.3`; 0.85 now `#0A250A`, was `#4D1717`); the transparency test checks all channels; caption glyph instead of the blue tile, tabs 46->40 DIP with every indicator kept; `Build.ps1` names the missing UWP C++ component and restores with the repo config only, the control builds locally in 7 min; fork CI skips docs-only pushes, already-built commits, and caches vcpkg. |
 | **Switcher completeness, the inactive body** (§12.24) | The MRU switcher lists every open tab (background-opened ones last) and drops a closing one at once - no tab is ever skipped; `window.terminalOpacityUnfocused` (default 1.0) makes an inactive window's body the theme's own background instead of the translucency over DWM's grey fallback, per window, live; `unfocused` self-test mode measures it on screen. |
-| **The bar beside the body, Ctrl+Tab's direction, the caption icon** (§12.25) | The control's scrollbar column was 17 dip of bare backdrop (WPF's MinWidth beat the style's Width); the style sets MinWidth and the body ring runs under the column. Ctrl+Tab / Ctrl+Shift+Tab go right / left along the order the strip shows, wrapping (`switcherMode: inOrder`, the new default; `mru` keeps the overlay); `DisplayOrder` makes Alt+N agree with a grouped strip. The caption shows the application icon's exact-pixel frame. | done |
+| **The bar beside the body, Ctrl+Tab's direction, the caption icon, the inactive body** (§12.25) | The control's scrollbar column was 17 dip of bare backdrop (WPF's MinWidth beat the style's Width); the style sets MinWidth and the body ring runs under the column. Ctrl+Tab / Ctrl+Shift+Tab go right / left along the order the strip shows, wrapping (`switcherMode: inOrder`, the new default; `mru` keeps the overlay); `DisplayOrder` makes Alt+N agree with a grouped strip. The caption shows the application icon's exact-pixel frame. Measured against Windows Terminal over lime: WT's in-app acrylic stays when unfocused, DWM's material does not; the inactive body now keeps `terminalOpacity` (`terminalOpacityUnfocused: null`) instead of going opaque, so nothing swaps on activation; `1.0` is the opt-in. | done |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -2695,7 +2695,7 @@ take the foreground on the private desktop, and on the input desktop the tiling 
 tiles a foreign ordinary window over the very pixels measured), active again `#0A250A`, the
 tear-off both ways; 11 checks on screen, 8 hidden (the pixel reads skipped).
 
-### 12.25 The second day: a blue bar, Ctrl+Tab's direction, the caption icon
+### 12.25 The second day: a blue bar, Ctrl+Tab's direction, the caption icon, the inactive body
 
 **The bar.** "A blue bar to the left of the terminal in the herd view, and a border left behind
 after leaving it." Measured (full-screen capture, both views): a 26 px (17.3 dip) vertical strip
@@ -2739,9 +2739,38 @@ file system, where the Link name does not apply (DirectoryNotFoundException for
 ...\Assets\OverShell.ico). The icon is read from the copy beside the exe, which exists wherever
 the toasts work. Check: the frame is 24 px and shown at 16 dip at scale 1.5.
 
-**Also.** Twenty doc comments had lost a line break in an earlier edit (...overlay on    ///
-the previous tab) and read as one line; split back.
+**The inactive body, measured against Windows Terminal.** "The unfocused body is black; Windows
+Terminal's is not." Both terminals were put over a lime window on the second monitor and read
+through activation changes (`%TEMP%\opencode\probe-wt.ps1`; the tiling window manager on the
+reference machine moves every new window to the focused workspace and later hands the focus back
+to its own idea of the focused window, so the probe sends both windows to the second monitor's
+workspace through `shubbak move` and reads the foreground before trusting a sample). Windows
+Terminal (opacity 77, acrylic): body `#264426` active, `#264426` inactive - the acrylic blur
+stays, because WT's acrylic is an in-app XAML brush with `enableUnfocusedAcrylic` on by default
+(`MTSMSettings.h`: `true`; the `false` in `ControlProperties.h` is the control's own default, which
+only a standalone host of the control sees). OverShell's material is DWM's own (`DWMWA_SYSTEMBACKDROP_TYPE`), and DWM paints it
+for the active window only: a plain WPF window with nothing but the attribute, no `WindowChrome`,
+reads `#00B700` over lime while active and `#545454` - DWM's flat fallback - the moment another
+window is active, back within a frame on activation. That part OverShell cannot change short of
+drawing its own blur in the control's composition tree (a fork feature for another day). What it
+owns is the body's alpha, and 12.24 had set it to 1 when inactive, which gave the opaque
+`#0C0C0C` the user calls black and an alpha swap on every activation change on top of DWM's own
+switch - the flicker of item 8. The default is now *the same as `terminalOpacity`*
+(`terminalOpacityUnfocused: null`): nothing swaps on deactivation, the inactive body is the theme's
+background over DWM's grey (`#171717` at 0.85 over `#545454`), a dimmer version of itself, as
+every Windows 11 window with a material behaves; `1.0` keeps 12.24's opaque body as an opt-in,
+and the palette entry says *same as the body opacity* for the null. Found while measuring, for
+the record: with the window manager running, the acrylic read as "stuck grey while active" -
+the manager had taken the foreground back about a second after the probe's activation
+(`GetForegroundWindow` no longer ours), so the window was not active; the same thing on the
+user's desk looks like a window that stays grey after a click. The `unfocused` mode now checks
+the default (no swap, the inactive surfaces at `terminalOpacity`), then sets `1.0` through the
+catalog while the window is inactive (every surface and the ring go opaque; on screen the body
+reads exactly the theme's background), the tear-off asymmetry with the override, and the way
+back to null; 11 checks hidden, 4 pixel reads on screen.
 
+**Also.** Twenty doc comments had lost a line break in an earlier edit (`...overlay on    ///
+the previous tab`) and read as one line; split back.
 ---
 
 ## 13. Distribution
