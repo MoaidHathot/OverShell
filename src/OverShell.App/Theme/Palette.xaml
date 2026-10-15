@@ -86,6 +86,9 @@
     <sys:Double x:Key="Metrics.TitleBarHeight">44</sys:Double>
     <sys:Double x:Key="Metrics.TabHeight">40</sys:Double>
     <sys:Double x:Key="Metrics.StatusBarHeight">26</sys:Double>
+    <!-- The scrollbar beside the terminal body (the control's own). WPF's ScrollBar carries a MinWidth of the
+         system metric (17 dip), which a Width setter alone does not beat; the style sets both. -->
+    <sys:Double x:Key="Metrics.TerminalScrollBarWidth">10</sys:Double>
     <CornerRadius x:Key="Metrics.TabCorner">6,6,0,0</CornerRadius>
 
 </ResourceDictionary>

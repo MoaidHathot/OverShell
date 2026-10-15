@@ -275,7 +275,7 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
         return IntPtr.Zero;
     }
 
-    private static T? FindDescendant<T>(DependencyObject root)
+    internal static T? FindDescendant<T>(DependencyObject root)
         where T : DependencyObject
     {
         var count = VisualTreeHelper.GetChildrenCount(root);

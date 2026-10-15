@@ -190,12 +190,12 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+W` | `tab.close` | Close tab |
 | `Ctrl+Shift+D` | `tab.duplicate` | Another tab like this one: same profile, directory and group, next to it |
 | `Ctrl+Shift+Z` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |
-| `Ctrl+Tab` / `Ctrl+Shift+Tab` | `tab.mruNext` / `tab.mruPrevious` | Most recently used first: hold Ctrl, tap Tab, release to land (below) |
-| `Ctrl+PgDn` / `Ctrl+PgUp` | `tab.next` / `tab.previous` | Cycle in strip order |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | `tab.next` / `tab.previous` | The tab to the right / to the left as the strip shows them, wrapping at the ends (`switcherMode` below picks the most-recently-used switcher instead) |
+| `Ctrl+PgDn` / `Ctrl+PgUp` | `tab.next` / `tab.previous` | The same walk |
 | `Ctrl+Shift+K` then a key | herd mode | One leader, then single keys for everything you do to the herd (below) |
 | `` Win+` `` | `window.summon` | From any application: OverShell to the front, on the tab that needs you; again puts it away |
 | `Ctrl+Shift+I` | `inbox.open` | The inbox: everything waiting for you, answered from one place (§9) |
-| `Alt+1` … `Alt+9` | `tab.switchTo.N` | Jump to the Nth visible tab |
+| `Alt+1` … `Alt+9` | `tab.switchTo.N` | Jump to the Nth tab as the strip shows them, groups included |
 | `Ctrl+Shift+J` | `tab.jumpToAttention` | The tab that needs you: blocked first, then finished-unseen; the one that has waited longest (`attention.order`) |
 | `Ctrl+Shift+R` | `tab.rename` | Label the tab (persisted per profile + directory) |
 | `Ctrl+Shift+G` | `tab.moveToGroup` | Put the tab under a named header; empty removes |
@@ -277,15 +277,18 @@ can be (your own sequences included); keys marked ↻ *repeat* - the mode stays 
 | `D` | the files an agent **changed while you were away** (§9) |
 | `?` | show the keys |
 
-**MRU switching.** `Ctrl+Tab` is Windows Terminal's most-recently-used switcher: hold
-Ctrl, tap Tab to walk the tabs in the order you last used them (an overlay shows the list
-with the selected tab's screen), release Ctrl to land; Shift+Tab walks back, Esc cancels. Every
-open tab is in the list: the ones you have visited first, most recent on top, then the ones you
-have not (a restored session's, a workspace's, one spawned in the background) in the order
-they opened - so `Ctrl+Shift+Tab` from the top goes to the tab you have been away from longest.
-A quick `Ctrl+Tab` bounces to the previous tab. `Ctrl+PgUp`/`PgDn` still cycle in strip
-order; `"extensions": { "tabs.mru": { "switcherMode": "inOrder" } }` makes Ctrl+Tab cycle
-too.
+**Ctrl+Tab.** The tab to the right; `Ctrl+Shift+Tab` the one to the left; past the last tab
+comes the first, like Windows Terminal. "Right" and "left" are what the strip shows, groups
+included: a grouped strip is walked as you read it, and `Alt+N` counts the same way.
+`"extensions": { "tabs.mru": { "switcherMode": "mru" } }` (from the palette: *Ctrl+Tab
+order*; takes effect at the next start) makes `Ctrl+Tab` the most-recently-used switcher
+instead: hold Ctrl, tap Tab to walk the tabs in the order you last used them (an overlay shows
+the list with the selected tab's screen), release Ctrl to land; Shift+Tab walks back, Esc
+cancels. Every open tab is in that list: the ones you have visited first, most recent on top,
+then the ones you have not (a restored session's, a workspace's, one spawned in the background)
+in the order they opened - so `Ctrl+Shift+Tab` from the top goes to the tab you have been away
+from longest, and a quick `Ctrl+Tab` bounces to the previous tab. The MRU commands
+(`tab.mruNext`, `tab.mruPrevious`) are in the palette in either mode, for bindings of your own.
 
 **Summon.** `` Win+` `` from anywhere brings OverShell to the front on the tab that has
 waited longest; pressed while it is in front, it goes away. `"extensions": { "summon":
@@ -338,7 +341,7 @@ An unread badge marks a state you have not seen; a thin bar shows OSC 9;4 progre
 - **Groups** (`Ctrl+Shift+G`): tabs under a named header in the strip and the list.
   Dragging a tab onto another group's tab joins that group; so does `Alt+Shift+←/→`.
 - **Reorder**: drag a tab along the strip — it changes place as the pointer crosses its
-  neighbours. `Alt+N` always means what you see.
+  neighbours. `Alt+N` and `Ctrl+Tab` always mean what you see, groups included.
 - **Duplicate** (`Ctrl+Shift+D`): another tab of the same profile in the same directory,
   in the same group, right next to this one.
 - **Tear-off** (`Ctrl+Shift+X`): the live terminal moves into a window of its own — with

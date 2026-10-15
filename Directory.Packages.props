@@ -25,7 +25,10 @@
     <!-- Tests only. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <!-- 4.0.1 is on nuget.org but not yet on the proxy feeds the reference machine restores through (NU1102);
+         a test runner's patch release is not worth a local build that cannot restore. Dependabot is told to
+         skip that one version (.github/dependabot.yml); lift both when the feed has it. -->
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
   </ItemGroup>
 
 </Project>

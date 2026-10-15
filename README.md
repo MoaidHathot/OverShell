@@ -202,8 +202,8 @@ Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.js
 screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
 `Ctrl+Shift+1..4` views · `Ctrl+Shift+Enter` prompt bar · `Ctrl+Shift+G` group · `Ctrl+Shift+E` explain ·
 `Ctrl+Shift+F` find · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Alt+1..9` tabs (Windows
-Terminal's chords; `Ctrl+T` stays with the shell) · `Ctrl+Tab` most-recent switcher (hold, tap,
-release) · `Ctrl+Shift+K` then a key: **herd mode** (`j`/`k` tabs, `b` the tab waiting longest,
+Terminal's chords; `Ctrl+T` stays with the shell) · `Ctrl+Tab` / `Ctrl+Shift+Tab` right / left along the
+strip, wrapping (or the most-recent switcher, opt-in) · `Ctrl+Shift+K` then a key: **herd mode** (`j`/`k` tabs, `b` the tab waiting longest,
 `1-9`, `l` last, `s`/`c` a cursor into the sidebar / cards, `i` the inbox, `m`/`w` mute / watch, `N`/`W` spawn an agent / on a worktree, `L` the herd log, `D` what changed while away, `?` the keys) · `` Win+` `` summon from
 anywhere · `@3 ...` / `#group ...` / `@blocked ...` in the prompt bar address it · `Alt+Shift+←/→` reorder ·
 `Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection).
@@ -245,7 +245,7 @@ find in the buffer), Terminal parity (the shell integration injected into a plai
 PowerShell launch, no profile edit; every tab's environment rebuilt from the registry, so
 a freshly installed tool is on PATH in the next tab), and an **extension API** (`IShell`,
 `ITab`, `IExtension`: the shell is the engine, features sit on top) with the keyboard
-features built on it (herd mode with a which-key bar, MRU `Ctrl+Tab`, global summon,
+features built on it (herd mode with a which-key bar, an MRU `Ctrl+Tab` switcher, global summon,
 prompt addressing, a cursor in the sidebar and dashboard, waiting tabs by age), and triage
 (an **inbox** of everything waiting for you with `y`/`n` and replies that reach the agent
 through its own API when the integration is installed, Allow / Deny on toasts, mute,

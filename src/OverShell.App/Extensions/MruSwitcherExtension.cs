@@ -10,12 +10,14 @@ using OverShell.Core.Input;
 namespace OverShell.App.Extensions;
 
 /// <summary>
-/// Most-recently-used tab switching (DESIGN.md §12.16), Windows Terminal's default
-/// (<c>tabSwitcherMode: mru</c>): hold Ctrl, tap Tab through the tabs in the order you
-/// last used them, release Ctrl to land - an Alt+Tab for tabs. A quick Ctrl+Tab bounces
-/// to the previous tab. The overlay is a non-activating owned window over the terminal
-/// listing the tabs with the selected one's last screen rows. <c>tabs.switcherMode:
-/// "inOrder"</c> keeps the old adjacent cycling and leaves this extension idle.
+/// What Ctrl+Tab does (DESIGN.md §12.16, §12.25). By default (<c>switcherMode: "inOrder"</c>)
+/// Ctrl+Tab goes to the tab on the right and Ctrl+Shift+Tab to the one on the left, wrapping
+/// at either end, along the order the strip shows - the way the user reads it. The
+/// alternative, <c>"mru"</c>, is Windows Terminal's most-recently-used switcher: hold Ctrl,
+/// tap Tab through the tabs in the order you last used them, release Ctrl to land - an
+/// Alt+Tab for tabs, with an overlay (a non-activating owned window over the terminal) listing
+/// the tabs with the selected one's last screen rows; a quick Ctrl+Tab bounces to the previous
+/// tab. The MRU commands exist in both modes for the palette and for bindings of your own.
 /// </summary>
 public sealed class MruSwitcherExtension : IExtension
 {
@@ -31,10 +33,14 @@ public sealed class MruSwitcherExtension : IExtension
 
     public sealed class MruSettings
     {
-        /// <summary><c>mru</c> (default): Ctrl+Tab walks the most recently used tabs; <c>inOrder</c>: adjacent cycling, this extension does nothing.</summary>
-        public string SwitcherMode { get; init; } = "mru";
+        /// <summary>
+        /// <c>inOrder</c> (default): Ctrl+Tab is the tab to the right, Ctrl+Shift+Tab the one to the left,
+        /// wrapping; <c>mru</c>: Ctrl+Tab walks the most recently used tabs with the overlay. Read at start;
+        /// the key bindings follow the mode in force then.
+        /// </summary>
+        public string SwitcherMode { get; init; } = "inOrder";
 
-        public bool Mru => !string.Equals(SwitcherMode, "inOrder", StringComparison.OrdinalIgnoreCase);
+        public bool Mru => string.Equals(SwitcherMode, "mru", StringComparison.OrdinalIgnoreCase);
     }
 
     public void Initialize(IShell shell)
@@ -55,15 +61,19 @@ public sealed class MruSwitcherExtension : IExtension
             "Hold Ctrl and tap Tab to walk the tabs you used last; release to land");
         shell.Commands.Register("tab.mruPrevious", "Switch tab: most recent previous", "Tabs", () => Step(-1), () => shell.Tabs.Count > 1);
 
-        // Ctrl+Tab becomes the MRU switcher (WT's default); Ctrl+PgUp/PgDn keep walking the strip.
-        if (_settings.Mru)
-        {
-            shell.Keys.AddDefaults(
+        // Ctrl+Tab: the tab to the right (and back with Shift) in the default mode - the strip's
+        // order, wrapping, the same walk as Ctrl+PgDn/PgUp - or the MRU switcher when asked for.
+        shell.Keys.AddDefaults(_settings.Mru
+            ?
             [
                 new Keybinding("ctrl+tab", "tab.mruNext"),
                 new Keybinding("ctrl+shift+tab", "tab.mruPrevious"),
+            ]
+            :
+            [
+                new Keybinding("ctrl+tab", "tab.next"),
+                new Keybinding("ctrl+shift+tab", "tab.previous"),
             ]);
-        }
 
         shell.TabOpened += Add;
         shell.ActiveTabChanged += tab => { if (tab is not null && !_open) Touch(tab); };

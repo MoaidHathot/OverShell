@@ -165,7 +165,7 @@ public partial class MainWindow
         for (var i = 1; i <= 9; i++)
         {
             var index = i - 1;
-            c.Register($"tab.switchTo.{i}", $"Switch to tab {i}", "Tabs", () => { if (index < Tabs.Count) ActiveTab = Tabs[index]; }, () => index < Tabs.Count);
+            c.Register($"tab.switchTo.{i}", $"Switch to tab {i}", "Tabs", () => { var order = DisplayOrder; if (index < order.Count) ActiveTab = order[index]; }, () => index < Tabs.Count, "The Nth tab as the strip shows them, groups included");
         }
 
         c.Register("palette.commands", "Command palette", "Palette", () => OpenPalette(">"));

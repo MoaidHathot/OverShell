@@ -216,6 +216,12 @@ internal static class HerdSelfTest
                     screens.Tabs["ghost001"] = new SavedScreen { At = now.AddMinutes(-1), Rows = [@"PS C:\> Write-Host GHOST-MARKER-LINE", "GHOST-MARKER-LINE", @"PS C:\> "] };
                     screens.Save(AppPaths.SessionScreensFile, out _);
                     break;
+                case "mru":
+                    // The MRU switcher is the opt-in mode (12.25); this mode tests it, so it asks for it.
+                    _settingsBeforeSeed = System.IO.File.Exists(AppPaths.SettingsFile) ? System.IO.File.ReadAllText(AppPaths.SettingsFile) : null;
+                    System.IO.Directory.CreateDirectory(AppPaths.ConfigRoot);
+                    System.IO.File.WriteAllText(AppPaths.SettingsFile, """{ "extensions": { "tabs.mru": { "switcherMode": "mru" } } }""");
+                    break;
                 case "transparency":
                     // The composed body is decided before the first tab, from the settings as
                     // loaded at start; the mode puts the original file back when it ends.
@@ -1192,7 +1198,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// The reply channel against the real OpenCode (§12.17): `opencode run` with a prompt that    /// needs a permission; when the plugin reports blocked with the request id, the tab is
+    /// The reply channel against the real OpenCode (§12.17): `opencode run` with a prompt that
+    /// needs a permission; when the plugin reports blocked with the request id, the tab is
     /// answered through the queue and OpenCode's own permission API must move it on. If this
     /// OpenCode never asks (permissions set to allow), that is logged and the reply part is
     /// skipped rather than faked.
@@ -1294,7 +1301,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// The inbox and the reply channels (§12.17). The reply channel is exercised the way the    /// OpenCode plugin uses it: a poller long-polls GET /v1/tabs/{id}/commands and receives
+    /// The inbox and the reply channels (§12.17). The reply channel is exercised the way the
+    /// OpenCode plugin uses it: a poller long-polls GET /v1/tabs/{id}/commands and receives
     /// what Answer / Reply enqueue, with the request id the blocked report carried; without a
     /// poller, a rule with answers types them into the tab (read back from the screen); the
     /// inbox lists the waiting tabs oldest first with the line that asked, y answers, Enter
@@ -1499,7 +1507,8 @@ internal static class HerdSelfTest
         Log($"=== selftest (inbox) result: {(pass ? "ALL PASS" : "FAILED")} ===");    }
 
     /// <summary>
-    /// Keyboard navigation (§12.16): the view chord pressed again puts a cursor into the    /// sidebar (herd) or the cards (dashboard); arrows and j/k move it in the pane's own
+    /// Keyboard navigation (§12.16): the view chord pressed again puts a cursor into the
+    /// sidebar (herd) or the cards (dashboard); arrows and j/k move it in the pane's own
     /// order, Enter activates (the dashboard then opens the terminal view), Space activates
     /// and keeps the cursor, Esc returns to the terminal; a chord leaves the cursor and runs.
     /// </summary>
@@ -1554,9 +1563,13 @@ internal static class HerdSelfTest
         SaveVisual(window.Sidebar, "overshell-selftest-keynav-sidebar.png");
 
         Check(Key(System.Windows.Input.Key.Return) && ReferenceEquals(window.ActiveTab, expectedNext) && nav.Active == Extensions.KeyNavExtension.Pane.None && window.Shell.Cursor is null, "Enter activates the row under the cursor and leaves the cursor");
-        Check(Key(System.Windows.Input.Key.D2, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && Key(System.Windows.Input.Key.End) && ReferenceEquals(window.Shell.Cursor, order[^1]), "End jumps to the last row");
-        Check(Key(System.Windows.Input.Key.Home) && ReferenceEquals(window.Shell.Cursor, order[0]), "Home to the first");
-        Check(Key(System.Windows.Input.Key.Space) && ReferenceEquals(window.ActiveTab, order[0]) && nav.Active == Extensions.KeyNavExtension.Pane.Sidebar, "Space activates and keeps the cursor");
+        Check(Key(System.Windows.Input.Key.D2, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && Key(System.Windows.Input.Key.End) && ReferenceEquals(window.Shell.Cursor, window.SidebarOrder[^1]), "End jumps to the last row");
+        // The order is read again here: activating a row (Enter above) clears its unread flag and the
+        // sidebar re-sorts on attention and recency, so the snapshot from before may be stale - the
+        // extension itself walks the live order.
+        var top = window.SidebarOrder[0];
+        Check(Key(System.Windows.Input.Key.Home) && ReferenceEquals(window.Shell.Cursor, top), "Home to the first");
+        Check(Key(System.Windows.Input.Key.Space) && ReferenceEquals(window.ActiveTab, top) && nav.Active == Extensions.KeyNavExtension.Pane.Sidebar, "Space activates and keeps the cursor");
         Check(Key(System.Windows.Input.Key.Escape) && nav.Active == Extensions.KeyNavExtension.Pane.None && !order.Any(t => t.IsCursor), "Esc leaves: no row outlined");
 
         // A chord while the cursor is up leaves it and still runs.
@@ -1581,7 +1594,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Prompt addressing (§12.16): address words at the front of a prompt choose the tabs    /// from the keyboard - @3, @label, #group, @blocked - the bar echoes where it will go
+    /// Prompt addressing (§12.16): address words at the front of a prompt choose the tabs
+    /// from the keyboard - @3, @label, #group, @blocked - the bar echoes where it will go
     /// before Enter, only the addressed tabs receive the text (read back from their screens),
     /// an address that names nothing sends nothing, and the new Group target exists.
     /// </summary>
@@ -1684,7 +1698,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Global summon (§12.16): the hotkey is registered system-wide once the window has its    /// handle (or the reason it could not be is recorded); fired, it brings a minimized window
+    /// Global summon (§12.16): the hotkey is registered system-wide once the window has its
+    /// handle (or the reason it could not be is recorded); fired, it brings a minimized window
     /// back on the tab that has waited longest, fired again while in front it minimizes;
     /// extensions.summon.to = current leaves the tab alone; the key moves on settings reload.
     /// The physical keypress is not synthesised (§7.8): the WM_HOTKEY handler is invoked.
@@ -1783,7 +1798,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// MRU switching (§12.16): the order follows activations; Ctrl+Tab opens the overlay on    /// the previous tab and steps through the list while held; Shift walks back; Esc cancels;
+    /// MRU switching (§12.16): the order follows activations; Ctrl+Tab opens the overlay on
+    /// the previous tab and steps through the list while held; Shift walks back; Esc cancels;
     /// the Ctrl-release handler (the same method the router's release calls - the Win32
     /// key-up itself is not synthesised, §7.8) commits; a tab closed while open leaves the
     /// list; Ctrl+PgDn still cycles in order; Tab outside the switcher reaches the terminal.
@@ -1896,11 +1912,13 @@ internal static class HerdSelfTest
         window.CloseTab(back1);
 
         window.CloseTab(b);
+        if (_settingsBeforeSeed is null) { System.IO.File.Delete(AppPaths.SettingsFile); } else { System.IO.File.WriteAllText(AppPaths.SettingsFile, _settingsBeforeSeed); }
         Log($"=== selftest (mru) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
 
     /// <summary>
-    /// Key sequences and herd mode (§12.16): the leader chord makes the next keys the mode's -    /// navigation keys stay, actions leave, a stray key is swallowed rather than reaching the
+    /// Key sequences and herd mode (§12.16): the leader chord makes the next keys the mode's -
+    /// navigation keys stay, actions leave, a stray key is swallowed rather than reaching the
     /// shell, Esc and the timeout end it; the hint bar lists what the key map says; tab.last
     /// bounces; waiting tabs are walked oldest first; the mode is an extension that can be
     /// turned off.
@@ -2006,7 +2024,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// The tab's environment (§12.15): built from the registry as Windows Terminal builds it,    /// so a PATH entry the launcher never had is there and a variable that lived only in the
+    /// The tab's environment (§12.15): built from the registry as Windows Terminal builds it,
+    /// so a PATH entry the launcher never had is there and a variable that lived only in the
     /// launcher's process is not; WT_SESSION, WT_PROFILE_ID and the integration variables
     /// present and carried into WSL through WSLENV; the setting turns it back into plain
     /// inheritance, live. The harness starts OverShell with a PATH stripped of the user's
@@ -2130,7 +2149,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Shell integration without a profile edit (§12.15): a plain PowerShell profile gets the    /// script on its command line and announces its directory from the first prompt; a
+    /// Shell integration without a profile edit (§12.15): a plain PowerShell profile gets the
+    /// script on its command line and announces its directory from the first prompt; a
     /// profile that runs its own command, and a non-PowerShell shell, are left alone and the
     /// probe follows them instead; the setting turns it off live; PSReadLine and the profile
     /// still load; the explain panel says which is which.
@@ -2243,7 +2263,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Find in the buffer (§12.14): Ctrl+Shift+F opens the bar over the active tab; typing    /// finds every occurrence, scrollback included, starting from the lowest one on screen;
+    /// Find in the buffer (§12.14): Ctrl+Shift+F opens the bar over the active tab; typing
+    /// finds every occurrence, scrollback included, starting from the lowest one on screen;
     /// the current match is the terminal's own selection and stepping to a hidden one scrolls
     /// it into view; the other visible matches are tinted by the overlay; match case; new
     /// output is picked up; the open bar follows the active tab; a tear-off has its own.
@@ -3236,7 +3257,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Themes (§12.14): the start follows Windows (dark here) with the system accent; setting    /// theme=light recolours every theme brush live - the caption surface, text, the brand
+    /// Themes (§12.14): the start follows Windows (dark here) with the system accent; setting
+    /// theme=light recolours every theme brush live - the caption surface, text, the brand
     /// mark's glyph; a skin's colour still wins over the theme; "palette" and "#RRGGBB" accents
     /// land; and dark comes back. PNGs of the caption in both themes.
     /// </summary>
@@ -3307,7 +3329,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// The jump list (§12.14): read back from the application after start, it carries the    /// three tasks, the seeded archived session and the seeded workspace, every entry an
+    /// The jump list (§12.14): read back from the application after start, it carries the
+    /// three tasks, the seeded archived session and the seeded workspace, every entry an
     /// <c>overshell://</c> URL for this executable; the URLs are then handled by the running
     /// window the way a second instance would hand them over.
     /// </summary>
@@ -3380,7 +3403,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// The tab strip under crowding (§12.14): with room to spare tabs are 150-240 px; as tabs    /// are added every tab shrinks to the same width down to 104 px; past that the strip
+    /// The tab strip under crowding (§12.14): with room to spare tabs are 150-240 px; as tabs
+    /// are added every tab shrinks to the same width down to 104 px; past that the strip
     /// scrolls, a chevron appears, the far edge fades, and activating a tab brings it into
     /// view. Measured at 4, 12 and 20 tabs, with a PNG of the strip at each.
     /// </summary>
@@ -3468,7 +3492,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Workspaces (§12.14): save the open tabs as one, see the file and its command appear,    /// open it (tabs added next to the open ones, command typed, label and group kept), and
+    /// Workspaces (§12.14): save the open tabs as one, see the file and its command appear,
+    /// open it (tabs added next to the open ones, command typed, label and group kept), and
     /// reach it through an <c>overshell://workspace/…</c> request. Runs against a throwaway
     /// configuration root (the launcher sets OVERSHELL_CONFIG_DIR).
     /// </summary>
@@ -3555,7 +3580,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// The previous screen (§12.14): the launcher seeds an interrupted session whose tab has    /// saved rows with a marker; the restored tab must show those rows dimmed above its new
+    /// The previous screen (§12.14): the launcher seeds an interrupted session whose tab has
+    /// saved rows with a marker; the restored tab must show those rows dimmed above its new
     /// prompt, with the rule naming when they were seen. The running tab's rows must land in
     /// the screens file within a few seconds, keyed by the tab's id.
     /// </summary>
@@ -3602,7 +3628,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// P5 batch 3 (§12.14): the close question while agents work, the restore note on a    /// restored tab, and the crash-loop guard. The launcher seeds the state root with a live
+    /// P5 batch 3 (§12.14): the close question while agents work, the restore note on a
+    /// restored tab, and the crash-loop guard. The launcher seeds the state root with a live
     /// file and archives that look like two early deaths, so the start must hold the restore.
     /// </summary>
     private static async Task RunResilienceAsync(MainWindow window, TerminalTab tab)
@@ -3681,7 +3708,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// The working directory from the process (§12.14). Part A runs in a <c>pwsh -NoProfile</c>    /// tab - a shell that announces nothing - so the probe alone is measured: a cd is followed
+    /// The working directory from the process (§12.14). Part A runs in a <c>pwsh -NoProfile</c>
+    /// tab - a shell that announces nothing - so the probe alone is measured: a cd is followed
     /// within seconds (PowerShell from its prompt line, since its process directory never
     /// moves), a nested cmd's directory wins (PEB), leaving it goes back. Part B is the default
     /// profile: when the machine has the shell integration installed, the shell announces its
@@ -3902,7 +3930,8 @@ internal static class HerdSelfTest
     }
 
     /// <summary>
-    /// Harness icons (§12.13): one tab per bundled harness, made an agent by a report, then    /// the tab strip rendered at 1x and 3x. Each icon must resolve to a geometry, draw a
+    /// Harness icons (§12.13): one tab per bundled harness, made an agent by a report, then
+    /// the tab strip rendered at 1x and 3x. Each icon must resolve to a geometry, draw a
     /// plausible number of pixels in its cell, and differ from the others - the text glyphs
     /// they replaced rendered as near-identical smudges at 11 px.
     /// </summary>
@@ -4402,6 +4431,29 @@ internal static class HerdSelfTest
         await Task.Delay(1500);
         Check(!ReferenceEquals(window.ActiveTab, tab), "first tab is in the background");
 
+        // ---- 0. the body fills the host: the control's scrollbar is the themed, narrow one ----
+        // The control's own ScrollBar sits beside the terminal; at WPF's default 17 DIP it is a
+        // bright strip of bare backdrop next to the body (12.25). Measured here as geometry: the
+        // child HWND's right edge against the host's, and the scrollbar's width and template.
+        {
+            var view = second.View;
+            var host = window.TerminalArea;
+            var scroll = WindowsTerminalSurface.FindDescendant<System.Windows.Controls.Primitives.ScrollBar>(view);
+            GetWindowRect(MainWindow.FindTerminalHwnd(view), out var termRect);
+            var hostRight = host.PointToScreen(new System.Windows.Point(host.ActualWidth, 0)).X;
+            var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(view).DpiScaleX;
+            var gapDip = (hostRight - termRect.Right) / dpi;
+            var themed = scroll is not null && scroll.Style is not null && ReferenceEquals(scroll.Style, System.Windows.Application.Current.TryFindResource(typeof(System.Windows.Controls.Primitives.ScrollBar)));
+            Log($"  body geometry: scrollbar width={scroll?.ActualWidth:F1} dip themed={themed}; gap host-right minus terminal-right = {gapDip:F1} dip (margin {TerminalTab.ViewMargin.Right} + scrollbar)");
+            Check(scroll is not null && themed && scroll.ActualWidth <= 10.5, "the terminal's scrollbar wears the theme's style (10 dip, transparent track), not WPF's 17 dip default");
+            Check(gapDip <= TerminalTab.ViewMargin.Right + 10.5, "the terminal body reaches to within the view margin plus the narrow scrollbar of the host's right edge");
+            var icon = window.CaptionIconState;
+            Log($"  caption icon: source={icon.PixelWidth}px shown={icon.ShownDip:F2} dip at scale {icon.Scale:F2}");
+            Check(icon.PixelWidth > 0 && Math.Abs(icon.ShownDip * icon.Scale - icon.PixelWidth) < 0.01, "the caption shows the application icon's frame for this DPI at exactly its pixel size (crisp, not a scaled glyph)");
+            var ring = window.TerminalBodyTintThickness;
+            Check(ring is null || (Math.Abs(ring.Value.Right - (TerminalTab.ViewMargin.Right + (scroll?.ActualWidth ?? 0))) < 0.5), $"the body-tint ring runs under the scrollbar column too (right {ring?.Right:F1} dip), so the column reads as body, not as bare backdrop");
+        }
+
         // ---- 1. stream signals: title detection, OSC 9;4 progress, BEL, OSC 133, OSC 777 ----
         // One pwsh command line, so no prompt interleaves and resets the title.
         var script = string.Join("; ",
@@ -4513,6 +4565,44 @@ internal static class HerdSelfTest
         var before = window.ActiveTab;
         window.Commands.TryExecute("tab.next");
         Check(!ReferenceEquals(before, window.ActiveTab), "tab.next switched tabs");
+
+        // Ctrl+Tab / Ctrl+Shift+Tab (12.25): right and left along the order the strip shows -
+        // groups included, so a grouped strip is walked as the eye reads it - wrapping at either
+        // end. Three more tabs, the first and third put in a group: the collection holds
+        // g1, after, g2, while the strip shows the ungrouped tabs first and then [g1 g2].
+        {
+            var g1 = window.AddTab(tab.Profile, activate: false);
+            var after = window.AddTab(tab.Profile, activate: false);
+            var g2 = window.AddTab(tab.Profile, activate: false);
+            g1.Group = "walk";
+            g2.Group = "walk";
+            await Task.Delay(300);
+            var order = window.DisplayOrder;
+            var tail = order.Skip(order.Count - 3).ToList();
+            Log($"  display order tail: {string.Join(" > ", tail.Select(t => ReferenceEquals(t, g1) ? "g1" : ReferenceEquals(t, g2) ? "g2" : ReferenceEquals(t, after) ? "after" : t.Label))}; {order.Count} tabs");
+            Check(ReferenceEquals(tail[0], after) && ReferenceEquals(tail[1], g1) && ReferenceEquals(tail[2], g2), "the display order keeps a group together, as the strip draws it");
+            var ctrlTab = KeySequence.TryParse("ctrl+tab", out var ct) && window.Keybindings.TryResolve(ct.First, out var ctCmd) ? ctCmd : "(unbound)";
+            var ctrlShiftTab = KeySequence.TryParse("ctrl+shift+tab", out var cst) && window.Keybindings.TryResolve(cst.First, out var cstCmd) ? cstCmd : "(unbound)";
+            Log($"  ctrl+tab -> {ctrlTab}; ctrl+shift+tab -> {ctrlShiftTab}");
+            Check(ctrlTab == "tab.next" && ctrlShiftTab == "tab.previous", "by default Ctrl+Tab is tab.next and Ctrl+Shift+Tab is tab.previous (switcherMode inOrder)");
+            window.ActiveTab = after;
+            Check(window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control) && ReferenceEquals(window.ActiveTab, g1), "Ctrl+Tab goes to the tab on the right as shown (the group's first), not the collection's next");
+            Check(window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control) && ReferenceEquals(window.ActiveTab, g2), "...and on to its group-mate");
+            Check(window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control) && ReferenceEquals(window.ActiveTab, order[0]), "...and wraps from the last tab to the first");
+            Check(window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && ReferenceEquals(window.ActiveTab, g2), "Ctrl+Shift+Tab goes left, wrapping from the first tab to the last");
+            Check(window.DispatchChord(System.Windows.Input.Key.Tab, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift) && ReferenceEquals(window.ActiveTab, g1), "...and left again, to the group's first tab");
+            var n = order.Count - 1;
+            if (n <= 9)
+            {
+                Check(window.Commands.TryExecute($"tab.switchTo.{n}") && ReferenceEquals(window.ActiveTab, g1), $"Alt+{n} means the {n}th tab as shown (the group's first), not the collection's");
+            }
+
+            window.CloseTab(g1);
+            window.CloseTab(after);
+            window.CloseTab(g2);
+            window.ActiveTab = before is not null && window.Tabs.Contains(before) ? before : window.Tabs[0];
+            await Task.Delay(200);
+        }
         window.Commands.TryExecute("tab.previous");
 
         var tabsBefore = window.Tabs.Count;
@@ -4950,6 +5040,15 @@ internal static class HerdSelfTest
     // One line a harness can parse, whatever mode ran: the result lines above are per mode and
     // say nothing about what was skipped. Counted from the PASS/FAIL/SKIP lines as they are logged.
     private static int _passed, _failed, _skipped;
+
+    /// <summary>A note from elsewhere in the app for the self-test log (a swallowed exception, say); nothing when no mode runs.</summary>
+    internal static void Note(string message)
+    {
+        if (Enabled)
+        {
+            Log("  note: " + message);
+        }
+    }
 
     private static void Log(string message)
     {

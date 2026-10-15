@@ -58,17 +58,19 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- Quiet terminal glyph; the application icon stays in the shell. -->
+                    <!-- The application icon, the frame of the .ico that matches the device pixels (AppIcon, 12.25);
+                         the Border keeps the caption draggable around it. -->
                     <Border Grid.Column="0"
                             Width="42"
                             VerticalAlignment="Stretch"
                             Background="Transparent">
-                        <TextBlock Text="&#xE756;"
-                                   FontFamily="{StaticResource Font.Icons}"
-                                   FontSize="14"
-                                   Foreground="{StaticResource Text.Secondary}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
+                        <Image x:Name="CaptionIcon"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               UseLayoutRounding="True"
+                               SnapsToDevicePixels="True"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               IsHitTestVisible="False" />
                     </Border>
 
                     <!-- the tab strip lives here in "top" layouts; otherwise the title -->

@@ -66,7 +66,9 @@ the scrollback stays: the same terminal is re-parented. Tear-offs are for the ag
 on the other monitor; they come back as tear-offs after a restart.
 
 `Alt+1` ... `Alt+9` jump to a tab by position; dragging reorders; `Ctrl+PgUp` / `Ctrl+PgDn`
-cycle; `Ctrl+Tab` walks the tabs most-recently-used first, like Windows Terminal.
+cycle, and so do `Ctrl+Tab` / `Ctrl+Shift+Tab` - right and left as the strip shows the tabs,
+wrapping at the ends, like Windows Terminal (`switcherMode: "mru"` makes `Ctrl+Tab` a
+most-recently-used switcher instead: hold Ctrl, tap Tab, release to land).
 
 ## 3. Make it look like yours
 

@@ -60,7 +60,7 @@ public sealed class TearOffWindow : Window
 
         // Nothing under a composed terminal from the first frame on (see WindowChromeInterop.SetClipsChildren).
         _host = new Grid { Background = Terminal.TerminalFactory.Composition.Enabled ? Brushes.Transparent : tab.Background };
-        _hostTint = new Border { BorderBrush = tab.Background, BorderThickness = TerminalTab.ViewMargin, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+        _hostTint = new Border { BorderBrush = tab.Background, BorderThickness = TerminalTab.BodyRing((double)Application.Current.FindResource("Metrics.TerminalScrollBarWidth")), IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         _host.Children.Add(_hostTint);
         _maximize = CaptionButton("\uE922", "Maximize", (_, _) => ToggleMaximize());
         _caption = BuildCaption(tab);

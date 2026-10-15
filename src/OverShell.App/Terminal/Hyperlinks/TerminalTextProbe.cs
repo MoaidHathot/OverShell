@@ -259,7 +259,8 @@ internal sealed class TerminalTextProbe
     }
 
     /// <summary>
-    /// The provider builds a found range from a half-open search hit and then increments    /// the end once more as if it were inclusive (<c>UiaTextRangeBase::FindText</c>), so
+    /// The provider builds a found range from a half-open search hit and then increments
+    /// the end once more as if it were inclusive (<c>UiaTextRangeBase::FindText</c>), so
     /// the range normally covers one glyph too many. Measured rather than assumed: the end
     /// is pulled back a glyph at a time while the range's text — minus the CR LF a row end
     /// carries — is longer than what was searched for. At a row end the extra "glyph" is

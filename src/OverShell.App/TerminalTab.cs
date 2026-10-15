@@ -147,6 +147,14 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     /// <summary>The margin every terminal view gets inside its host: padding between the glyphs and the chrome.</summary>
     public static readonly Thickness ViewMargin = new(10, 6, 2, 6);
 
+    /// <summary>
+    /// The ring a composed body's host paints around the view (12.20): the view margin, plus the
+    /// control's scrollbar column on the right - a WPF element with a transparent track inside the
+    /// view, beside the terminal's HWND, under which nothing else paints in composed mode. Without
+    /// it that column is a strip of bare backdrop next to the body (12.25).
+    /// </summary>
+    public static Thickness BodyRing(double scrollBarWidth) => new(ViewMargin.Left, ViewMargin.Top, ViewMargin.Right + scrollBarWidth, ViewMargin.Bottom);
+
     public ITerminalSurface Surface { get; }
 
     /// <summary>The element the chrome hosts. Shorthand for <c>Surface.View</c>.</summary>

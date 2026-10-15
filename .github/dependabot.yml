@@ -26,3 +26,9 @@ updates:
       nuget-minor-and-patch:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+    # The test runner's 4.0.1 is on nuget.org but not on the proxy feeds the reference machine
+    # restores through (NU1102 locally; CI restores it fine), so the pin stays at 4.0.0 and a weekly
+    # re-proposal of the one version that cannot restore here is not wanted. Lift when the feed has it.
+    ignore:
+      - dependency-name: xunit.runner.visualstudio
+        versions: ["4.0.1"]

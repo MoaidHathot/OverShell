@@ -108,8 +108,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
 
         // The frame-extension margins are physical pixels, so they have to be
-        // recomputed whenever the window lands on a monitor with a different scale.
-        DpiChanged += (_, _) => ApplyBackdrop();
+        // recomputed whenever the window lands on a monitor with a different scale;
+        // the caption icon picks its frame by device pixels too.
+        DpiChanged += (_, _) => { ApplyBackdrop(); Chrome.AppIcon.Apply(CaptionIcon, CaptionIconDip); };
+        SourceInitialized += (_, _) => Chrome.AppIcon.Apply(CaptionIcon, CaptionIconDip);
 
         // Anything drawn over the terminal is positioned in screen pixels and goes stale
         // the moment the window moves; the hover it belongs to is cheap to re-establish.
@@ -293,8 +295,40 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var index = (Tabs.IndexOf(ActiveTab) + delta + Tabs.Count) % Tabs.Count;
-        ActiveTab = Tabs[index];
+        // The order the strip shows, so "next" is the tab to the right of this one.
+        var order = DisplayOrder;
+        var index = (order.IndexOf(ActiveTab) + delta + order.Count) % order.Count;
+        ActiveTab = order[index];
+    }
+
+    /// <summary>
+    /// The tabs in the order the strip and the list draw them: grouped, groups in the order their
+    /// first tab appears, tabs within a group in the collection's order - what the strip's
+    /// <c>ListCollectionView</c> with a <c>Group</c> description produces. <c>tab.next</c>,
+    /// <c>tab.previous</c> and <c>Alt+N</c> count along this, not along the raw collection, so a
+    /// grouped strip is walked as the eye reads it.
+    /// </summary>
+    internal List<TerminalTab> DisplayOrder
+    {
+        get
+        {
+            var byGroup = new List<(string Group, List<TerminalTab> Tabs)>();
+            foreach (var tab in Tabs)
+            {
+                var key = tab.Group ?? string.Empty;
+                var slot = byGroup.FindIndex(g => string.Equals(g.Group, key, StringComparison.Ordinal));
+                if (slot < 0)
+                {
+                    byGroup.Add((key, [tab]));
+                }
+                else
+                {
+                    byGroup[slot].Tabs.Add(tab);
+                }
+            }
+
+            return byGroup.SelectMany(g => g.Tabs).ToList();
+        }
     }
 
     // ------------------------------------------------------------- commands
@@ -1153,7 +1187,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (composed && active)
         {
             TerminalHost.Background = Brushes.Transparent;
-            TerminalBodyTint.BorderThickness = TerminalTab.ViewMargin;
+            TerminalBodyTint.BorderThickness = TerminalTab.BodyRing((double)FindResource("Metrics.TerminalScrollBarWidth"));
             TerminalBodyTint.Visibility = Visibility.Visible;
             ApplyBodyOpacity();
         }
@@ -1166,7 +1200,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
-        // With no backdrop the composition target is opaque, so the root has to paint        // the base surface itself — otherwise the window renders flat black.
+        // With no backdrop the composition target is opaque, so the root has to paint
+        // the base surface itself — otherwise the window renders flat black.
         WindowRoot.Background = active ? Brushes.Transparent : (Brush)FindResource("Surface.Base");
 
         TitleBarSurface.Background = (Brush)FindResource(

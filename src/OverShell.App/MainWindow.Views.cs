@@ -22,6 +22,9 @@ public partial class MainWindow
     private const double CaptionWithTabs = 44;
     private const double CaptionSlim = 38;
 
+    /// <summary>The caption's application icon, in DIPs: the small-icon size, as a system caption draws it.</summary>
+    private const double CaptionIconDip = 16;
+
     private readonly TabStrip _tabStrip = new();
     private readonly HerdSidebar _sidebar = new();
     private LayoutCatalog _layouts = null!;

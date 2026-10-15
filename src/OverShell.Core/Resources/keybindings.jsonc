@@ -15,9 +15,10 @@
   { "keys": "ctrl+shift+w",        "command": "tab.close" },
   { "keys": "ctrl+shift+d",        "command": "tab.duplicate" },
   { "keys": "ctrl+shift+z",        "command": "tab.reopenClosed" },
-  // Ctrl+Tab is the most-recently-used switcher (Windows Terminal's default; the tabs.mru
-  // extension binds it); Ctrl+PgUp/PgDn walk the strip in order. Bind ctrl+tab to tab.next
-  // here, or set extensions.tabs.mru.switcherMode to "inOrder", to have it cycle instead.
+  // Ctrl+Tab goes to the tab on the right and Ctrl+Shift+Tab to the one on the left, wrapping,
+  // in the order the strip shows (the tabs.mru extension binds them, so they are not listed
+  // here); Ctrl+PgUp/PgDn do the same. "extensions": { "tabs.mru": { "switcherMode": "mru" } }
+  // makes Ctrl+Tab the most-recently-used switcher instead (hold Ctrl, tap Tab, release).
   { "keys": "ctrl+pgdn",           "command": "tab.next" },
   { "keys": "ctrl+pgup",           "command": "tab.previous" },
   { "keys": "alt+1",               "command": "tab.switchTo.1" },

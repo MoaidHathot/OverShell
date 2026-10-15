@@ -43,6 +43,12 @@ public partial class MainWindow
     /// <summary>The margin ring's opacity when the body is composed (12.20), else null. For the self-test.</summary>
     internal double? TerminalBodyTintOpacity => TerminalBodyTint.Visibility == System.Windows.Visibility.Visible ? TerminalBodyTint.Opacity : null;
 
+    /// <summary>The caption icon as shown: the frame's pixel size, the element's size in DIPs and the window's scale. For the self-test.</summary>
+    internal (int PixelWidth, double ShownDip, double Scale) CaptionIconState =>
+        (CaptionIcon.Source is System.Windows.Media.Imaging.BitmapSource b ? b.PixelWidth : 0, CaptionIcon.Width, System.Windows.Media.VisualTreeHelper.GetDpi(CaptionIcon).DpiScaleX);
+    /// <summary>The margin ring's thickness when the body is composed, else null. For the self-test.</summary>
+    internal System.Windows.Thickness? TerminalBodyTintThickness => TerminalBodyTint.Visibility == System.Windows.Visibility.Visible ? TerminalBodyTint.BorderThickness : null;
+
     /// <summary>The chords of a key sequence pressed so far.</summary>
     internal IReadOnlyList<KeyChord> PendingChords => _sequences?.Pending ?? [];
 

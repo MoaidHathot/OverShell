@@ -812,6 +812,7 @@ queue on the UI thread into `AgentStateMachine`, one dispatcher operation per bu
 | **Settings from the palette, translucent by default, a way in** (§12.22) | `window.terminalOpacity` defaults to 0.85; `Change a setting…` (36 knobs with current values, value pickers, typed numbers/chords) and one `Setting: …` command per knob write one line into `settings.jsonc` through a comment-preserving JSONC edit and let the watcher apply it; `Open settings.jsonc` / `Open keybindings.jsonc` write the commented defaults first; `Help: Tutorial` / `User guide` / `Keyboard shortcuts` / `About`; `docs/TUTORIAL.md`; a one-time welcome note above the first prompt. |
 | **The red body, compact tabs, local control builds, CI diet** (§12.23) | Atlas premultiplied the packed red/blue pair with one division and leaked blue into red at every alpha but 0 and 255 (fork patch 4, `wpf-v1.26.260930.3`; 0.85 now `#0A250A`, was `#4D1717`); the transparency test checks all channels; caption glyph instead of the blue tile, tabs 46->40 DIP with every indicator kept; `Build.ps1` names the missing UWP C++ component and restores with the repo config only, the control builds locally in 7 min; fork CI skips docs-only pushes, already-built commits, and caches vcpkg. |
 | **Switcher completeness, the inactive body** (§12.24) | The MRU switcher lists every open tab (background-opened ones last) and drops a closing one at once - no tab is ever skipped; `window.terminalOpacityUnfocused` (default 1.0) makes an inactive window's body the theme's own background instead of the translucency over DWM's grey fallback, per window, live; `unfocused` self-test mode measures it on screen. |
+| **The bar beside the body, Ctrl+Tab's direction, the caption icon** (§12.25) | The control's scrollbar column was 17 dip of bare backdrop (WPF's MinWidth beat the style's Width); the style sets MinWidth and the body ring runs under the column. Ctrl+Tab / Ctrl+Shift+Tab go right / left along the order the strip shows, wrapping (`switcherMode: inOrder`, the new default; `mru` keeps the overlay); `DisplayOrder` makes Alt+N agree with a grouped strip. The caption shows the application icon's exact-pixel frame. | done |
 
 ### Confirmed by a human — 2026-09-13
 
@@ -2693,6 +2694,53 @@ or re-attached into an inactive window starts at the inactive value). The same n
 take the foreground on the private desktop, and on the input desktop the tiling window manager
 tiles a foreign ordinary window over the very pixels measured), active again `#0A250A`, the
 tear-off both ways; 11 checks on screen, 8 hidden (the pixel reads skipped).
+
+### 12.25 The second day: a blue bar, Ctrl+Tab's direction, the caption icon
+
+**The bar.** "A blue bar to the left of the terminal in the herd view, and a border left behind
+after leaving it." Measured (full-screen capture, both views): a 26 px (17.3 dip) vertical strip
+of bare acrylic (#3764A2) at the terminal area's right edge - left of the herd sidebar, which
+sits on the right, hence "to the left of the terminal" - in both views. It is the control's
+scrollbar column. Theme/Controls.xaml styles the ScrollBar Width=10, but WPF's ScrollBar
+carries MinWidth = the system metric (17.33 dip at 150 %), which a Width setter does not beat
+(scrollbar: Width=10 (source Style) MinWidth=17.33 parent column width=17.3); and in composed
+mode the track is transparent and TerminalHost paints nothing, so the backdrop showed through
+the whole column. Two fixes: the style sets MinWidth too (Metrics.TerminalScrollBarWidth,
+10), and the body-tint ring (12.20) now runs under the scrollbar column as well
+(TerminalTab.BodyRing(scrollBarWidth): the view margin plus the column, main window and
+tear-offs), so the column reads as body, not as a hole. Three new checks in the main run: the
+scrollbar's actual width is 10, the body's right edge is within margin + scrollbar of the host's
+edge, and the ring's right side equals margin + scrollbar (12.0 dip). The bottom gap the same
+report mentioned is the view margin (6) plus the status bar; OpenCode's own footer row is
+OpenCode's.
+
+**Ctrl+Tab.** Windows Terminal's 	abSwitcherMode default is mru, and 12.16 followed it; the
+user wants what the hand expects: Ctrl+Tab the tab to the right, Ctrl+Shift+Tab the one to the
+left, wrapping. That is now the default (switcherMode: "inOrder"; "mru" keeps the overlay
+switcher, and its commands stay registered in both modes for bindings of one's own). "Right"
+needed defining: ActivateRelative walked Tabs by index, but the strip groups tabs
+(PropertyGroupDescription(Group)), so with a group the visual neighbour and the collection's
+neighbour differ. MainWindow.DisplayOrder reproduces the view's order - groups in the order
+their first tab appears, tabs within a group in collection order, which is what
+ListCollectionView produces - and 	ab.next, 	ab.previous and 	ab.switchTo.N (Alt+N) all
+count along it. Checked in the main run with three extra tabs, the first and third grouped: the
+display order is fter, g1, g2 while the collection is g1, after, g2; Ctrl+Tab from fter
+goes to g1, then g2, then wraps to the first tab; Ctrl+Shift+Tab wraps back to g2, then
+g1; Alt+N agrees. The mru mode seeds switcherMode: "mru" for itself (and restores the file).
+The setting is read when the extension binds its keys, so the palette entry says *next start*.
+
+**The caption icon.** The muted glyph of 12.23 ("remove it or use the official icon") is now the
+application icon. Chrome/AppIcon.cs picks the .ico frame whose pixel size matches the device
+pixels for 16 dip (24 px at 150 %) and shows it at exactly that size, re-picking on DpiChanged;
+an Image fed the whole file would take the first frame and scale it. Found on the way: a pack
+URI to Assets/OverShell.ico fails - the project lists the file as *Content* (it ships beside
+the exe for the toasts' IconUri), and WPF resolves a pack URI to a content file through the
+file system, where the Link name does not apply (DirectoryNotFoundException for
+...\Assets\OverShell.ico). The icon is read from the copy beside the exe, which exists wherever
+the toasts work. Check: the frame is 24 px and shown at 16 dip at scale 1.5.
+
+**Also.** Twenty doc comments had lost a line break in an earlier edit (...overlay on    ///
+the previous tab) and read as one line; split back.
 
 ---
 
