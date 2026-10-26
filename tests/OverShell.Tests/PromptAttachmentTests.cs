@@ -106,6 +106,22 @@ public class PromptAttachmentTests
         Assert.Equal(7, input.CaretIndex);
     });
 
+    [Theory]
+    [InlineData("first\nsecond")]
+    [InlineData("first\r\nsecond")]
+    [InlineData("first\rsecond")]
+    public void Multiline_paste_leaves_the_caret_after_the_inserted_text(string pasted) => Sta.WpfRun(async () =>
+    {
+        var bar = new PromptBar { Text = "start OLD tail" };
+        var input = (TextBox)bar.FindName("Input");
+        input.Select(6, 3);
+        bar.ClipboardReader = _ => Task.FromResult(new TransferContent(pasted, []));
+        ApplicationCommands.Paste.Execute(null, input);
+        await bar.ClipboardIdle;
+        Assert.Equal("start first\nsecond tail", bar.Text.ReplaceLineEndings("\n"));
+        Assert.Equal(bar.Text.Length - " tail".Length, input.CaretIndex);
+    });
+
     [Fact]
     public void Draft_uses_each_targets_path_format_and_preserves_a_trailing_newline()
     {

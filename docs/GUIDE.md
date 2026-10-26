@@ -223,6 +223,8 @@ explain / group / detach / close.
 `Ctrl+Shift+V` (or `Shift+Insert`) in an application such as OpenCode. For clipboard images, OverShell sends
 `Ctrl+V` to the application so it can read and attach the image itself; right-click paste
 does the same. Images take precedence when the clipboard also offers text.
+Copy/paste bindings edit the focused prompt, search or other text field when one has
+focus, including custom bindings; terminal input is used when the terminal has focus.
 
 **Files and other media.** Copy files or folders in Explorer and paste in the terminal:
 their paths are inserted together, quoted for the target shell. Multiple selections and

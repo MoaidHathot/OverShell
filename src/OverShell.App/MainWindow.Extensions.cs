@@ -1,4 +1,5 @@
 using System.IO;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using OverShell.App.Extensibility;
@@ -257,10 +258,13 @@ public partial class MainWindow
 
         var command = decision.Command!.Command;
 
-        // Ctrl+C / Ctrl+V while typing in the prompt bar edit the prompt, not the terminal.
-        if (TextInputHasFocus() && command.StartsWith("clipboard.", StringComparison.OrdinalIgnoreCase))
+        // Route editing commands to the text control even when the user chose a different
+        // chord. Returning false only works for WPF's built-in keys, not Ctrl+Shift+V or
+        // custom bindings. Other clipboard commands (such as opening the files folder)
+        // still run normally while a text box has focus.
+        if (TextInputHasFocus())
         {
-            return Prompt.TryClipboardCommand(command);
+            if (Prompt.TryClipboardCommand(command) || RouteTextClipboard(command, Keyboard.FocusedElement)) return true;
         }
 
         // A chord from a tear-off aims at that window's tab.
@@ -280,6 +284,20 @@ public partial class MainWindow
 
     /// <summary>What the router would do with a chord - for in-process diagnostics, which inject no keys.</summary>
     internal bool DispatchChord(Key key, ModifierKeys modifiers) => OnChord(key, modifiers);
+
+    internal static bool RouteTextClipboard(string command, IInputElement? target)
+    {
+        if (target is not System.Windows.Controls.Primitives.TextBoxBase) return false;
+        var editing = command.ToLowerInvariant() switch
+        {
+            "clipboard.copy" or "clipboard.copyifselection" => ApplicationCommands.Copy,
+            "clipboard.paste" => ApplicationCommands.Paste,
+            _ => null,
+        };
+        if (editing is null) return false;
+        if (editing.CanExecute(null, target)) editing.Execute(null, target);
+        return true;
+    }
 
     /// <summary>A pending sequence that has waited past the timeout is dropped; the heartbeat calls this.</summary>
     private void ExpireSequences(DateTimeOffset now)

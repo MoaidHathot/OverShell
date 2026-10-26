@@ -163,3 +163,12 @@ headers, context or fragment extraction, and fragment-marker fallback for stale 
 An invalid envelope is reported before creating a file. Standalone HTML is marked UTF-8;
 normal paste still uses a supplied plain-text representation. All eight focused HTML
 tests pass, including strings/streams, Unicode, case-insensitive format names and errors.
+
+### Completion audit: text-field shortcut routing
+
+Configured clipboard commands were previously declined when a WPF text box had focus,
+which only worked for WPF's built-in chords. Ctrl+Shift+V or a custom paste chord could
+therefore do nothing in search/palette fields. Editing commands now invoke the focused
+control's routed copy/paste command; non-editing clipboard commands still reach the
+command registry. Command IDs are handled consistently without case sensitivity.
+All 14 focused control/routing tests pass, including multiline caret placement.

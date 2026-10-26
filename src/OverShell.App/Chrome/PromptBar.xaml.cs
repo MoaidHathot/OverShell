@@ -157,12 +157,12 @@ public partial class PromptBar : UserControl
     internal bool TryClipboardCommand(string command)
     {
         if (!Input.IsKeyboardFocusWithin) return false;
-        switch (command)
+        switch (command.ToLowerInvariant())
         {
             case "clipboard.paste": PasteFromClipboard(); return true;
-            case "clipboard.pasteFiles": PasteFromClipboard(asFiles: true); return true;
+            case "clipboard.pastefiles": PasteFromClipboard(asFiles: true); return true;
             case "clipboard.copy":
-            case "clipboard.copyIfSelection": ApplicationCommands.Copy.Execute(null, Input); return true;
+            case "clipboard.copyifselection": ApplicationCommands.Copy.Execute(null, Input); return true;
             default: return false;
         }
     }
