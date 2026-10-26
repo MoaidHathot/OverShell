@@ -355,7 +355,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // Classic console behaviour: right-click copies a selection, else pastes — in the
         // main window's terminal or in a tear-off's.
-        router.RightClick = (hwnd, shift) =>
+        router.ApplicationOwnsMouse = hwnd => TabForTerminalHwnd(hwnd)?.MouseTracking == true;
+        router.RightClick = hwnd =>
         {
             var tab = TabForTerminalHwnd(hwnd);
             if (tab is null)

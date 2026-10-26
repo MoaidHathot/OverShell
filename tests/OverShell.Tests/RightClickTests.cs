@@ -1,4 +1,5 @@
 using OverShell.App.Input;
+using OverShell.App.Terminal;
 using OverShell.Core.Input;
 using Xunit;
 
@@ -6,6 +7,47 @@ namespace OverShell.Tests;
 
 public class RightClickTests
 {
+    [Theory]
+    [InlineData("1000")]
+    [InlineData("1002")]
+    [InlineData("1003")]
+    public void Mouse_reporting_keeps_the_complete_gesture_with_the_application(string mode)
+    {
+        var stream = new TerminalStreamState();
+        foreach (var c in $"\u001b[?{mode}h") stream.Observe(c.ToString());
+        var gesture = new RightClickGesture();
+        Assert.True(stream.MouseTracking);
+        Assert.False(gesture.Press(11, () => throw new Exception("Unexpected clipboard action"), stream.MouseTracking));
+        // Changing mode between press and release must not change the gesture's owner.
+        stream.Observe($"\u001b[?{mode}l");
+        Assert.False(gesture.Release(11));
+    }
+
+    [Fact]
+    public void Shift_overrides_mouse_reporting_for_one_complete_gesture()
+    {
+        var gesture = new RightClickGesture();
+        var actions = 0;
+        Assert.True(gesture.Press(22, () => { actions++; return true; }, mouseTracking: true, shift: true));
+        Assert.True(gesture.Release(22));
+        Assert.Equal(1, actions);
+    }
+
+    [Fact]
+    public void Reset_clears_mouse_and_paste_modes_in_stream_order()
+    {
+        var stream = new TerminalStreamState();
+        stream.Observe("\u001b[?1003;2004;1004h\u001b");
+        Assert.True(stream.MouseTracking && stream.BracketedPaste && stream.FocusEvents);
+        stream.Observe("c\u001b[?2004h");
+        Assert.False(stream.MouseTracking);
+        Assert.False(stream.FocusEvents);
+        Assert.True(stream.BracketedPaste);
+        // The bundled terminal clears all tracking modes even when another mode is disabled.
+        stream.Observe("\u001b[?1002h\u001b[?1000l");
+        Assert.False(stream.MouseTracking);
+    }
+
     [Fact]
     public void One_gesture_pastes_once_and_claims_both_native_messages()
     {

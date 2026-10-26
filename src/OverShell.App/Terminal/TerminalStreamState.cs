@@ -49,8 +49,8 @@ internal sealed partial class TerminalStreamState
     private const int CarryLength = 2048;
     private const int LedgerCapacity = 128;
 
-    // DECSET/DECRST: ESC [ ? <n> h|l — possibly several modes in one sequence.
-    [GeneratedRegex("\u001b\\[\\?([0-9;]+)([hl])", RegexOptions.Compiled)]
+    // DECSET/DECRST and RIS, in stream order. A terminal reset clears input modes too.
+    [GeneratedRegex("\u001b(?:\\[\\?([0-9;]+)([hl])|c)", RegexOptions.Compiled)]
     private static partial Regex PrivateModeRegex { get; }
 
     // OSC 8 ; params ; URI ST  <text>  OSC 8 ; ; ST — the text may carry SGR sequences.
@@ -103,6 +103,12 @@ internal sealed partial class TerminalStreamState
                 // Matches entirely inside the carried-over prefix were applied last time.
                 if (m.Index + m.Length <= newFrom)
                 {
+                    continue;
+                }
+
+                if (m.Value == "\u001bc")
+                {
+                    _bracketedPaste = _mouseTracking = _focusEvents = false;
                     continue;
                 }
 

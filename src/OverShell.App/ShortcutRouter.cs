@@ -116,11 +116,14 @@ internal sealed class ShortcutRouter : IDisposable
     public IntPtr CurrentRoot { get; private set; }
 
     /// <summary>
-    /// Invoked on right-button down for a native terminal HWND, with its Shift state.
+    /// Invoked on right-button down for a native terminal HWND.
     /// Return true to own both press and release. The native control also pastes on
     /// button-down, so ownership must be decided before it ever sees the press.
     /// </summary>
-    public Func<nint, bool, bool>? RightClick { get; set; }
+    public Func<nint, bool>? RightClick { get; set; }
+
+    /// <summary>Whether this HWND's application requested mouse reporting.</summary>
+    public Func<nint, bool>? ApplicationOwnsMouse { get; set; }
 
     /// <summary>
     /// Mouse traffic addressed to a native terminal window. Return true to swallow the
@@ -278,7 +281,8 @@ internal sealed class ShortcutRouter : IDisposable
                 {
                     var hwnd = msg.hwnd;
                     var shift = ((long)msg.wParam & MkShift) != 0;
-                    handled = _rightClick.Press(hwnd, () => RightClick?.Invoke(hwnd, shift) == true);
+                    handled = _rightClick.Press(hwnd, () => RightClick?.Invoke(hwnd) == true,
+                        ApplicationOwnsMouse?.Invoke(hwnd) == true, shift);
                 }
 
                 break;

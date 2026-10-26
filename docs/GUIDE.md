@@ -213,7 +213,9 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+V`, `Ctrl+Shift+V` | `clipboard.paste` | Paste (bracketed when the application asked for it) |
 | `Ctrl+Shift+C` | `clipboard.copy` | Copy |
 
-Right-click in the terminal copies a selection, else pastes. Right-click on a tab (in
+Right-click in the terminal copies a selection, else pastes. Applications that request
+mouse reporting receive right-clicks themselves; **Shift+right-click** copies/pastes in
+that case. Right-click on a tab (in
 the strip, the list, the rail, the sidebar) opens a menu with rename / agent or shell /
 explain / group / detach / close.
 

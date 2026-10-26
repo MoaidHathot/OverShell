@@ -5,10 +5,10 @@ internal sealed class RightClickGesture
 {
     private nint _owner;
 
-    public bool Press(nint hwnd, Func<bool> take)
+    public bool Press(nint hwnd, Func<bool> take, bool mouseTracking = false, bool shift = false)
     {
         _owner = 0;
-        if (hwnd == 0 || !take())
+        if (hwnd == 0 || (mouseTracking && !shift) || !take())
         {
             return false;
         }

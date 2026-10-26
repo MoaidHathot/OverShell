@@ -31,7 +31,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
   image paste; commit the preceding fix.
 - [x] **2. Right-click ownership.** One copy or paste per gesture, matching release
   consumed, correct native HWND/tab, and one bracketed multiline paste.
-- [ ] **3. Mouse reporting.** Application-owned presses/releases pass through;
+- [x] **3. Mouse reporting.** Application-owned presses/releases pass through;
   Shift+right-click provides terminal copy/paste; teardown cannot leave stale ownership.
 - [ ] **4. Clipboard files/media.** All extensions, folders and multiple files; paths
   quoted for their target; explicit file delivery for clipboard-only media; clipboard
@@ -68,3 +68,14 @@ and Unicode/control-character checks cover the text delivered to the terminal.
 Additional defect fixed: `TerminalTab.Paste` previously read the asynchronously changing
 bracketed-paste flag twice. Encoding now takes one snapshot, preventing an unmatched
 opening/closing bracket if the application changes mode during a paste.
+
+### 3. Mouse reporting
+
+349 tests passed. New cases feed fragmented DECSET 1000/1002/1003 output, verify both
+halves of application-owned gestures pass through, verify Shift overrides ownership,
+and change modes between press and release. Ownership is remembered from the press.
+
+Additional defect fixed: RIS (`ESC c`) did not clear the observed mouse, paste or focus
+modes. The observer now resets them in stream order, including split output chunks.
+The existing mutually exclusive mouse-mode behavior was checked against the pinned
+native `TerminalInput::SetInputMode` rather than assuming modes were independent.
