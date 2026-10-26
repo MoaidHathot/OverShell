@@ -674,6 +674,17 @@ target box chooses **Active tab**, **All agents**, **Agents needing you**, or **
 tab**; `Ctrl+Shift+B` opens it aimed at all agents. The text is typed into each target
 as one block (bracketed paste where the program asked for it) followed by Enter.
 
+Use the paperclip button to select files of any type, or paste/drop files, folders,
+images and other media into the bar. Attachments appear as removable chips with their
+full paths in tooltips. Clipboard-only media is saved in the clipboard files folder.
+Plain text paste replaces the current selection in the text box.
+
+Each target receives the prompt plus its quoted attachment paths. Address prefixes
+such as `@3` and `#group` apply to attachments too; a prompt can consist entirely of
+attachments. Enter waits for a pending paste to finish. An unavailable file, unmatched
+address or failed send leaves the draft in place. History recalls the text and files
+together, and walking forward out of history restores the draft you were editing.
+
 `snippets.jsonc` holds reusable prompts; each appears on the bar's snippet menu and as a
 `Snippet: …` command:
 

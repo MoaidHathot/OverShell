@@ -38,7 +38,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
   failures handled; immutable transfer data shared by later input surfaces.
 - [x] **5. Native drops.** Real OLE registration on the terminal HWND; drop data uses the
   same transfer path; copy semantics; correct target after detach/reattach; disposal.
-- [ ] **6. Prompt attachments.** Paste, drop and an all-files picker; visible removable
+- [x] **6. Prompt attachments.** Paste, drop and an all-files picker; visible removable
   attachments; attachment-only prompts; correct broadcast/address routing; failed sends
   retain the draft; history preserves attachments.
 - [ ] **7. Shift+Insert.** Default terminal paste; user overrides and WPF editing work.
@@ -115,3 +115,20 @@ survived reattachment, exported bitmap/audio data and pasted plain text. Closing
 revoked its registration. This run used scratch configuration/state and did not replace
 the system clipboard. WPF window fixtures initially reported ALREADYREGISTERED; changing
 the fixture to the same native-window kind as the terminal verified actual registration.
+
+### 6. Prompt attachments
+
+388 automated tests pass. WPF control tests load the shipped styles and exercise routed
+paste, selection replacement, attachment-only drafts, removal/history, rejection, and
+Enter racing a pending paste or failed provider. No product startup or system clipboard
+is used by these control tests.
+
+`-Mode promptattachments` on a private desktop: **11 passed, 0 failed, 0 skipped**.
+Checks include command routing into the focused prompt, visible attachment controls,
+literal file delivery through ConPTY to two group members, exclusion of other tabs,
+addressed attachment-only input, missing-file and partial-address rejection, and routed
+bitmap paste into the real prompt bar.
+
+Old defects fixed in this path: the bar cleared drafts before delivery was acknowledged;
+history discarded the unsent draft; partly unmatched addresses could cause a partial
+send. File formatting is prepared for all targets before delivering a broadcast.

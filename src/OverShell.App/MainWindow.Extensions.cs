@@ -260,7 +260,7 @@ public partial class MainWindow
         // Ctrl+C / Ctrl+V while typing in the prompt bar edit the prompt, not the terminal.
         if (TextInputHasFocus() && command.StartsWith("clipboard.", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return Prompt.TryClipboardCommand(command);
         }
 
         // A chord from a tear-off aims at that window's tab.

@@ -60,6 +60,7 @@ inside a tab: it prints every case with what should happen.
 
 `tools\Invoke-SelfTest.ps1 -Mode transfers` checks file/media drops through the real
 terminal and ConPTY, including detach/reattach, on a private desktop.
+`-Mode promptattachments` checks prompt attachments, broadcasts and rejected drafts.
 
 ## Configuration
 

@@ -27,7 +27,7 @@ public partial class MainWindow
 
     private void InitializeDepth()
     {
-        Prompt.SendRequested += (text, target) => SendPrompt(text, target);
+        Prompt.SendRequested = (draft, target) => SendPrompt(draft.Text, target, draft.Files) > 0;
         Prompt.RouteDescriber = text => PromptAddress.Describe(PromptAddress.Parse(text, AddressableTabs(), ActiveTab?.Id));
         Prompt.HideRequested += () => ShowPromptBar(false);
 
@@ -89,13 +89,21 @@ public partial class MainWindow
     /// goes through <see cref="TerminalTab.Paste"/>, so it arrives bracketed where the
     /// application asked for that and as one block everywhere else.
     /// </summary>
-    internal int SendPrompt(string text, PromptTarget target)
+    internal int SendPrompt(string text, PromptTarget target, IReadOnlyList<string>? attachments = null)
     {
+        attachments ??= [];
+        var missing = attachments.FirstOrDefault(path => !File.Exists(path) && !Directory.Exists(path));
+        if (missing is not null)
+        {
+            ShowStatusMessage($"Attachment is no longer available: {missing}");
+            return 0;
+        }
+
         var route = PromptAddress.Parse(text, AddressableTabs(), ActiveTab?.Id);
         IReadOnlyList<TerminalTab> targets;
         if (route.Addressed)
         {
-            if (route.Unmatched.Count > 0 && route.Targets.Count == 0)
+            if (route.Unmatched.Count > 0)
             {
                 ShowStatusMessage($"No tab matches {string.Join(", ", route.Unmatched)}");
                 return 0;
@@ -104,7 +112,7 @@ public partial class MainWindow
             var ids = route.Targets.Select(t => t.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
             targets = Tabs.Where(t => ids.Contains(t.Id) && t.IsRunning).ToList();
             text = route.Body;
-            if (text.Trim().Length == 0)
+            if (text.Trim().Length == 0 && attachments.Count == 0)
             {
                 ShowStatusMessage("Nothing to send after the address");
                 return 0;
@@ -112,7 +120,7 @@ public partial class MainWindow
         }
         else
         {
-            targets = ResolvePromptTargets(target);
+            targets = ResolvePromptTargets(target).Where(t => t.IsRunning).ToArray();
         }
 
         if (targets.Count == 0)
@@ -121,9 +129,15 @@ public partial class MainWindow
             return 0;
         }
 
-        foreach (var tab in targets)
+        // Prepare every target's quoting before any input is sent, so a failed path cannot
+        // produce a partial broadcast. Address words were removed before appending files.
+        var draft = new Core.Input.PromptDraft(text, attachments);
+        List<(TerminalTab Tab, string Text)> deliveries;
+        try { deliveries = targets.Select(tab => (tab, draft.Compose(tab.FormatFiles))).ToList(); }
+        catch (ArgumentException e) { ShowStatusMessage(e.Message); return 0; }
+        foreach (var (tab, payload) in deliveries)
         {
-            tab.Paste(text);
+            tab.Paste(payload);
             tab.SendText("\r");
         }
 
