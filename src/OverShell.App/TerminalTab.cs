@@ -120,6 +120,16 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         Session.Started += (_, _) => _dispatcher.BeginInvoke(() => Raise(nameof(IsRunning)));
         Session.Exited += (_, _) => _dispatcher.BeginInvoke(NotifyExited);
         Surface.Ready += (_, _) => MarkRevealed();
+        Surface.DropHandler = data =>
+        {
+            if (_disposed || !IsRunning) return false;
+            var content = Input.TerminalClipboard.Read(data, new Input.TransferFileStore(Core.AppPaths.ClipboardDir), materializeImage: true);
+            if (content.IsEmpty) return false;
+            content.Deliver(Paste, SendText, PasteFiles);
+            Surface.Focus();
+            return true;
+        };
+        Surface.TransferFailed += (_, error) => InputFailed?.Invoke(this, error.Message);
 
         Surface.Attach(Session);
 
@@ -292,6 +302,8 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     }
 
     public event EventHandler? Exited;
+
+    internal event Action<TerminalTab, string>? InputFailed;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

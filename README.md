@@ -58,6 +58,9 @@ Crashes are always logged to `%TEMP%\overshell-crash.log`.
 To exercise the link handling and shortcuts by hand, run `tools\Show-LinkTestCard.ps1`
 inside a tab: it prints every case with what should happen.
 
+`tools\Invoke-SelfTest.ps1 -Mode transfers` checks file/media drops through the real
+terminal and ConPTY, including detach/reattach, on a private desktop.
+
 ## Configuration
 
 Configuration lives in the first of `OVERSHELL_CONFIG_DIR`, `$XDG_CONFIG_HOME\overshell`,

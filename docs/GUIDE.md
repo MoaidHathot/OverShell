@@ -236,6 +236,11 @@ lets programs use a path even when they have no native image-paste command. Norm
 text paste uses plain text when rich text offers it. Clipboard contention is retried;
 a provider that still fails produces a status message.
 
+**Drag-and-drop.** Drop files, folders, text or clipboard-style media onto a terminal,
+including a detached tab. Files use the same quoted-path delivery as paste; bitmap and
+raw-media drops are saved as files, and text is pasted as text. Dropping creates
+references to the originals and does not move or delete them.
+
 Exports live under the state directory's `clipboard\` folder and remain available after
 a restart, so delayed reads and prompt history can still use them. **Open clipboard
 files folder** (`clipboard.openFiles`) opens that directory for managing these files.

@@ -37,6 +37,7 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
 
     private ITerminalSession? _session;
     private HwndHost? _container;
+    private Input.NativeDropTarget? _dropTarget;
     private ScrollBar? _scrollBar;
     private (ColorScheme Scheme, TerminalProfile Profile)? _theme;
     private TerminalPointer _pointer;
@@ -132,6 +133,12 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
 
     public event EventHandler? ViewportChanged;
 
+    public Func<IDataObject, bool>? DropHandler { get; set; }
+
+    public event EventHandler<Exception>? TransferFailed;
+
+    internal Input.NativeDropTarget? DropTarget => _dropTarget;
+
     /// <summary>
     /// The renderer's own underline for this font, provided the font it resolved is the one
     /// we think it is — which the observed cell size settles (see <see cref="AtlasFontMetrics"/>).
@@ -218,6 +225,9 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     public void Dispose()
     {
         _control.Loaded -= OnLoaded;
+        _dropTarget?.Dispose();
+        _dropTarget = null;
+        DropHandler = null;
 
         if (_container is { } container)
         {
@@ -244,6 +254,23 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
         {
             _container = container;
             container.MessageHook += OnContainerMessage;
+        }
+
+        if (_container is { Handle: var hwnd } && hwnd != 0 && _dropTarget?.Hwnd != hwnd)
+        {
+            _dropTarget?.Dispose();
+            _dropTarget = null;
+            try
+            {
+                _dropTarget = new Input.NativeDropTarget(hwnd,
+                    data => _session?.IsRunning == true && DropHandler is not null && Input.TerminalClipboard.CanRead(data),
+                    data => DropHandler?.Invoke(data) == true,
+                    error => TransferFailed?.Invoke(this, error));
+            }
+            catch (Exception error) when (error is ExternalException)
+            {
+                TransferFailed?.Invoke(this, error);
+            }
         }
 
         // The control mirrors every viewport move into its own scroll bar (TerminalScrolled

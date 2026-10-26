@@ -92,6 +92,11 @@ public interface ITerminalSurface : IDisposable
     /// </summary>
     event EventHandler? ViewportChanged;
 
+    /// <summary>Reads drop data before the native OLE callback returns; true when accepted.</summary>
+    Func<IDataObject, bool>? DropHandler { get; set; }
+
+    event EventHandler<Exception>? TransferFailed;
+
     /// <summary>
     /// Binds a session to this surface. A session that has not started yet is started as
     /// soon as the surface knows its grid size.

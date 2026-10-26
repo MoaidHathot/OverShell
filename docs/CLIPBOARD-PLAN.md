@@ -36,7 +36,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
 - [x] **4. Clipboard files/media.** All extensions, folders and multiple files; paths
   quoted for their target; explicit file delivery for clipboard-only media; clipboard
   failures handled; immutable transfer data shared by later input surfaces.
-- [ ] **5. Native drops.** Real OLE registration on the terminal HWND; drop data uses the
+- [x] **5. Native drops.** Real OLE registration on the terminal HWND; drop data uses the
   same transfer path; copy semantics; correct target after detach/reattach; disposal.
 - [ ] **6. Prompt attachments.** Paste, drop and an all-files picker; visible removable
   attachments; attachment-only prompts; correct broadcast/address routing; failed sends
@@ -101,3 +101,17 @@ per-user/session named pipe on every desktop. A test could hand over to the user
 instance. The launcher now gives each run a distinct inherited test identity; handoff
 tests within that run still share a pipe. Normal application identity is unchanged.
 The two focused identity/isolation tests pass.
+
+### 5. Native drops
+
+381 automated tests pass. Tests register/revoke real native HWND drop targets, negotiate
+COPY/LINK without MOVE, exercise failures/disposal, and invoke the COM vtable with an
+actual OLE data object to check the unmanaged callback signature and data marshaling.
+
+`tools/Invoke-SelfTest.ps1 -Mode transfers` on a private desktop: **15 passed, 0 failed,
+0 skipped**. The built app's real terminal and ConPTY received mixed files/folders with
+literal special-character paths; source bytes survived. Drops reached the detached tab,
+survived reattachment, exported bitmap/audio data and pasted plain text. Closing the tab
+revoked its registration. This run used scratch configuration/state and did not replace
+the system clipboard. WPF window fixtures initially reported ALREADYREGISTERED; changing
+the fixture to the same native-window kind as the terminal verified actual registration.
