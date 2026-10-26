@@ -327,46 +327,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
             return;
         }
 
-        var filtered = new StringBuilder(text.Length + 16);
-
-        if (_stream.BracketedPaste)
-        {
-            filtered.Append("\u001b[200~");
-        }
-
-        for (var i = 0; i < text.Length; i++)
-        {
-            var c = text[i];
-
-            if (c == '\r')
-            {
-                filtered.Append('\r');
-
-                if (i + 1 < text.Length && text[i + 1] == '\n')
-                {
-                    i++;
-                }
-            }
-            else if (c == '\n')
-            {
-                filtered.Append('\r');
-            }
-            else if (c < ' ' && c != '\t')
-            {
-                // Other control codes have no business being typed.
-            }
-            else
-            {
-                filtered.Append(c);
-            }
-        }
-
-        if (_stream.BracketedPaste)
-        {
-            filtered.Append("\u001b[201~");
-        }
-
-        Session.WriteInput(filtered.ToString());
+        Session.WriteInput(Core.Input.TerminalPaste.Encode(text, _stream.BracketedPaste));
     }
 
     /// <summary>

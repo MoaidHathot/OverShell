@@ -355,9 +355,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // Classic console behaviour: right-click copies a selection, else pastes — in the
         // main window's terminal or in a tear-off's.
-        router.RightClick = screenPoint =>
+        router.RightClick = (hwnd, shift) =>
         {
-            var tab = IsPointOverTerminal(screenPoint) ? ActiveTab : TearOffForRoot(_shortcuts.CurrentRoot)?.Tab;
+            var tab = TabForTerminalHwnd(hwnd);
             if (tab is null)
             {
                 return false;
@@ -370,26 +370,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             return true;
         };
-    }
-
-    /// <summary>
-    /// Hit-tests a screen point against the terminal area. Uses screen coordinates from
-    /// the message itself rather than <see cref="Mouse.GetPosition"/>, whose state is
-    /// stale while the native terminal owns the pointer.
-    /// </summary>
-    private bool IsPointOverTerminal(Point screenPoint)
-    {
-        if (!IsLoaded || TerminalHost.ActualWidth <= 0)
-        {
-            return false;
-        }
-
-        var topLeft = TerminalHost.PointToScreen(new Point(0, 0));
-        var bottomRight = TerminalHost.PointToScreen(
-            new Point(TerminalHost.ActualWidth, TerminalHost.ActualHeight));
-
-        return screenPoint.X >= topLeft.X && screenPoint.X <= bottomRight.X &&
-               screenPoint.Y >= topLeft.Y && screenPoint.Y <= bottomRight.Y;
     }
 
     /// <returns>True when a selection existed and was copied.</returns>

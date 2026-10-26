@@ -50,7 +50,9 @@ internal sealed class ShortcutRouter : IDisposable
     private const int WmLButtonDown = 0x0201;
     private const int WmLButtonUp = 0x0202;
     private const int WmLButtonDblClk = 0x0203;
+    private const int WmRButtonDown = 0x0204;
     private const int WmRButtonUp = 0x0205;
+    private const int WmCancelMode = 0x001F;
     private const int MkLButton = 0x0001;
     private const int MkShift = 0x0004;
     private const int MkControl = 0x0008;
@@ -72,6 +74,7 @@ internal sealed class ShortcutRouter : IDisposable
     private const int VkPacket = 0xE7;
 
     private readonly HashSet<IntPtr> _windows = [];
+    private readonly Input.RightClickGesture _rightClick = new();
     private IntPtr _windowHandle;
     private bool _pointerOverTerminal;
     private bool _disposed;
@@ -113,10 +116,11 @@ internal sealed class ShortcutRouter : IDisposable
     public IntPtr CurrentRoot { get; private set; }
 
     /// <summary>
-    /// Invoked on right-click, with the click point in screen coordinates.
-    /// Return true to swallow it. Terminals traditionally map this to copy-or-paste.
+    /// Invoked on right-button down for a native terminal HWND, with its Shift state.
+    /// Return true to own both press and release. The native control also pastes on
+    /// button-down, so ownership must be decided before it ever sees the press.
     /// </summary>
-    public Func<Point, bool>? RightClick { get; set; }
+    public Func<nint, bool, bool>? RightClick { get; set; }
 
     /// <summary>
     /// Mouse traffic addressed to a native terminal window. Return true to swallow the
@@ -227,6 +231,7 @@ internal sealed class ShortcutRouter : IDisposable
         }
 
         _disposed = true;
+        _rightClick.Cancel();
         ComponentDispatcher.ThreadPreprocessMessage -= OnPreprocessMessage;
     }
 
@@ -267,11 +272,23 @@ internal sealed class ShortcutRouter : IDisposable
 
                 break;
 
-            case WmRButtonUp:
-                if (IsOurs(msg.hwnd) && RightClick?.Invoke(new Point(msg.pt_x, msg.pt_y)) == true)
+            case WmRButtonDown:
+                _rightClick.Cancel();
+                if (IsOurs(msg.hwnd) && IsTerminalWindow(msg.hwnd))
                 {
-                    handled = true;
+                    var hwnd = msg.hwnd;
+                    var shift = ((long)msg.wParam & MkShift) != 0;
+                    handled = _rightClick.Press(hwnd, () => RightClick?.Invoke(hwnd, shift) == true);
                 }
+
+                break;
+
+            case WmRButtonUp:
+                handled = _rightClick.Release(msg.hwnd);
+                break;
+
+            case WmCancelMode:
+                _rightClick.Cancel();
 
                 break;
 

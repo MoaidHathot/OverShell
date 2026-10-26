@@ -29,7 +29,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
 
 - [x] **1. Image baseline.** Regression coverage for image/text precedence and native
   image paste; commit the preceding fix.
-- [ ] **2. Right-click ownership.** One copy or paste per gesture, matching release
+- [x] **2. Right-click ownership.** One copy or paste per gesture, matching release
   consumed, correct native HWND/tab, and one bracketed multiline paste.
 - [ ] **3. Mouse reporting.** Application-owned presses/releases pass through;
   Shift+right-click provides terminal copy/paste; teardown cannot leave stale ownership.
@@ -56,3 +56,15 @@ what was exercised and any environment-dependent behavior requiring manual confi
 Five new STA cases exercise real WPF data objects: bitmap with/without text, PNG-only,
 Unicode multiline text and empty data. Image delivery emits exactly one unbracketed
 paste key; text takes the text-paste path. The tests never replace the user's clipboard.
+
+### 2. Right-click ownership
+
+`dotnet test OverShell.slnx -c Debug -p:Platform=x64 --no-restore`: 344 passed.
+Press/release regression tests cover exactly one paste, copy without a following paste,
+foreign releases and cancellation. Native messages are intercepted on press and routed
+by terminal HWND, so window chrome and another tab cannot receive the action. Multiline
+and Unicode/control-character checks cover the text delivered to the terminal.
+
+Additional defect fixed: `TerminalTab.Paste` previously read the asynchronously changing
+bracketed-paste flag twice. Encoding now takes one snapshot, preventing an unmatched
+opening/closing bracket if the application changes mode during a paste.
