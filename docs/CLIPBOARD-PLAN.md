@@ -42,7 +42,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
   attachments; attachment-only prompts; correct broadcast/address routing; failed sends
   retain the draft; history preserves attachments.
 - [x] **7. Shift+Insert.** Default terminal paste; user overrides and WPF editing work.
-- [ ] **8. Final audit.** Revisit every requirement; full tests, focused private-desktop
+- [x] **8. Final audit.** Revisit every requirement; full tests, focused private-desktop
   in-process checks, build/diff checks, and fixes for defects uncovered along the way.
 
 ## Verification log
@@ -172,3 +172,25 @@ therefore do nothing in search/palette fields. Editing commands now invoke the f
 control's routed copy/paste command; non-editing clipboard commands still reach the
 command registry. Command IDs are handled consistently without case sensitivity.
 All 14 focused control/routing tests pass, including multiline caret placement.
+
+## Final requirement audit
+
+| Original finding | Result | Evidence |
+|---|---|---|
+| Image-only clipboard paste swallowed | Application paste key plus explicit image-to-file delivery | STA bitmap/PNG tests; live PNG export |
+| Explorer files/folders ignored | Ordered file lists, all extensions, quoted paths | File-list snapshots; real PowerShell arguments; live mixed-file drops |
+| File drag-and-drop absent | Native OLE targets and shared transfer reader | COM vtable test; live main/tear-off/reattach checks |
+| Right-click double action | Press ownership and one consumed release | Gesture regressions; real router and ConPTY paste-once checks |
+| Mouse-aware right-click intercepted | Both events pass through; Shift overrides | Fragmented mode tests; real child mode changes and router checks |
+| Prompt/broadcast attachments absent | Picker, paste/drop, chips, history and addressed/broadcast file delivery | WPF control tests; two live shells, attachment-only and rejected drafts |
+| Shift+Insert missing | Default, overridable paste binding | Binding/unbind tests; live terminal and prompt routing |
+| Additional defects encountered | Fixed and committed individually above | Isolation, virtual-file COM providers, HTML regression reproduction, text-field commands |
+
+Final full Release suite: **419 passed, 0 failed, 0 skipped**. Debug builds and focused
+checks passed during each step. The final Release application passed **27/27 transfers**
+and **13/13 promptattachments** checks on a private desktop; the existing **address**
+regression mode passed **12/12**. Builds and diff checks report no errors or warnings.
+
+Automated UI checks invoke in-process routing and native COM callbacks, and verify
+actual ConPTY delivery. Physical pointer gestures and the native file-picker interaction
+are covered by manual card cases 118-126. Source files use LF; no `nul` file is retained.

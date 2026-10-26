@@ -265,7 +265,7 @@ solution pins x64 so only that copy is shipped.
 | `OVERSHELL_PROFILE_ROOT` | a directory | Stands in for *Documents* when `integrations install shell` looks for the PowerShell profiles (tests) |
 | `OVERSHELL_SPIKES` | `1`, `find` | Run the §12.7 spikes in-process (`find`: spike 7, the UIA text provider as a search engine), log to `%TEMP%\overshell-spikes.log` |
 | `OVERSHELL_STATE_DIR` | a directory | State root override (`state.json`, `session.json`) |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17). Log: `%TEMP%\overshell-selftest.log`. Run through `tools\Invoke-SelfTest.ps1 -Mode <mode>`: a private desktop, so nothing takes the focus (§12.21); `-Visible` for the pixel checks |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused`, `transfers`, `promptattachments` | Run the end-to-end self-test in-process (§12.9–12.17): stream signals, endpoint, hook shims, process probe, palette focus, labels, views, layouts, reload, prompt bar, groups, explain, protocol handoff, skins; `opencode` runs the real `opencode run` with the installed plugin, `opencode-resume` resumes a session by id in a second process; `session1` then `session2` check restore across a restart (placement, tear-off, archive); `sessionend` sends WM_QUERYENDSESSION; `history` closes, reopens and lists sessions; `icons` renders the harness icons; the P5 modes (§12.14) each cover one batch - polish, the directory probe, the restore hold and close question, the previous screen, workspaces, strip overflow, the jump list, themes, tear-off chrome, find; `inject` the shell integration on the command line and `env` the registry-built environment (§12.15); the P6 modes one keyboard feature each (§12.16); `inbox` and `triage` the reply channels, inbox, toasts, mute and watch, `opencode-reply` the channel against the real OpenCode (§12.17); `transfers` and `promptattachments` cover clipboard routing, native drops and prompt file delivery (§12.26). Log: `%TEMP%\overshell-selftest.log`. Run through `tools\Invoke-SelfTest.ps1 -Mode <mode>`: a private desktop, so nothing takes the focus (§12.21); `-Visible` for the pixel checks |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one (a portable Terminal; tests that need profiles the machine lacks) |
 
 Every child process additionally receives `OVERSHELL_ENDPOINT`, `OVERSHELL_TOKEN`,
@@ -2792,6 +2792,42 @@ the theme's background), the tear-off asymmetry with the override, and the way b
 11 checks hidden, 4 pixel reads on screen.
 **Also.** Twenty doc comments had lost a line break in an earlier edit (`...overlay on    ///
 the previous tab`) and read as one line; split back.
+
+### 12.26 Clipboard and file input, across applications
+
+The audit began with an image paste swallowed by the text-only clipboard handler. The
+same boundary now handles Explorer file lists, directories, every file extension, raw
+clipboard media, HTML/RTF and virtual files supplied through `FileGroupDescriptor` plus
+indexed `FileContents`. Binary content becomes a persistent file under the state folder's
+`clipboard\`; terminal applications receive quoted paths. Native image-paste applications
+can still read the clipboard through Ctrl+V; `clipboard.pasteFiles` supplies paths to
+programs that prefer them. File delivery has no agent or MIME allowlist.
+
+**One owner for a click.** The pinned native control already copied/pasted on right-button
+down. OverShell's button-up handler performed a second action. The router now decides
+ownership before down reaches the control and consumes its matching release. Mouse-aware
+applications keep their gestures; Shift explicitly chooses terminal copy/paste. Ownership
+uses the native terminal HWND, including tear-offs, rather than a window-wide hit test.
+
+**One reader for each input surface.** Native terminal HWNDs register OLE drop targets;
+the prompt bar accepts clipboard and WPF drops plus an all-files picker. Media snapshots
+are read on the STA while providers own them. Copy/paste operations are ordered across
+retries and OLE reentrancy. Dropped originals are never moved. Virtual files support
+HGLOBAL, IStream and IStorage, with failed-batch cleanup. CF_HTML transport headers are
+decoded using UTF-8 byte offsets before exporting the document.
+
+**Drafts survive failure.** Prompt attachments are visible/removable, travel with history
+and share address/broadcast routing. Enter waits for pending paste. A rejected send keeps
+the draft, and the previous unsent draft returns when leaving history. Every target's
+file quoting is prepared before a broadcast. Shift+Insert and configured clipboard
+commands work in terminals and focused text fields.
+
+**Evidence.** [The implementation plan](docs/CLIPBOARD-PLAN.md) records each sequential
+commit's checks and the final requirement audit: 419 automated tests, plus private-desktop
+`transfers` (27 checks), `promptattachments` (13) and `address` (12). Native COM callbacks,
+the real router and ConPTY are exercised without system-wide synthetic input. The test
+launcher now isolates its named-pipe identity as well as its desktop.
+
 ---
 
 ## 13. Distribution

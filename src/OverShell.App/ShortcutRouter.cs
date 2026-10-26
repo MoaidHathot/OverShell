@@ -306,6 +306,14 @@ internal sealed class ShortcutRouter : IDisposable
         }
     }
 
+    /// <summary>Runs the routing decision in-process; does not post or dispatch native input.</summary>
+    internal bool RouteForDiagnostics(MSG message)
+    {
+        var handled = false;
+        OnPreprocessMessage(ref message, ref handled);
+        return handled;
+    }
+
     /// <summary>Only ever act on input genuinely destined for one of our windows; remembers which.</summary>
     private bool IsOurs(IntPtr hwnd)
     {

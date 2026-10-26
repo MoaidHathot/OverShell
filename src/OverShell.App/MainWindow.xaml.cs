@@ -381,6 +381,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
     }
 
+    internal bool RouteRightButtonForDiagnostics(nint hwnd, bool pressed, bool shift = false) =>
+        _shortcuts.RouteForDiagnostics(new MSG { hwnd = hwnd, message = pressed ? 0x0204 : 0x0205, wParam = shift ? 4 : 0 });
+
     /// <returns>True when a selection existed and was copied.</returns>
     private bool Copy() => Copy(TargetTab);
 

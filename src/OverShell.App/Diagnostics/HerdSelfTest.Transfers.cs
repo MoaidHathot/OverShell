@@ -136,6 +136,31 @@ internal static partial class HerdSelfTest
             await window.ClipboardIdle;
             tab.SendText("\r");
             Check(await TransferUntilAsync(() => File.Exists(shortcutResult) && File.ReadAllText(shortcutResult) == "shift insert"), "queued paste reaches its original shell even after switching tabs");
+
+            window.ActiveTab = tab;
+            var clicks = 0;
+            var rightClickResult = Path.Combine(root, "right-click.txt");
+            window.ClipboardReader = _ => { clicks++; return new TransferContent($"[IO.File]::WriteAllText('{Ps(rightClickResult)}', 'one paste')", []); };
+            Check(window.RouteRightButtonForDiagnostics(tab.TerminalHwnd, pressed: true), "the real router claims right-button down before the native control can paste");
+            Check(window.RouteRightButtonForDiagnostics(tab.TerminalHwnd, pressed: false), "the real router consumes the matching release");
+            await window.ClipboardIdle;
+            tab.SendText("\r");
+            Check(clicks == 1 && await TransferUntilAsync(() => File.Exists(rightClickResult) && File.ReadAllText(rightClickResult) == "one paste"), "one right-click reads the clipboard once and pastes one command through ConPTY");
+
+            window.ClipboardReader = _ => { clicks++; return TransferContent.Empty; };
+            tab.SendText("[Console]::Write(([string][char]27) + '[?1000h')\r");
+            Check(await TransferUntilAsync(() => tab.MouseTracking), "mouse reporting is observed from the actual child's terminal output");
+            var before = clicks;
+            Check(!window.RouteRightButtonForDiagnostics(tab.TerminalHwnd, pressed: true) && !window.RouteRightButtonForDiagnostics(tab.TerminalHwnd, pressed: false), "application-owned right-click press and release pass through the real router");
+            await window.ClipboardIdle;
+            Check(clicks == before, "application-owned right-click never reads the clipboard");
+            Check(window.RouteRightButtonForDiagnostics(tab.TerminalHwnd, pressed: true, shift: true) && window.RouteRightButtonForDiagnostics(tab.TerminalHwnd, pressed: false), "Shift overrides mouse reporting for the whole gesture");
+            await window.ClipboardIdle;
+            Check(clicks == before + 1, "Shift+right-click runs exactly one clipboard action");
+            var mainHwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            Check(!window.RouteRightButtonForDiagnostics(mainHwnd, pressed: true) && !window.RouteRightButtonForDiagnostics(mainHwnd, pressed: false), "right-click on window chrome is not treated as terminal paste");
+            tab.SendText("[Console]::Write(([string][char]27) + '[?1000l')\r");
+            Check(await TransferUntilAsync(() => !tab.MouseTracking), "mouse reporting is released when the child disables it");
         }
         finally
         {
