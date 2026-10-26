@@ -36,9 +36,11 @@ internal static class TerminalClipboard
     private static bool IsMetadata(string format) => format is
         "Preferred DropEffect" or "Performed DropEffect" or "Paste Succeeded" or "Shell IDList Array" or
         "FileName" or "FileNameW" or "FileGroupDescriptor" or "FileGroupDescriptorW" or "FileContents" or
-        "DataObject" or "DataObjectAttributes" or "DataObjectAttributesRequiringElevation";
+        "DataObject" or "DataObjectAttributes" or "DataObjectAttributesRequiringElevation" or
+        "InShellDragLoop" or "Logical Performed DropEffect" or "TargetCLSID" or "UntrustedDragDrop" or
+        "DragWindow" or "DropDescription" or "Shell Object Offsets";
 
-    public static bool CanRead(IDataObject data) => data.GetFormats().Any(f => !IsMetadata(f));
+    public static bool CanRead(IDataObject data) => VirtualFileTransfer.IsPresent(data) || data.GetFormats().Any(f => !IsMetadata(f));
 
     public static TransferContent Read(IDataObject data, TransferFileStore store, bool asFiles = false, bool materializeImage = false)
     {
@@ -48,6 +50,8 @@ internal static class TerminalClipboard
             var files = paths.Select(Path.GetFullPath).ToArray();
             return new(string.Empty, Array.AsReadOnly(files));
         }
+
+        if (VirtualFileTransfer.IsPresent(data)) return new(string.Empty, VirtualFileTransfer.Read(data, store));
 
         var image = data.GetDataPresent(DataFormats.Bitmap) || data.GetDataPresent("PNG") || data.GetDataPresent("image/png");
         if (image && !asFiles && !materializeImage) return new(string.Empty, [], ApplicationPaste: true);

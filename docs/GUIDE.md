@@ -228,6 +228,9 @@ does the same. Images take precedence when the clipboard also offers text.
 their paths are inserted together, quoted for the target shell. Multiple selections and
 every file extension are accepted, including PDFs, audio, video, archives and unknown
 formats. A file copied in Explorer retains its original path and contents.
+Applications that supply virtual files (such as mail attachments or archive entries)
+are supported too: OverShell saves their indexed file contents, names and folder hierarchy
+before delivering the resulting paths.
 
 The palette command **Paste clipboard as file paths** (`clipboard.pasteFiles`) also
 saves clipboard-only images, audio, HTML/RTF, text and raw binary data as files. Standard

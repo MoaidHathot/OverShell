@@ -139,3 +139,18 @@ send. File formatting is prepared for all targets before delivering a broadcast.
 unbinding. Live checks: `transfers` **17/17**, `promptattachments` **13/13**. Shift+Insert
 reaches a real shell through the shared paste command and reaches the focused prompt
 bar. Switching tabs while clipboard work is queued still delivers to the original tab.
+
+### Completion audit: virtual files
+
+The audit found that `FileGroupDescriptor`/`FileContents` was being treated as metadata
+and silently skipped. Following the Windows Shell clipboard contract, the shared reader
+now requests each virtual file by its native `FORMATETC.lindex`. Unicode/ANSI descriptor
+lists, HGLOBAL, IStream and IStorage contents are supported. Compound documents use
+`IStorage.CopyTo`; nested directories retain their hierarchy. Paths are published only
+after a complete batch; failed batches are removed.
+
+Tests use a real COM IDataObject provider, native streams/global memory/structured
+storage, byte comparisons, Unicode names, empty files, nested directories, invalid and
+truncated descriptors, and a provider failure midway through a batch.
+The full suite passes **404 tests**. Export tests also cover Windows device-like names
+with multiple extensions and superscript digits, without altering valid `COM0` names.

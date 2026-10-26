@@ -102,6 +102,19 @@ public class FileTransferTests
     });
 
     [Theory]
+    [InlineData("NUL.pdf.backup", "clipboard-NUL.pdf.backup")]
+    [InlineData("COM¹.txt", "clipboard-COM¹.txt")]
+    [InlineData("LPT2.any", "clipboard-LPT2.any")]
+    [InlineData("CONOUT$", "clipboard-CONOUT$")]
+    [InlineData("COM0.txt", "COM0.txt")]
+    public void Virtual_device_like_names_are_exported_as_regular_files(string name, string expected) => WithStore(store =>
+    {
+        var path = store.SaveText(name, "payload");
+        Assert.Equal(expected, Path.GetFileName(path));
+        Assert.Equal("payload", File.ReadAllText(path));
+    });
+
+    [Theory]
     [InlineData("pwsh.exe", false, FilePasteStyle.PowerShell)]
     [InlineData("C:\\Program Files\\PowerShell\\7\\pwsh.exe -NoLogo", false, FilePasteStyle.PowerShell)]
     [InlineData("\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoLogo", false, FilePasteStyle.PowerShell)]

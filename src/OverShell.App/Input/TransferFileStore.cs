@@ -10,18 +10,7 @@ internal sealed class TransferFileStore(string root)
 
     public string Save(string name, Action<Stream> write)
     {
-        // Providers can supply a filename, never a directory or a device name.
-        name = Path.GetFileName(name.Replace('\\', '/'));
-        name = string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).TrimEnd('.', ' ');
-        if (string.IsNullOrWhiteSpace(name)) name = "content.bin";
-        var stem = Path.GetFileNameWithoutExtension(name).TrimEnd('.', ' ');
-        if (stem.Equals("nul", StringComparison.OrdinalIgnoreCase) || stem.Equals("con", StringComparison.OrdinalIgnoreCase) ||
-            stem.Equals("prn", StringComparison.OrdinalIgnoreCase) || stem.Equals("aux", StringComparison.OrdinalIgnoreCase) ||
-            (stem.Length == 4 && (stem.StartsWith("com", StringComparison.OrdinalIgnoreCase) || stem.StartsWith("lpt", StringComparison.OrdinalIgnoreCase)) && char.IsAsciiDigit(stem[3])))
-        {
-            name = "clipboard-" + name;
-        }
-
+        name = SafeName(name);
         var directory = Path.Combine(Root, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var path = Path.Combine(directory, name);
@@ -34,11 +23,52 @@ internal sealed class TransferFileStore(string root)
         }
         catch
         {
-            try { Directory.Delete(directory, recursive: true); }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            RemoveIncomplete(directory);
             throw;
         }
+    }
+
+    internal static string SafeName(string name)
+    {
+        // Providers can supply a filename, never a directory or a device name.
+        name = Path.GetFileName(name.Replace('\\', '/'));
+        name = string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).TrimEnd('.', ' ');
+        if (string.IsNullOrWhiteSpace(name)) name = "content.bin";
+        var stem = name.Split('.')[0].TrimEnd(' ');
+        if (stem.Equals("nul", StringComparison.OrdinalIgnoreCase) || stem.Equals("con", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("prn", StringComparison.OrdinalIgnoreCase) || stem.Equals("aux", StringComparison.OrdinalIgnoreCase) ||
+            stem.Equals("conin$", StringComparison.OrdinalIgnoreCase) || stem.Equals("conout$", StringComparison.OrdinalIgnoreCase) ||
+            (stem.Length == 4 && (stem.StartsWith("com", StringComparison.OrdinalIgnoreCase) || stem.StartsWith("lpt", StringComparison.OrdinalIgnoreCase)) && (stem[3] is >= '1' and <= '9' or '¹' or '²' or '³')))
+        {
+            name = "clipboard-" + name;
+        }
+
+        return name;
+    }
+
+    internal IReadOnlyList<string> SaveBatch(IReadOnlyList<string> relativeRoots, Action<string> populate)
+    {
+        var directory = Path.Combine(Root, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            // Paths are published only after the whole batch succeeds. Renaming a populated
+            // directory can be denied on Windows while other file-system observers inspect it.
+            populate(directory);
+            return Array.AsReadOnly(relativeRoots.Select(path => Path.Combine(directory, path)).ToArray());
+        }
+        catch
+        {
+            RemoveIncomplete(directory);
+            throw;
+        }
+    }
+
+    private static void RemoveIncomplete(string directory)
+    {
+        try { Directory.Delete(directory, recursive: true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     public string SaveText(string name, string text) => Save(name, stream => stream.Write(Encoding.UTF8.GetBytes(text)));
