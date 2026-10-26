@@ -330,6 +330,11 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         Session.WriteInput(Core.Input.TerminalPaste.Encode(text, _stream.BracketedPaste));
     }
 
+    internal string FormatFiles(IEnumerable<string> paths) => Core.Input.FilePaste.Format(paths,
+        Core.Input.FilePaste.StyleFor(Profile.CommandLine, IsAgent, LastProcessImages));
+
+    internal void PasteFiles(IReadOnlyList<string> paths) => Paste(FormatFiles(paths));
+
     /// <summary>
     /// The link at an offset in a logical line, if any: a URL printed as text, else an OSC 8
     /// hyperlink whose visible text sits there. Pure text logic; safe on any thread.

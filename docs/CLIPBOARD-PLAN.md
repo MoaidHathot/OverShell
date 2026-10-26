@@ -33,7 +33,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
   consumed, correct native HWND/tab, and one bracketed multiline paste.
 - [x] **3. Mouse reporting.** Application-owned presses/releases pass through;
   Shift+right-click provides terminal copy/paste; teardown cannot leave stale ownership.
-- [ ] **4. Clipboard files/media.** All extensions, folders and multiple files; paths
+- [x] **4. Clipboard files/media.** All extensions, folders and multiple files; paths
   quoted for their target; explicit file delivery for clipboard-only media; clipboard
   failures handled; immutable transfer data shared by later input surfaces.
 - [ ] **5. Native drops.** Real OLE registration on the terminal HWND; drop data uses the
@@ -79,3 +79,17 @@ Additional defect fixed: RIS (`ESC c`) did not clear the observed mouse, paste o
 modes. The observer now resets them in stream order, including split output chunks.
 The existing mutually exclusive mouse-mode behavior was checked against the pinned
 native `TerminalInput::SetInputMode` rather than assuming modes were independent.
+
+### 4. Clipboard files and media
+
+371 tests passed, including a real Windows PowerShell process receiving paths containing
+spaces, apostrophes, dollar signs, backticks, shell punctuation, Unicode and a drive root.
+File-list tests preserve order and snapshot the provider's array. Binary tests preserve
+audio, video, PDF, AVIF and private-format bytes exactly; bitmap export is decoded back
+as PNG. RTF/plain-text precedence, failed-write cleanup, device-name/path containment,
+clipboard retry exhaustion and recovery after a failed provider are covered.
+
+Normal image paste keeps the application-owned paste key. `clipboard.pasteFiles` provides
+file delivery for every application, including clipboard-only images, audio, rich text,
+text and raw binary formats. Exported paths remain under the state folder's `clipboard`.
+Copy/paste requests are serialized on the UI context and failures produce a status message.

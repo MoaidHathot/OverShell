@@ -174,6 +174,10 @@ public partial class MainWindow
         c.Register("clipboard.copy", "Copy selection", "Clipboard", () => Copy());
         c.Register("clipboard.copyIfSelection", "Copy selection, else send to shell", "Clipboard", Copy);
         c.Register("clipboard.paste", "Paste", "Clipboard", Paste);
+        c.Register("clipboard.pasteFiles", "Paste clipboard as file paths", "Clipboard", () => Paste(TargetTab, asFiles: true),
+            description: "Files of any type; save clipboard-only images, audio, rich text or binary data as files");
+        c.Register("clipboard.openFiles", "Open clipboard files folder", "Clipboard", () => OpenFolder(Core.AppPaths.ClipboardDir),
+            description: "Files saved from the clipboard, retained for pasted paths and prompt history");
 
         foreach (var id in IntegrationInstaller.Ids)
         {

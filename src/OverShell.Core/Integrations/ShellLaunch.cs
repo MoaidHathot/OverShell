@@ -133,6 +133,13 @@ public static class ShellLaunch
 
         return 1;
     }
+    /// <summary>Resolves the executable at the start, including an unquoted Windows path with spaces.</summary>
+    public static string ProgramFromCommandLine(string commandLine)
+    {
+        var tokens = Tokenize(commandLine);
+        return tokens.Count == 0 ? string.Empty : ProgramName(string.Join(' ', tokens.Take(ProgramTokenCount(tokens))));
+    }
+
     /// <summary>The program's name without directory, quotes or extension, lower-case.</summary>
     public static string ProgramName(string token)
     {

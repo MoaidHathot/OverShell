@@ -28,6 +28,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private readonly TerminalTextProbe _textProbe = new();
     private TerminalTab? _activeTab;
     private OverlayHost? _overlay;
+    private readonly Input.ClipboardWorkQueue _clipboardWork = new();
+    private readonly Input.TransferFileStore _transferFiles = new(Core.AppPaths.ClipboardDir);
 
     // Link hover: any pointer movement over the terminal looks up the text underneath —
     // the same as Windows Terminal, which underlines on plain hover and needs Ctrl only to
@@ -384,43 +386,44 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return false;
         }
 
-        TrySetClipboard(selection);
+        QueueClipboard(async () =>
+        {
+            await Input.ClipboardAccess.RetryAsync(() => { Clipboard.SetText(selection); return true; });
+        });
         return true;
     }
 
     private void Paste() => Paste(TargetTab);
 
-    private void Paste(TerminalTab? tab)
+    private void Paste(TerminalTab? tab, bool asFiles = false)
     {
         if (tab is null)
         {
             return;
         }
 
-        try
+        QueueClipboard(async () =>
         {
-            if (Clipboard.GetDataObject() is { } data)
+            var content = await Input.ClipboardAccess.RetryAsync(() => Clipboard.GetDataObject() is { } data
+                ? Input.TerminalClipboard.Read(data, _transferFiles, asFiles)
+                : Input.TransferContent.Empty);
+            if (Tabs.Contains(tab))
             {
-                Input.TerminalClipboard.Paste(data, tab.Paste, tab.SendText);
+                DeliverTransfer(tab, content);
             }
-        }
-        catch (ExternalException)
-        {
-            // Another process had the clipboard locked; nothing useful to do.
-        }
+        });
     }
 
-    private static void TrySetClipboard(string text)
+    internal void DeliverTransfer(TerminalTab tab, Input.TransferContent content)
     {
-        try
-        {
-            Clipboard.SetText(text);
-        }
-        catch (ExternalException)
-        {
-            // Clipboard contention — swallow rather than crash the shell.
-        }
+        content.Deliver(tab.Paste, tab.SendText, tab.PasteFiles);
     }
+
+    private void QueueClipboard(Func<Task> action) => _clipboardWork.Enqueue(action, e =>
+    {
+        ShowStatusMessage($"Clipboard: {e.Message}");
+        _trace.Write($"clipboard: {e.GetType().Name}: {e.Message}");
+    });
 
     // ------------------------------------------------------------ hyperlinks
 

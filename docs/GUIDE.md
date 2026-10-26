@@ -224,6 +224,22 @@ explain / group / detach / close.
 `Ctrl+V` to the application so it can read and attach the image itself; right-click paste
 does the same. Images take precedence when the clipboard also offers text.
 
+**Files and other media.** Copy files or folders in Explorer and paste in the terminal:
+their paths are inserted together, quoted for the target shell. Multiple selections and
+every file extension are accepted, including PDFs, audio, video, archives and unknown
+formats. A file copied in Explorer retains its original path and contents.
+
+The palette command **Paste clipboard as file paths** (`clipboard.pasteFiles`) also
+saves clipboard-only images, audio, HTML/RTF, text and raw binary data as files. Standard
+media formats keep a suitable extension; an unknown binary payload gets `.bin`. This
+lets programs use a path even when they have no native image-paste command. Normal
+text paste uses plain text when rich text offers it. Clipboard contention is retried;
+a provider that still fails produces a status message.
+
+Exports live under the state directory's `clipboard\` folder and remain available after
+a restart, so delayed reads and prompt history can still use them. **Open clipboard
+files folder** (`clipboard.openFiles`) opens that directory for managing these files.
+
 Commands with no default chord of their own, for the palette or your own bindings:
 `tab.resume`, `tab.markAgent`, `tab.markShell`, `tab.last`, `tab.nextBlocked`,
 `tab.previousBlocked`, `tab.nextDone`, `sidebar.focus`, `dashboard.focus`, `prompt.blocked`,
