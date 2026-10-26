@@ -210,7 +210,8 @@ Terminal's chords; `Ctrl+T` stays with the shell) · `Ctrl+Tab` / `Ctrl+Shift+Ta
 strip, wrapping (or the most-recent switcher, opt-in) · `Ctrl+Shift+K` then a key: **herd mode** (`j`/`k` tabs, `b` the tab waiting longest,
 `1-9`, `l` last, `s`/`c` a cursor into the sidebar / cards, `i` the inbox, `m`/`w` mute / watch, `N`/`W` spawn an agent / on a worktree, `L` the herd log, `D` what changed while away, `?` the keys) · `` Win+` `` summon from
 anywhere · `@3 ...` / `#group ...` / `@blocked ...` in the prompt bar address it · `Alt+Shift+←/→` reorder ·
-`Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection).
+`Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection;
+`Ctrl+V` and `Shift+Insert` also paste).
 Right-click a tab, a sidebar row or a card for rename / treat as agent or shell / explain /
 close.
 

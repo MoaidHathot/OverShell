@@ -66,4 +66,5 @@
   { "keys": "ctrl+v",              "command": "clipboard.paste" },
   { "keys": "ctrl+shift+c",        "command": "clipboard.copy" },
   { "keys": "ctrl+shift+v",        "command": "clipboard.paste" },
+  { "keys": "shift+insert",        "command": "clipboard.paste" },
 ]

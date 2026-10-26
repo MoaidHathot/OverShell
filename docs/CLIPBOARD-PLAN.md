@@ -41,7 +41,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
 - [x] **6. Prompt attachments.** Paste, drop and an all-files picker; visible removable
   attachments; attachment-only prompts; correct broadcast/address routing; failed sends
   retain the draft; history preserves attachments.
-- [ ] **7. Shift+Insert.** Default terminal paste; user overrides and WPF editing work.
+- [x] **7. Shift+Insert.** Default terminal paste; user overrides and WPF editing work.
 - [ ] **8. Final audit.** Revisit every requirement; full tests, focused private-desktop
   in-process checks, build/diff checks, and fixes for defects uncovered along the way.
 
@@ -132,3 +132,10 @@ bitmap paste into the real prompt bar.
 Old defects fixed in this path: the bar cleared drafts before delivery was acknowledged;
 history discarded the unsent draft; partly unmatched addresses could cause a partial
 send. File formatting is prepared for all targets before delivering a broadcast.
+
+### 7. Shift+Insert
+
+388 automated tests pass, including default binding resolution and explicit user
+unbinding. Live checks: `transfers` **17/17**, `promptattachments` **13/13**. Shift+Insert
+reaches a real shell through the shared paste command and reaches the focused prompt
+bar. Switching tabs while clipboard work is queued still delivers to the original tab.

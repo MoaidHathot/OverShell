@@ -210,7 +210,7 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+Enter` | `prompt.toggle` | Prompt bar |
 | `Ctrl+Shift+B` | `prompt.broadcast` | Prompt bar aimed at every agent |
 | `Ctrl+C` | `clipboard.copyIfSelection` | Copies when something is selected, else reaches the shell as an interrupt |
-| `Ctrl+V`, `Ctrl+Shift+V` | `clipboard.paste` | Paste (bracketed when the application asked for it) |
+| `Ctrl+V`, `Ctrl+Shift+V`, `Shift+Insert` | `clipboard.paste` | Paste text, files or media (text is bracketed when the application asked for it) |
 | `Ctrl+Shift+C` | `clipboard.copy` | Copy |
 
 Right-click in the terminal copies a selection, else pastes. Applications that request
@@ -220,7 +220,7 @@ the strip, the list, the rail, the sidebar) opens a menu with rename / agent or 
 explain / group / detach / close.
 
 **Pasting images.** Copy an image or take a screenshot, then press `Ctrl+V` or
-`Ctrl+Shift+V` in an application such as OpenCode. For clipboard images, OverShell sends
+`Ctrl+Shift+V` (or `Shift+Insert`) in an application such as OpenCode. For clipboard images, OverShell sends
 `Ctrl+V` to the application so it can read and attach the image itself; right-click paste
 does the same. Images take precedence when the clipboard also offers text.
 

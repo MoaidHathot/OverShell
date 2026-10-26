@@ -44,6 +44,9 @@ internal static partial class HerdSelfTest
             Check(window.DispatchChord(System.Windows.Input.Key.V, System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift), "Ctrl+Shift+V is handled by the focused prompt bar");
             await bar.ClipboardIdle;
             Check(bar.Attachments.Select(a => a.Path).SequenceEqual(paths), "clipboard files become visible prompt attachments of any type");
+            Check(window.DispatchChord(System.Windows.Input.Key.Insert, System.Windows.Input.ModifierKeys.Shift), "Shift+Insert routes to the focused prompt bar");
+            await bar.ClipboardIdle;
+            Check(bar.Attachments.Select(a => a.Path).SequenceEqual(paths), "Shift+Insert pastes files into the bar without duplicating attachments");
             Check(((System.Windows.Controls.ItemsControl)bar.FindName("AttachmentItems")).Items.Count == 3 && ((System.Windows.Controls.Button)bar.FindName("BtnAttach")).IsVisible, "attachment chips and the all-files picker button are present");
 
             var broadcastPrefix = $"& {{ [IO.File]::WriteAllLines((Join-Path '{Ps(root)}' ($env:OVERSHELL_TAB_ID + '.txt')), [string[]]$args, [Text.UTF8Encoding]::new($false)) }}";
@@ -121,6 +124,24 @@ internal static partial class HerdSelfTest
         var target = surface.DropTarget;
         Check(target is { IsRegistered: true } && target.Hwnd == tab.TerminalHwnd, "OLE drop target is registered on the real terminal HWND");
         if (target is null) return;
+
+        var oldReader = window.ClipboardReader;
+        var shortcutResult = Path.Combine(root, "shift-insert.txt");
+        try
+        {
+            window.ClipboardReader = _ => new TransferContent($"[IO.File]::WriteAllText('{Ps(shortcutResult)}', 'shift insert')", []);
+            tab.Surface.Focus();
+            Check(window.DispatchChord(System.Windows.Input.Key.Insert, System.Windows.Input.ModifierKeys.Shift), "Shift+Insert resolves to terminal paste");
+            window.ActiveTab = first; // Queued clipboard completion must keep its original target.
+            await window.ClipboardIdle;
+            tab.SendText("\r");
+            Check(await TransferUntilAsync(() => File.Exists(shortcutResult) && File.ReadAllText(shortcutResult) == "shift insert"), "queued paste reaches its original shell even after switching tabs");
+        }
+        finally
+        {
+            window.ClipboardReader = oldReader;
+            window.ActiveTab = tab;
+        }
 
         var errors = new List<string>();
         tab.InputFailed += (_, error) => errors.Add(error);

@@ -30,6 +30,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private OverlayHost? _overlay;
     private readonly Input.ClipboardWorkQueue _clipboardWork = new();
     private readonly Input.TransferFileStore _transferFiles = new(Core.AppPaths.ClipboardDir);
+    internal Func<bool, Input.TransferContent> ClipboardReader { get; set; }
+    internal Task ClipboardIdle => _clipboardWork.Completion;
 
     // Link hover: any pointer movement over the terminal looks up the text underneath —
     // the same as Windows Terminal, which underlines on plain hover and needs Ctrl only to
@@ -68,6 +70,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     public MainWindow()
     {
+        ClipboardReader = asFiles => Clipboard.GetDataObject() is { } data
+            ? Input.TerminalClipboard.Read(data, _transferFiles, asFiles)
+            : Input.TransferContent.Empty;
         _catalog = ProfileCatalog.Load();
 
         // Settings, rules, persisted labels and the integration endpoint come first: the
@@ -405,9 +410,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         QueueClipboard(async () =>
         {
-            var content = await Input.ClipboardAccess.RetryAsync(() => Clipboard.GetDataObject() is { } data
-                ? Input.TerminalClipboard.Read(data, _transferFiles, asFiles)
-                : Input.TransferContent.Empty);
+            var content = await Input.ClipboardAccess.RetryAsync(() => ClipboardReader(asFiles));
             if (Tabs.Contains(tab))
             {
                 DeliverTransfer(tab, content);

@@ -81,6 +81,8 @@ public class KeybindingMapTests
         Assert.Equal("tab.switchTo.3", Resolve(map, "alt+3"));
         Assert.Equal("clipboard.copyIfSelection", Resolve(map, "ctrl+c"));
         Assert.Equal("clipboard.paste", Resolve(map, "ctrl+v"));
+        Assert.Equal("clipboard.paste", Resolve(map, "ctrl+shift+v"));
+        Assert.Equal("clipboard.paste", Resolve(map, "shift+insert"));
         Assert.Equal("clipboard.copy", Resolve(map, "ctrl+shift+c"));
         Assert.Equal("palette.commands", Resolve(map, "ctrl+shift+p"));
         Assert.Equal("terminal.find", Resolve(map, "ctrl+shift+f"));
@@ -98,6 +100,7 @@ public class KeybindingMapTests
                 // user overrides
                 [
                   { "keys": "ctrl+shift+t", "command": "unbound" },
+                  { "keys": "shift+insert", "command": "unbound" },
                   { "keys": "ctrl+n", "command": "tab.new" },
                   { "keys": "ctrl+shift+j", "command": "view.herd" },
                   { "keys": "bogus", "command": "tab.new" },
@@ -107,6 +110,7 @@ public class KeybindingMapTests
             var map = KeybindingMap.Load(file);
 
             Assert.Null(Resolve(map, "ctrl+shift+t"));
+            Assert.Null(Resolve(map, "shift+insert"));
             Assert.Equal("tab.new", Resolve(map, "ctrl+n"));
             Assert.Equal("view.herd", Resolve(map, "ctrl+shift+j"));
             Assert.Contains(map.Problems, p => p.Contains("bogus"));
