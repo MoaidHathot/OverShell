@@ -93,3 +93,11 @@ Normal image paste keeps the application-owned paste key. `clipboard.pasteFiles`
 file delivery for every application, including clipboard-only images, audio, rich text,
 text and raw binary formats. Exported paths remain under the state folder's `clipboard`.
 Copy/paste requests are serialized on the UI context and failures produce a status message.
+
+### Additional defect: private-desktop test isolation
+
+Before running live checks, source inspection found that `SingleInstance` used the same
+per-user/session named pipe on every desktop. A test could hand over to the user's live
+instance. The launcher now gives each run a distinct inherited test identity; handoff
+tests within that run still share a pipe. Normal application identity is unchanged.
+The two focused identity/isolation tests pass.

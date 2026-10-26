@@ -214,6 +214,7 @@ if (-not $KeepState) { Remove-Item -LiteralPath $StateDir -Recurse -Force -Error
 
 $environment = @{
     OVERSHELL_SELFTEST     = $Mode
+    OVERSHELL_SELFTEST_INSTANCE = [Guid]::NewGuid().ToString('N')
     OVERSHELL_CONFIG_DIR   = $ConfigDir
     OVERSHELL_STATE_DIR    = $StateDir
     OVERSHELL_WT_SETTINGS  = (Join-Path $temp 'overshell-wt-scratch.json')

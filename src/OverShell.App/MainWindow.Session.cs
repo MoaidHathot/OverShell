@@ -929,9 +929,18 @@ internal sealed class SingleInstance : IDisposable
     public SingleInstance()
     {
         // Per user, per session: two users on one machine, or an RDP session, each get their own.
-        var user = $"{Environment.UserDomainName}\\{Environment.UserName}".ToLowerInvariant();
-        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(user)))[..16].ToLowerInvariant();
-        _pipeName = $"overshell-{hash}-{System.Diagnostics.Process.GetCurrentProcess().SessionId}";
+        _pipeName = PipeNameFor($"{Environment.UserDomainName}\\{Environment.UserName}",
+            System.Diagnostics.Process.GetCurrentProcess().SessionId,
+            Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST_INSTANCE"));
+    }
+
+    internal static string PipeNameFor(string user, int session, string? testInstance)
+    {
+        static string Hash(string value) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(value)))[..16].ToLowerInvariant();
+        var name = $"overshell-{Hash(user.ToLowerInvariant())}-{session}";
+        // A private desktop does not isolate named pipes. The self-test launcher supplies
+        // a per-run identity; children inherit it so tests of handoff still exercise IPC.
+        return string.IsNullOrEmpty(testInstance) ? name : name + "-test-" + Hash(testInstance);
     }
 
     /// <summary>Raised on a background thread with the handed-over arguments.</summary>
