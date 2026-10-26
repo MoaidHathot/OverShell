@@ -3,10 +3,14 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <UseWPF>true</UseWPF>
     <!-- Tests are not shipped; the artifacts trimming and RID pinning from Directory.Build.props still apply. -->
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- WPF removes these SDK implicit imports; the existing core tests use them. -->
+    <Using Include="System.IO" />
+    <Using Include="System.Net.Http" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
@@ -15,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OverShell.Core\OverShell.Core.csproj" />
     <ProjectReference Include="..\..\src\OverShell.Config\OverShell.Config.csproj" />
+    <ProjectReference Include="..\..\src\OverShell.App\OverShell.App.csproj" />
   </ItemGroup>
 
 </Project>

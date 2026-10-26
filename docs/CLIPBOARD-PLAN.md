@@ -27,7 +27,7 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
 
 ## Sequence and acceptance
 
-- [ ] **1. Image baseline.** Regression coverage for image/text precedence and native
+- [x] **1. Image baseline.** Regression coverage for image/text precedence and native
   image paste; commit the preceding fix.
 - [ ] **2. Right-click ownership.** One copy or paste per gesture, matching release
   consumed, correct native HWND/tab, and one bracketed multiline paste.
@@ -49,3 +49,10 @@ routing without injecting system-wide keyboard or mouse events (DESIGN.md 7.8).
 
 Each implementation commit records its focused checks here. The final audit records
 what was exercised and any environment-dependent behavior requiring manual confirmation.
+
+### 1. Image baseline
+
+`dotnet test OverShell.slnx -c Debug -p:Platform=x64 --no-restore`: 338 passed.
+Five new STA cases exercise real WPF data objects: bitmap with/without text, PNG-only,
+Unicode multiline text and empty data. Image delivery emits exactly one unbracketed
+paste key; text takes the text-paste path. The tests never replace the user's clipboard.

@@ -217,6 +217,11 @@ Right-click in the terminal copies a selection, else pastes. Right-click on a ta
 the strip, the list, the rail, the sidebar) opens a menu with rename / agent or shell /
 explain / group / detach / close.
 
+**Pasting images.** Copy an image or take a screenshot, then press `Ctrl+V` or
+`Ctrl+Shift+V` in an application such as OpenCode. For clipboard images, OverShell sends
+`Ctrl+V` to the application so it can read and attach the image itself; right-click paste
+does the same. Images take precedence when the clipboard also offers text.
+
 Commands with no default chord of their own, for the palette or your own bindings:
 `tab.resume`, `tab.markAgent`, `tab.markShell`, `tab.last`, `tab.nextBlocked`,
 `tab.previousBlocked`, `tab.nextDone`, `sidebar.focus`, `dashboard.focus`, `prompt.blocked`,

@@ -418,9 +418,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         try
         {
-            if (Clipboard.ContainsText())
+            if (Clipboard.GetDataObject() is { } data)
             {
-                tab.Paste(Clipboard.GetText());
+                Input.TerminalClipboard.Paste(data, tab.Paste, tab.SendText);
             }
         }
         catch (ExternalException)
