@@ -33,12 +33,17 @@ internal static class TerminalClipboard
         ["TaggedImageFileFormat"] = ".tiff", ["DeviceIndependentBitmap"] = ".dib",
     };
 
-    private static bool IsMetadata(string format) => format is
-        "Preferred DropEffect" or "Performed DropEffect" or "Paste Succeeded" or "Shell IDList Array" or
-        "FileName" or "FileNameW" or "FileGroupDescriptor" or "FileGroupDescriptorW" or "FileContents" or
-        "DataObject" or "DataObjectAttributes" or "DataObjectAttributesRequiringElevation" or
-        "InShellDragLoop" or "Logical Performed DropEffect" or "TargetCLSID" or "UntrustedDragDrop" or
-        "DragWindow" or "DropDescription" or "Shell Object Offsets";
+    private static readonly HashSet<string> MetadataFormats = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Preferred DropEffect", "Performed DropEffect", "Paste Succeeded", "Shell IDList Array",
+        "FileName", "FileNameW", "FileGroupDescriptor", "FileGroupDescriptorW", "FileContents",
+        "DataObject", "DataObjectAttributes", "DataObjectAttributesRequiringElevation",
+        "InShellDragLoop", "Logical Performed DropEffect", "TargetCLSID", "UntrustedDragDrop",
+        "DragWindow", "DropDescription", "Shell Object Offsets",
+    };
+
+    private static bool IsMetadata(string format) => MetadataFormats.Contains(format);
+    private static bool IsRichText(string format) => format.Equals(DataFormats.Html, StringComparison.OrdinalIgnoreCase) || format.Equals(DataFormats.Rtf, StringComparison.OrdinalIgnoreCase);
 
     public static bool CanRead(IDataObject data) => VirtualFileTransfer.IsPresent(data) || data.GetFormats().Any(f => !IsMetadata(f));
 
@@ -75,7 +80,7 @@ internal static class TerminalClipboard
         var formats = data.GetFormats(autoConvert: false).Where(f => !IsMetadata(f)).ToArray();
         // Raw media takes precedence over an accompanying caption or URL. Ordinary rich
         // text still uses its plain-text representation unless file delivery was requested.
-        foreach (var format in formats.Where(f => Extensions.ContainsKey(f) && f != DataFormats.Html && f != DataFormats.Rtf))
+        foreach (var format in formats.Where(f => Extensions.ContainsKey(f) && !IsRichText(f)))
         {
             var value = data.GetData(format, autoConvert: false);
             if (value is Stream or byte[] or string) return File(store.SaveData("clipboard" + Extensions[format], value));
@@ -90,6 +95,7 @@ internal static class TerminalClipboard
             if (format == DataFormats.Bitmap || format == DataFormats.FileDrop) continue;
             var value = data.GetData(format, autoConvert: false);
             if (value is not (Stream or byte[] or string)) continue;
+            if (format.Equals(DataFormats.Html, StringComparison.OrdinalIgnoreCase)) return File(HtmlClipboard.Save(store, value));
             var extension = Extensions.GetValueOrDefault(format) ?? (value is string ? ".txt" : ".bin");
             return File(store.SaveData("clipboard" + extension, value));
         }

@@ -154,3 +154,12 @@ storage, byte comparisons, Unicode names, empty files, nested directories, inval
 truncated descriptors, and a provider failure midway through a batch.
 The full suite passes **404 tests**. Export tests also cover Windows device-like names
 with multiple extensions and superscript digits, without altering valid `COM0` names.
+
+### Completion audit: HTML export fidelity
+
+Five regression cases first reproduced clipboard transport headers leaking into exported
+HTML files. The reader now follows the CF_HTML contract: UTF-8 byte offsets, CR/LF/CRLF
+headers, context or fragment extraction, and fragment-marker fallback for stale offsets.
+An invalid envelope is reported before creating a file. Standalone HTML is marked UTF-8;
+normal paste still uses a supplied plain-text representation. All eight focused HTML
+tests pass, including strings/streams, Unicode, case-insensitive format names and errors.

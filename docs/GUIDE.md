@@ -238,6 +238,8 @@ media formats keep a suitable extension; an unknown binary payload gets `.bin`. 
 lets programs use a path even when they have no native image-paste command. Normal
 text paste uses plain text when rich text offers it. Clipboard contention is retried;
 a provider that still fails produces a status message.
+HTML file export extracts the document or fragment from the clipboard envelope and
+preserves its UTF-8 encoding, so clipboard headers do not appear in the saved document.
 
 **Drag-and-drop.** Drop files, folders, text or clipboard-style media onto a terminal,
 including a detached tab. Files use the same quoted-path delivery as paste; bitmap and
