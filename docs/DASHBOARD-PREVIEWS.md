@@ -61,3 +61,25 @@ reports and screenshots are retained under `artifacts/selftest/dashboard-preview
 All eight source grids survived the view transitions. The busy text dashboard took
 56 UIA snapshots in the measured interval. These are comparison measurements, not
 on-screen rendering evidence; the GPU column sums the process's matching engine counters.
+
+### Native proof
+
+The local terminal fork commit `0f7770824` provides a token-based composition mirror
+and a bounded, versioned styled-viewport snapshot ABI. It is packaged locally as
+`OverShell.Terminal.Wpf 1.26.260930.4-preview.1` (x64). Mirrors share the renderer's
+surface, fit its rendered size, track swap-chain replacement and remove their visuals
+on disposal/source teardown. Short-lived composition targets are pruned from the cache.
+
+The proof passed **20 input-desktop checks**, including red-to-green pixels from a
+hidden source, the fitted image's far edge, clipping, and unchanged native/managed
+grids. The opaque path also passed its styled-snapshot checks. Native snapshots retain
+foreground/background colours, bold/italic/underline and wide Unicode; the fixture
+explicitly uses UTF-8 so Windows PowerShell's OEM encoding cannot replace CJK with '?'.
+
+With the native API installed but the original text dashboard still in use, the next
+8-tab run measured terminal-idle/dashboard-idle/dashboard-busy/hidden-busy CPU at
+7.71% / 1.24% / 14.06% / 31.44% of one core. Busy allocations were 36.49 MiB and
+private bytes 327.7 MiB; there were **zero preview leases, styled captures and geometry
+updates**, as expected before integration. The CPU spread makes a single short timing
+insufficient to claim improvement/regression; final comparisons will include matched
+text/live runs and distinguish observer/system variability from preview work.

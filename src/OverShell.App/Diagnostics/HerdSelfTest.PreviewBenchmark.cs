@@ -70,6 +70,10 @@ internal static partial class HerdSelfTest
             {
                 stage, version = App.InformationalVersion, tabs = count, desktop = OnInputDesktop ? "input" : "private",
                 composed = Terminal.TerminalFactory.Composition.Enabled, mode = Environment.GetEnvironmentVariable("OVERSHELL_PREVIEW_MODE") ?? "auto",
+                nativeSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Microsoft.Terminal.Control.dll")))),
+                liveLeases = Terminal.WindowsTerminal.NativeTerminalPreview.ActiveLeases,
+                styledCaptures = Terminal.WindowsTerminal.NativeTerminalPreview.SnapshotCount,
+                geometryUpdates = Terminal.WindowsTerminal.NativeTerminalPreview.GeometryUpdates,
                 processorCount = Environment.ProcessorCount, grid = new { columns = grids[0].Columns, rows = grids[0].Rows }, sameGrids, phases,
             };
             var path = Path.Combine(AppPaths.StateRoot, "preview-benchmark.json");
