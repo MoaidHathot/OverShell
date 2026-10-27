@@ -175,7 +175,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (_activeTab is not null)
             {
                 _activeTab.IsActive = true;
-                Title = $"{_activeTab.Title} — OverShell";
+                Title = $"{_activeTab.Label} — OverShell";
                 _tabStrip.EnsureVisible(_activeTab);
             }
 
@@ -193,10 +193,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ------------------------------------------------------------ tab model
 
-    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null)
+    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null, string? namingId = null, string? userLabel = null)
     {
-        var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher, _agents, preamble: preamble);
-        tab.UserLabel = _state.LabelFor(profile.Id, tab.WorkingDirectory);
+        if (Tabs.Any(t => string.Equals(t.NamingId, namingId, StringComparison.OrdinalIgnoreCase))) namingId = null;
+        var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher, _agents, userLabel, preamble, namingId);
+        tab.LabelInputsChanged += _ => RefreshTabLabels();
 
         // Extension state restored with the tab, before any extension hears of it.
         if (extra is not null)
@@ -209,9 +210,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         tab.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(TerminalTab.Title) && ReferenceEquals(tab, ActiveTab))
+            if (e.PropertyName == nameof(TerminalTab.Label) && ReferenceEquals(tab, ActiveTab))
             {
-                Title = $"{tab.Title} — OverShell";
+                Title = $"{tab.Label} — OverShell";
             }
         };
         tab.AttentionRequested += OnAttention;
@@ -228,6 +229,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         tab.ScreenWatched = _settings.ViewFor(_viewId).Content == ViewContent.Dashboard || _palette is not null;
 
         Tabs.Add(tab);
+        RefreshTabLabels();
         _tabsById[tab.Id] = tab;
         TerminalHost.Children.Add(tab.View);
         // The surface was created at the configured opacity; the window it lands in may be inactive.
@@ -277,6 +279,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         tab.Dispose();
 
         Tabs.RemoveAt(index);
+        RefreshTabLabels();
         _tabsById.Remove(tab.Id);
         _notifications?.Viewed(tab.Id);
         TerminalHost.Children.Remove(tab.View);

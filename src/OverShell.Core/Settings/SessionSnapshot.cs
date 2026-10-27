@@ -30,6 +30,15 @@ public sealed class SavedTab
 
     public string? Label { get; init; }
 
+    /// <summary>Persistent identity for duplicate-label qualifiers; the integration Id stays per-run.</summary>
+    public string? NamingId { get; init; }
+
+    public string? SessionTitle { get; init; }
+
+    public string? TerminalTitle { get; init; }
+
+    public string? Project { get; init; }
+
     public string? Group { get; init; }
 
     /// <summary>Harness rule-set id when an agent was running here; the restore may offer to resume it.</summary>

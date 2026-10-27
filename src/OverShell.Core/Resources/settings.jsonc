@@ -175,9 +175,12 @@
     }
   },
 
-  // Tab items: twoLine shows the state · project line under the label (strip and list);
+  // Tab items: twoLine shows project and state under the session/task label (strip and list);
   // showHarnessGlyph shows the harness icon (OpenCode, Copilot, ...) on agent tabs.
   "tabs": {
+    // Primary label: session/task title (default), project first, or the harness name.
+    // Manual tab names override this. Duplicate automatic names get visible qualifiers.
+    "labelMode": "session",
     "twoLine": true,
     "showHarnessGlyph": true
   }

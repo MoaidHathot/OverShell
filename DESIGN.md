@@ -2828,6 +2828,52 @@ commit's checks and the final requirement audit: 419 automated tests, plus priva
 the real router and ConPTY are exercised without system-wide synthetic input. The test
 launcher now isolates its named-pipe identity as well as its desktop.
 
+### 12.27 Session-aware names and independent tab identity
+
+Every agent tab previously used the harness name as its primary label, leaving the useful
+session name in a smaller truncated activity line. `tabs.labelMode` now selects `session`
+(the default), `project`, or `harness`, live from settings or the palette. Explicit custom
+names win. Session metadata and meaningful terminal titles supply the task name; project
+and harness are fallbacks. Activity summaries remain separate. The second line carries
+project/branch and state, retaining activity when it adds information rather than repeating
+the name.
+
+Duplicate automatic names are qualified by project and then a short identifier placed
+before the text, where ellipsis cannot hide it. `NamingId` persists with each `SavedTab`;
+the runtime tab id used by integrations still changes on restart. Reordering cannot change
+the qualifier, and reopening the same history entry twice creates a new identity for the
+second copy. Custom labels live only on their saved tab, eliminating the profile/directory
+cache that gave a new tab another session's name. Existing saved names survive; the old
+cache file is kept. Captions, tear-offs, switcher, sidebar, dashboard and history use the
+same names, with full metadata in tooltips and search.
+
+Integrations can report `session.title`, `cwd` and `metadataOnly`. Renames do not finish
+turns or generate completion notifications. Session changes clear old title/activity and
+request identity; stale reports are rejected before they can alter harness, title, cwd,
+resume commands or requests. Explicitly untitled sessions cannot inherit an old title.
+
+The OpenCode bundle now has V2 `index.ts` and `tui.ts` entrypoints. Its per-client bridge
+reads the selected route and cached session data; shared-service events cannot pick a
+different client's session. It observes renames and existing-session navigation without
+a new turn and supports permission/form/prompt replies. Installation migrates only the
+owned V1 entrypoint and preserves user configuration. Cleanup aborts polls, removes the
+timer and releases integration authority so detector/title fallbacks resume.
+
+A real V2.0.26 run caught two issues that mocks missed: `session.create` returns the session
+directly, and leaving the V1 entrypoint beside the V2 directory produces a failed-plugin
+badge. Both were fixed. Another old bug was exposed by reported session directories:
+re-scanning the terminal tail replayed an old OSC directory over new metadata. The
+incremental announcement reader now consumes each announcement once, honors the latest
+OSC 7/9;9 value and keeps announcements before a large output chunk.
+
+Verification: 456 C# tests, nine tests executing the shipped TUI plugin, live `labels`
+checks, two-process `labels1`/`labels2` restore checks, and two real OpenCode V2 clients
+with title emission disabled. The V2 client check uses scratch config/database and only
+creates, renames and navigates sessions; it makes no model requests. Existing polish and
+history checks also pass. The OpenCode bridge tests run in CI and release validation.
+The focused live runs passed 25 label checks, 1 save check, 7 restore checks, 12 real-client
+checks, 14 polish checks and 14 history checks, with no failures or skips.
+
 ---
 
 ## 13. Distribution

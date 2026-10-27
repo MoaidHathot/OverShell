@@ -47,6 +47,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+
       - name: Build (warnings are errors)
         run: dotnet build OverShell.slnx -c Debug -p:Platform=x64 -warnaserror
 
@@ -54,6 +58,9 @@ jobs:
         run: >
           dotnet test tests/OverShell.Tests/OverShell.Tests.csproj -c Debug -p:Platform=x64
           --logger "trx;LogFileName=OverShell.Tests.trx" --results-directory artifacts/test-results
+
+      - name: Test OpenCode V2 bridge
+        run: node --experimental-vm-modules --test tests/OverShell.Tests/OpenCodeV2Bridge.test.mjs
 
       # Same script the release runs, minus signing - so packaging cannot rot between tags.
       - name: Release artifacts (dry run)

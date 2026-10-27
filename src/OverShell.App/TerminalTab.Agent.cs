@@ -85,13 +85,13 @@ public sealed partial class TerminalTab
 
     public bool Unread => Agent.Unread;
 
-    /// <summary>The name the user gave this tab, if any. Persisted by the window against profile + directory.</summary>
+    /// <summary>The name the user gave this tab, persisted on its own saved-tab entry.</summary>
     public string? UserLabel
     {
         get => _userLabel;
         set
         {
-            var next = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            var next = Core.Tabs.TabLabels.Clean(value) is { Length: > 0 } label ? label : null;
             if (next == _userLabel)
             {
                 return;
@@ -99,12 +99,11 @@ public sealed partial class TerminalTab
 
             _userLabel = next;
             Raise();
-            Raise(nameof(Label));
+            RefreshLabelInputs();
+            Raise(nameof(Detail));
+            Raise(nameof(SidebarDetail));
         }
     }
-
-    /// <summary>First line of the tab item: the user's label, else the harness name, else the shell title.</summary>
-    public string Label => _userLabel ?? (IsAgent ? Agent.Rules.DisplayName : Title);
 
     /// <summary>An explicit group the user put this tab in; null means "by project" wherever grouping applies.</summary>
     public string? Group
@@ -154,6 +153,7 @@ public sealed partial class TerminalTab
     {
         _pendingResume = command;
         _resumeScheduledAt = DateTimeOffset.Now;
+        RefreshLabelInputs();
     }
 
     private string? _pendingPrompt;
@@ -181,14 +181,15 @@ public sealed partial class TerminalTab
     /// before the integration speaks again does not lose the way back (`tab.resume`, the
     /// next session file). A later report overrides both.
     /// </summary>
-    internal void SeedResume(string? sessionId, string? resumeCommand)
+    internal void SeedResume(string? sessionId, string? resumeCommand, string? sessionTitle = null)
     {
-        Agent.SeedSession(sessionId);
+        Agent.SeedSession(sessionId, sessionTitle);
         if (ResumeCommand is null && !string.IsNullOrWhiteSpace(resumeCommand))
         {
             ResumeCommand = resumeCommand;
             Raise(nameof(ResumeCommand));
         }
+        RefreshLabelInputs();
     }
 
     /// <summary>Runs the known resume command now, in this tab. False when there is none.</summary>
@@ -209,8 +210,9 @@ public sealed partial class TerminalTab
     {
         get
         {
+            if (NamingAsAgent) return AgentDetail();
             var state = StateText;
-            var what = IsAgent ? Agent.Summary ?? Project : Project;
+            var what = Project;
             var detail = state.Length == 0 ? what : what.Length == 0 ? state : $"{state} · {what}";
             return detail;
         }
@@ -318,11 +320,14 @@ public sealed partial class TerminalTab
     /// <summary>The second line (state · project) shows unless <c>tabs.twoLine</c> is off.</summary>
     public bool ShowsDetail => TabSettings.TwoLine;
 
-    /// <summary>After <see cref="TabSettings"/> changed: the tab items re-read both.</summary>
+    /// <summary>After display settings change: refresh names, details and visibility.</summary>
     internal void TabSettingsChanged()
     {
         Raise(nameof(ShowsHarnessIcon));
         Raise(nameof(ShowsDetail));
+        RefreshLabelInputs();
+        Raise(nameof(Detail));
+        Raise(nameof(SidebarDetail));
     }
 
     /// <summary>The state's colour from the theme, for dots and badges.</summary>
@@ -342,7 +347,9 @@ public sealed partial class TerminalTab
     {
         get
         {
-            var lines = new List<string>(4) { Title };
+            var lines = new List<string> { Label };
+            if (!string.Equals(Title, Label, StringComparison.Ordinal)) lines.Add(Title);
+            if (SessionTitle is { } sessionTitle && !string.Equals(sessionTitle, Label, StringComparison.Ordinal) && !string.Equals(sessionTitle, Title, StringComparison.Ordinal)) lines.Add(sessionTitle);
             if (!string.IsNullOrEmpty(_workingDirectory))
             {
                 lines.Add(_workingDirectory);
@@ -376,6 +383,8 @@ public sealed partial class TerminalTab
             {
                 lines.Add(_restoreNote);
             }
+
+            lines.Add($"Tab {NamingId[..8]}{(Agent.SessionId is { } session ? $" · session {session}" : string.Empty)}");
 
             return string.Join('\n', lines);
         }
@@ -640,6 +649,7 @@ public sealed partial class TerminalTab
             {
                 _pendingResume = null;
                 SendText(resume + "\r");
+                RefreshLabelInputs();
                 _agents.Trace.Write($"[{Id}] resumed after {waited.TotalSeconds:F1}s: {resume}");
             }
             else if (waited > TimeSpan.FromSeconds(45) || (HasStarted && !IsRunning))
@@ -813,9 +823,13 @@ public sealed partial class TerminalTab
     internal void ApplyReport(IntegrationReport report)
     {
         var now = DateTimeOffset.Now;
+        // Stale reports must not change titles, resume targets, requests or harness rules.
+        if (!report.Advisory && !Agent.AcceptsReport(report.Source, report.Seq)) return;
+        if (report.Advisory && (Agent.State == AgentState.Exited || Agent.Authority == AgentAuthority.Integration)) return;
 
         if (report.Release)
         {
+            if (Agent.AuthoritySource is { } owner && !string.Equals(owner, report.Source, StringComparison.OrdinalIgnoreCase)) return;
             Agent.OnRelease(report.Source, now);
             if (report.State == AgentState.Exited && _harnessFromIntegration is not null)
             {
@@ -827,6 +841,7 @@ public sealed partial class TerminalTab
         }
         else
         {
+            var previousSession = Agent.SessionId;
             if (report.Harness is { } harness && harness != _harnessFromIntegration)
             {
                 _harnessFromIntegration = harness;
@@ -835,23 +850,27 @@ public sealed partial class TerminalTab
 
             if (report.Advisory)
             {
-                Agent.OnAdvisory(report.Source, report.State, report.Message, report.Summary, report.SessionId, now);
+                Agent.OnAdvisory(report.Source, report.State, report.Message, report.Summary, report.SessionId, now, report.SessionTitle, report.SessionKnown);
             }
             else
             {
-                Agent.OnReport(report.Source, report.Seq, report.State, report.Message, report.Summary, report.SessionId, now);
+                Agent.OnReport(report.Source, report.Seq, report.State, report.Message, report.Summary, report.SessionId, now, report.SessionTitle, report.SessionKnown, report.MetadataOnly);
             }
 
+            if (report.WorkingDirectory is { Length: > 0 } cwd) ApplyProbedWorkingDirectory(cwd, report.Source, aboutRootShell: false);
+
+            if (previousSession != Agent.SessionId) OpenRequest = null;
+
             // The request a reply would name (12.17): kept while the integration says blocked, gone when it moves on.
-            OpenRequest = report.State == AgentState.Blocked && report.RequestId is { Length: > 0 }
+            if (!report.MetadataOnly) OpenRequest = report.State == AgentState.Blocked && report.RequestId is { Length: > 0 }
                 ? new OpenRequest(report.RequestId, report.RequestKind ?? "permission", report.Message, now)
                 : report.State == AgentState.Blocked ? OpenRequest : null;
             // Whatever resumes this session: the integration's own command, else the rule file's
             // pattern with the id filled in. Kept for restore and for `tab.resume`.
-            var sessionId = report.SessionId ?? Agent.SessionId;
+            var sessionId = Agent.SessionId;
             var resume = report.ResumeCommand
                 ?? (sessionId is not null && Agent.Rules.ResumeCommand is { } pattern ? pattern.Replace("{sessionId}", sessionId, StringComparison.Ordinal) : null);
-            if (resume is not null && resume != ResumeCommand)
+            if ((resume is not null || report.SessionKnown) && resume != ResumeCommand)
             {
                 ResumeCommand = resume;
                 Raise(nameof(ResumeCommand));
@@ -940,6 +959,7 @@ public sealed partial class TerminalTab
         }
 
         Agent.OnTitle(title, now);
+        if (IsAgent && (fromTitle is not null || TerminalTaskTitle is not null)) Agent.ClearSeededTitle();
         RaiseAgentProperties();
     }
 
@@ -1122,7 +1142,8 @@ public sealed partial class TerminalTab
         Raise(nameof(StateBrush));
         Raise(nameof(NeedsAttention));
         Raise(nameof(Unread));
-        Raise(nameof(Label));
+        RefreshLabelInputs();
+        Raise(nameof(SessionTitle));
         Raise(nameof(Detail));
         Raise(nameof(SidebarDetail));
         Raise(nameof(Tooltip));
@@ -1131,7 +1152,7 @@ public sealed partial class TerminalTab
         Raise(nameof(Summary));
     }
 
-    private static string FindProjectName(string cwd)
+    internal static string FindProjectName(string cwd)
     {
         try
         {

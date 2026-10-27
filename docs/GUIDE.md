@@ -174,7 +174,7 @@ init` gives you the full default file, commented, as a starting point.
 
   "notifications": { "sinks": { /* see §9 */ } },
 
-  "tabs": { "twoLine": true, "showHarnessGlyph": true }   // the state · project line; the harness icon on agent tabs
+  "tabs": { "labelMode": "session", "twoLine": true, "showHarnessGlyph": true }
 }
 ```
 
@@ -197,7 +197,7 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+I` | `inbox.open` | The inbox: everything waiting for you, answered from one place (§9) |
 | `Alt+1` … `Alt+9` | `tab.switchTo.N` | Jump to the Nth tab as the strip shows them, groups included |
 | `Ctrl+Shift+J` | `tab.jumpToAttention` | The tab that needs you: blocked first, then finished-unseen; the one that has waited longest (`attention.order`) |
-| `Ctrl+Shift+R` | `tab.rename` | Label the tab (persisted per profile + directory) |
+| `Ctrl+Shift+R` | `tab.rename` | Name this tab (restored and reopened with this tab only) |
 | `Ctrl+Shift+G` | `tab.moveToGroup` | Put the tab under a named header; empty removes |
 | `Alt+Shift+←` / `→` | `tab.moveLeft` / `tab.moveRight` | Reorder |
 | `Ctrl+Shift+E` | `tab.explain` | Why is this tab in this state |
@@ -365,14 +365,36 @@ only — no regular expressions.
 
 ## 5. Tabs, groups, reorder, tear-off windows
 
-A tab item has two lines: the **label** (your name for it, else the harness, else the
-shell's title) and the **detail** (state · summary or project). The dot is the profile's
+A tab item has two lines: the **label** (your name for it, else its session/task name)
+and the **detail** (project, branch and state, plus distinct activity when available).
+The harness icon identifies the program. The dot is the profile's
 colour for a plain shell and the state's colour for an agent: pulsing blue working,
 amber with a ring **needs you**, green **done** until you look, red error, grey exited.
 An unread badge marks a state you have not seen; a thin bar shows OSC 9;4 progress.
 
-- **Rename** (`Ctrl+Shift+R`): the label is remembered for that profile in that
-  directory and comes back next time.
+Choose **Setting: Tab labels** in the palette, or set this in `settings.jsonc`:
+
+```jsonc
+{ "tabs": { "labelMode": "session" } }
+```
+
+| Mode | Automatic primary label |
+|---|---|
+| `session` (default) | Session/task title, meaningful application title, project, then harness |
+| `project` | Project followed by the session/task title |
+| `harness` | Harness name, with duplicate qualifiers |
+
+Changes apply live. Custom names always win. Automatic duplicates use the project and,
+when needed, a short persistent identifier such as `[a13f]` before the title, so ellipsis
+cannot hide the distinguishing part. Identifiers survive reordering, restoration and
+reopening. Tooltips show full names, directory and session identity; the tab switcher and
+history search session names as well as custom names. Ordinary shell tabs keep their
+application/profile titles, with the same duplicate handling.
+
+- **Rename** (`Ctrl+Shift+R`): the name belongs to this tab and comes back on restore or
+  reopen. A fresh tab in the same directory gets its own automatic name. Clear the name
+  to return to automatic naming. Existing saved-tab names are preserved; the older
+  folder-wide `state.json` label cache is retained but no longer applied to new tabs.
 - **Groups** (`Ctrl+Shift+G`): tabs under a named header in the strip and the list.
   Dragging a tab onto another group's tab joins that group; so does `Alt+Shift+←/→`.
 - **Reorder**: drag a tab along the strip — it changes place as the pointer crosses its
@@ -574,16 +596,21 @@ curl.exe -X POST "$env:OVERSHELL_ENDPOINT/v1/report?token=$env:OVERSHELL_TOKEN" 
 
 States: `idle`, `working`, `blocked` (also `waiting`, `permission`, `question`), `done`,
 `error`, `exited`. Optional: `seq` (stale numbers from the same source are dropped),
-`summary`, `harness`, `session: { id, resumeCommand }`, and `"advisory": true` for a
+`summary`, `harness`, `session: { id, title, resumeCommand }`, `cwd`, and `"advisory": true` for a
 one-shot report that should mark the moment without becoming the tab's authority.
 `GET /v1/tabs?token=…` lists every tab's state and explanation.
+
+Use `session.title` for the stable task name and `summary` for changing activity. A
+`"metadataOnly": true` report can rename a session or update its directory without
+changing its working/idle state or producing a completion notification. An explicit
+`session.id: null` clears the current session; `session.title: null` clears its title.
 
 The shipped integrations are installed with one command each and do nothing outside
 OverShell:
 
 | Harness | `OverShell integrations install …` | What is written |
 |---|---|---|
-| OpenCode | `opencode` | `$XDG_CONFIG_HOME/opencode/plugins/overshell.ts` (or `~/.config/opencode/plugins/`) — a plugin reporting `session.status`, `permission.asked`, `question.asked`, errors, with the session id |
+| OpenCode V2 | `opencode` | `$XDG_CONFIG_HOME/opencode/plugins/overshell-v2/{index,tui}.ts` (or `~/.config/opencode/plugins/`) — a per-client bridge for the selected session's title, directory, state and requests, with permission/question/prompt replies |
 | Copilot CLI | `copilot` | `~/.copilot/hooks/overshell.json` (`COPILOT_HOME` honoured) — hooks for session start/end, prompt, stop, permission and elicitation notifications |
 | Claude Code | `claude` | hook entries **merged into** `~/.claude/settings.json` (`CLAUDE_CONFIG_DIR` honoured) under a marker; `uninstall` removes only those. A file with comments is refused, not rewritten — `integrations show claude` prints the entries to add by hand |
 | Codex CLI | `codex` | a PowerShell script next to `~/.codex/config.toml` (`CODEX_HOME` honoured) and one marked `notify = […]` line among the top-level keys. A `notify` you wrote is never replaced — `integrations show codex` prints ours to combine |
@@ -594,6 +621,13 @@ PATH. Restart the harness inside an OverShell tab after installing. Codex's hook
 fires when a turn completes, so Codex tabs report **advisory**: the turn's end, the
 thread id (`codex resume <id>`) and the last message, while OverShell's own detection
 keeps saying when it is working or blocked.
+
+Reinstalling the OpenCode integration migrates OverShell's owned V1 `overshell.ts` file
+to the V2 entrypoints; user configuration is preserved. The V2 bridge runs in each
+interactive client, so two clients in one repository or connected to a shared server
+keep independent selected-session identities. It tracks renames and navigation without
+waiting for another turn and works with OpenCode's `terminal.title` disabled. Programs
+without an interactive bridge, including headless runs, use terminal/detector fallbacks.
 
 ## 9. Notifications
 
@@ -746,8 +780,8 @@ as the command line) is relaunched with the resume arguments appended; a profile
 wraps the agent in a shell command (`pwsh -NoExit -Command opencode`) gets neither — only
 its directory, because neither way is safe. `tab.resume` types the known command again
 any time; `session.save` writes the file now. Install the harness's integration
-([8](#8-harness-integrations)) and the id is always known: OpenCode's plugin learns it
-even for a session that was itself resumed.
+([8](#8-harness-integrations)) to report the selected session id: OpenCode's V2 bridge
+tracks it after resuming or navigating to another existing session too.
 
 **History.** A tab you close is remembered — directory, label, group, agent session —
 and `Ctrl+Shift+Z` (`tab.reopenClosed`) brings the most recent one back, agent resumed.

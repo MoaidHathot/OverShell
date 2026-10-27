@@ -87,6 +87,7 @@ public sealed class ShellControl
         ["explain"] = t.Explain,
         ["summary"] = t.Summary,
         ["sessionId"] = t.SessionId,
+        ["sessionTitle"] = t.SessionTitle,
         ["replyChannel"] = t.ReplyChannel.ToString(),
         ["request"] = t.OpenRequest is { } r
             ? new JsonObject { ["id"] = r.Id, ["kind"] = r.Kind, ["title"] = r.Title, ["at"] = r.At.ToString("o") }

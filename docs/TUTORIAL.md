@@ -51,8 +51,8 @@ a name, say `notes`. Press `Ctrl+Shift+G` and type a group name, say `writing`.
 **You see:** the tab's label is `notes`, the strip shows a `writing` header over it, and the
 status bar follows the directory as you `cd` - a plain PowerShell profile announces it from
 the first prompt without any setup on your part. Close the tab (`Ctrl+Shift+W`) and open the
-same profile in the same directory again: the label comes back. Labels are remembered per
-profile and directory, which is what you mean by them.
+another tab in the same directory: it has its own automatic name. Custom names belong
+to individual tabs and return when those tabs are restored or reopened.
 
 **Do:** `Ctrl+Shift+Z`.
 
@@ -77,8 +77,8 @@ most-recently-used switcher instead: hold Ctrl, tap Tab, release to land).
 **You see:** a picker with the values the setting takes, the current one marked. Pick `0.7`.
 The status bar says *Reloaded Terminal body opacity = 0.7 ...* and the terminal's background
 lets more of what is behind the window through - acrylic, blurred. Text stays opaque. The
-default is 0.85; `1.0` is a solid body. (Windows paints acrylic for the active window only,
-so an inactive OverShell shows a solid fallback behind the text, as Windows Terminal does.)
+default is 0.85; `1.0` is a solid body. OverShell keeps the same material when inactive;
+the unfocused-opacity setting can give inactive windows a different opacity.
 
 **Do:** `Ctrl+Shift+P`, **Change a setting...**
 
@@ -115,8 +115,11 @@ when one is known, the processes below the shell. Nothing is a guess you cannot 
 opencode` in any shell), then restart the agent inside the tab.
 
 **You see:** the states now come from the harness itself - exact, with the session id - and
-the explain panel says *authority: integration*. The integration is one file inside OpenCode's
-plugins folder that reports to OverShell and does nothing outside it; `uninstall` removes it.
+the explain panel says *authority: integration*. OpenCode V2 gets a small `overshell-v2`
+plugin directory with a per-client bridge; `uninstall` removes OverShell's files.
+The session name becomes the large first line on the tab, with project and state below.
+Two sessions in the same folder keep distinct names; identical names get stable identifiers.
+**Setting: Tab labels** selects session-first, project-first or harness-name labels.
 The guide's [section 8](GUIDE.md#8-harness-integrations) has Copilot, Claude and Codex.
 
 > *Needs you* never comes from silence. A quiet agent is working or done, never "probably

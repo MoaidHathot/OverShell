@@ -48,8 +48,7 @@ public sealed class AgentStateMachine
 
     // Integration evidence.
     private string? _authoritySource;
-    private long _authoritySeq = long.MinValue;
-    private DateTimeOffset _authorityAt;
+    private readonly Dictionary<string, long> _reportSequences = new(StringComparer.OrdinalIgnoreCase);
 
     public AgentStateMachine(AgentRuleSet rules, bool isAgent)
     {
@@ -95,16 +94,31 @@ public sealed class AgentStateMachine
     /// <summary>Session identity an integration reported, for resume.</summary>
     public string? SessionId { get; private set; }
 
+    /// <summary>A session's name, distinct from transient progress or tool summaries.</summary>
+    public string? SessionTitle { get; private set; }
+    public bool SessionTitleKnown { get; private set; }
+
+    public bool SessionTitleIsSeeded { get; private set; }
+
     /// <summary>
     /// A session id carried over from the saved session, so a restored tab can be resumed
     /// again before its integration has spoken. Never overrides one that was reported.
     /// </summary>
-    public void SeedSession(string? sessionId)
+    public void SeedSession(string? sessionId, string? title = null)
     {
         if (SessionId is null && !string.IsNullOrWhiteSpace(sessionId))
         {
             SessionId = sessionId;
+            SessionTitle = Tabs.TabLabels.SessionName(title);
+            SessionTitleIsSeeded = SessionTitle is not null;
         }
+    }
+
+    public void ClearSeededTitle()
+    {
+        if (!SessionTitleIsSeeded) return;
+        SessionTitle = null;
+        SessionTitleIsSeeded = false;
     }
 
     public DateTimeOffset? LastActivity { get; private set; }
@@ -124,10 +138,11 @@ public sealed class AgentStateMachine
     public void SetRules(AgentRuleSet rules, bool isAgent, DateTimeOffset now)
     {
         var becameAgent = isAgent && !_isAgent;
+        var changedHarness = isAgent && _isAgent && !string.Equals(rules.Id, _rules.Id, StringComparison.OrdinalIgnoreCase);
         _rules = rules;
         _isAgent = isAgent;
 
-        if (!isAgent)
+        if (!isAgent || changedHarness)
         {
             // Back to a plain shell: the agent's evidence no longer applies — except an
             // unseen Done, which is the whole point of the mark; viewing clears it.
@@ -137,9 +152,13 @@ public sealed class AgentStateMachine
             Summary = null;
             _authoritySource = null;
             SessionId = null;
-            if (State is not (AgentState.Exited or AgentState.Done))
+            SessionTitle = null;
+            SessionTitleKnown = false;
+            SessionTitleIsSeeded = false;
+            if (!isAgent) _reportSequences.Clear();
+            if (changedHarness || State is not (AgentState.Exited or AgentState.Done))
             {
-                Set(AgentState.Unknown, "shell", now);
+                Set(AgentState.Unknown, isAgent ? "harness changed" : "shell", now);
             }
         }
         else if (becameAgent)
@@ -405,36 +424,32 @@ public sealed class AgentStateMachine
     /// A hook or plugin speaks. Out-of-order reports from the same source are dropped by
     /// <paramref name="seq"/>; a different source simply takes over.
     /// </summary>
-    public void OnReport(string source, long? seq, AgentState state, string? message, string? summary, string? sessionId, DateTimeOffset now)
+    public bool AcceptsReport(string source, long? seq) => State != AgentState.Exited &&
+        (seq is null || !_reportSequences.TryGetValue(source, out var previous) || seq > previous);
+
+    public bool OnReport(string source, long? seq, AgentState state, string? message, string? summary, string? sessionId, DateTimeOffset now,
+        string? sessionTitle = null, bool sessionKnown = false, bool metadataOnly = false)
     {
-        if (State == AgentState.Exited)
+        if (!AcceptsReport(source, seq))
         {
             // The process is gone; a hook that fires late (sessionEnd racing the exit) is stale.
             // A restarted tab gets a fresh machine.
-            return;
+            return false;
         }
 
-        if (string.Equals(source, _authoritySource, StringComparison.OrdinalIgnoreCase) && seq is { } s && s <= _authoritySeq)
-        {
-            return;
-        }
+        if (seq is { } sequence) _reportSequences[source] = sequence;
+        UpdateSession(sessionId, sessionTitle, sessionKnown, now);
+        if (metadataOnly) return true;
 
         // Whether the Working this report may be ending was the detector's guess rather than an
         // earlier report: the integration's first word decides nothing about a turn it never saw.
         var guessedWorking = Authority == AgentAuthority.Detector;
         _authoritySource = source;
-        _authoritySeq = seq ?? _authoritySeq;
-        _authorityAt = now;
         LastActivity = now;
 
         if (summary is not null)
         {
             Summary = summary;
-        }
-
-        if (sessionId is not null)
-        {
-            SessionId = sessionId;
         }
 
         var reason = $"{source} reported {state}{(message is null ? string.Empty : ": " + message)}";
@@ -490,6 +505,39 @@ public sealed class AgentStateMachine
                 Set(state, reason, now);
                 break;
         }
+        return true;
+    }
+
+    private void UpdateSession(string? id, string? title, bool known, DateTimeOffset now)
+    {
+        if (known || id is not null)
+        {
+            var next = string.IsNullOrWhiteSpace(id) ? null : id.Trim();
+            if (next != SessionId)
+            {
+                var previous = SessionId;
+                SessionId = next;
+                SessionTitle = null;
+                SessionTitleKnown = known && next is null;
+                SessionTitleIsSeeded = false;
+                Summary = null;
+                if (previous is not null)
+                {
+                    _fromTitle = _fromScreen = _fromProgress = null;
+                    _lastOutput = _firstOutputInBurst = _workingSince = null;
+                    _authoritySource = null;
+                    Progress = null;
+                    ProgressIndeterminate = false;
+                    Set(AgentState.Unknown, "session changed", now);
+                }
+            }
+        }
+        if (title is not null)
+        {
+            SessionTitle = Tabs.TabLabels.SessionName(title);
+            SessionTitleKnown = true;
+            SessionTitleIsSeeded = false;
+        }
     }
 
     /// <summary>The integration is gone; the detector decides again.</summary>
@@ -501,7 +549,9 @@ public sealed class AgentStateMachine
         }
 
         _authoritySource = null;
-        _authoritySeq = long.MinValue;
+        _reportSequences.Remove(source);
+        SessionTitleIsSeeded = SessionTitleKnown || SessionTitleIsSeeded;
+        SessionTitleKnown = false;
         if (State != AgentState.Exited)
         {
             Evaluate(now, "integration released");
@@ -514,7 +564,8 @@ public sealed class AgentStateMachine
     /// it marks the moment and remembers the session, and the detector goes on deciding.
     /// Ignored while a real integration holds authority — it knows better.
     /// </summary>
-    public void OnAdvisory(string source, AgentState state, string? message, string? summary, string? sessionId, DateTimeOffset now)
+    public void OnAdvisory(string source, AgentState state, string? message, string? summary, string? sessionId, DateTimeOffset now,
+        string? sessionTitle = null, bool sessionKnown = false)
     {
         LastActivity = now;
         if (State == AgentState.Exited || Authority == AgentAuthority.Integration)
@@ -522,14 +573,10 @@ public sealed class AgentStateMachine
             return;
         }
 
+        UpdateSession(sessionId, sessionTitle, sessionKnown, now);
         if (summary is not null)
         {
             Summary = summary;
-        }
-
-        if (sessionId is not null)
-        {
-            SessionId = sessionId;
         }
 
         var reason = $"{source} said {state}{(message is null ? string.Empty : ": " + message)}";

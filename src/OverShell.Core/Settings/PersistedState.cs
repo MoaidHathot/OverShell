@@ -4,8 +4,8 @@ namespace OverShell.Core.Settings;
 
 /// <summary>
 /// Machine-local state OverShell remembers between runs (<c>%LOCALAPPDATA%\OverShell\state.json</c>):
-/// today the labels users gave their tabs, keyed by profile and working directory —
-/// the only stable identity a tab has until sessions themselves persist (P2).
+/// legacy labels keyed by profile and working directory. Current tab names are stored
+/// on SavedTab entries; this format remains readable for older state and migration tools.
 /// Writes are whole-file and tolerant: a corrupt file is replaced, never thrown over.
 /// </summary>
 public sealed class PersistedState

@@ -115,7 +115,7 @@ public interface ITab : INotifyPropertyChanged
 {
     string Id { get; }
 
-    /// <summary>The user's label, else the harness, else the shell's title.</summary>
+    /// <summary>The user's name or the configured automatic label, with duplicate qualifiers.</summary>
     string Label { get; }
 
     string Title { get; }
@@ -157,6 +157,9 @@ public interface ITab : INotifyPropertyChanged
     string? Summary { get; }
 
     string? SessionId { get; }
+
+    /// <summary>The task/session name when known, separate from transient activity.</summary>
+    string? SessionTitle => null;
 
     string? ResumeCommand { get; }
 

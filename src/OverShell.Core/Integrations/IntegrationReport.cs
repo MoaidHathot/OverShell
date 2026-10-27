@@ -24,7 +24,11 @@ public sealed record IntegrationReport(
     bool Release,
     bool Advisory = false,
     string? RequestId = null,
-    string? RequestKind = null)
+    string? RequestKind = null,
+    string? SessionTitle = null,
+    bool SessionKnown = false,
+    bool MetadataOnly = false,
+    string? WorkingDirectory = null)
 {
     /// <summary>The wire shape of <c>POST /v1/report</c>.</summary>
     public static IntegrationReport? Parse(string tabId, JsonNode? body, out string? error)
@@ -53,7 +57,27 @@ public sealed record IntegrationReport(
 
         long? seq = o["seq"] is JsonValue sv && sv.TryGetValue<long>(out var s) ? s : null;
         var session = o["session"] as JsonObject;
+        if (o["session"] is not null && session is null)
+        {
+            error = "session must be an object";
+            return null;
+        }
+        foreach (var (value, name) in new[] { (session?["id"], "session.id"), (session?["title"], "session.title"), (o["sessionId"], "sessionId"), (o["sessionTitle"], "sessionTitle") })
+        {
+            if (value is not null && (value is not JsonValue text || !text.TryGetValue<string>(out _)))
+            {
+                error = $"{name} must be a string or null";
+                return null;
+            }
+        }
         var advisory = o["advisory"] is JsonValue av && av.TryGetValue<bool>(out var a) && a;
+        var metadataOnly = o["metadataOnly"] is JsonValue mv && mv.TryGetValue<bool>(out var m) && m;
+        var sessionKnown = session?.ContainsKey("id") == true || o.ContainsKey("sessionId");
+        var titleObject = session?.ContainsKey("title") == true ? session : o;
+        var titleKey = ReferenceEquals(titleObject, session) ? "title" : "sessionTitle";
+        var sessionTitle = titleObject.ContainsKey(titleKey)
+            ? titleObject[titleKey] is null ? string.Empty : Str(titleObject, titleKey)
+            : null;
 
         return new IntegrationReport(
             tab,
@@ -65,10 +89,14 @@ public sealed record IntegrationReport(
             Str(o, "summary"),
             session is null ? Str(o, "sessionId") : Str(session, "id"),
             session is null ? null : Str(session, "resumeCommand"),
-            Release: state == AgentState.Exited,
+            Release: !metadataOnly && state == AgentState.Exited,
             Advisory: advisory,
             RequestId: Str(o, "requestId"),
-            RequestKind: Str(o, "requestKind"));
+            RequestKind: Str(o, "requestKind"),
+            SessionTitle: sessionTitle,
+            SessionKnown: sessionKnown,
+            MetadataOnly: metadataOnly,
+            WorkingDirectory: Str(o, "cwd"));
     }
 
     public static bool TryParseState(string text, out AgentState state)

@@ -341,14 +341,10 @@ public partial class MainWindow
             profile = profile with { CommandLine = plan.Command };
         }
 
-        var tab = AddTab(profile, activate, PreambleFor(savedTab), savedTab.Extra);
-        if (!string.IsNullOrWhiteSpace(savedTab.Label))
-        {
-            tab.UserLabel = savedTab.Label;
-        }
+        var tab = AddTab(profile, activate, PreambleFor(savedTab), savedTab.Extra, savedTab.NamingId ?? savedTab.Id, savedTab.Label);
 
         tab.Group = savedTab.Group;
-        tab.SeedResume(savedTab.SessionId, savedTab.ResumeCommand ?? (plan.Mode == ResumeMode.Typed ? plan.Command : null));
+        tab.SeedResume(savedTab.SessionId, savedTab.ResumeCommand ?? (plan.Mode == ResumeMode.Typed ? plan.Command : null), savedTab.SessionTitle);
 
         if (plan.Mode == ResumeMode.Typed)
         {
@@ -376,9 +372,13 @@ public partial class MainWindow
     private SavedTab CaptureTab(TerminalTab t, DateTimeOffset? closedAt = null) => new()
     {
         Id = t.Id,
+        NamingId = t.NamingId,
         ProfileId = t.Profile.Id,
         WorkingDirectory = t.WorkingDirectory,
         Label = t.UserLabel,
+        SessionTitle = t.IsAgent ? t.SessionTitle : null,
+        TerminalTitle = t.Title,
+        Project = t.Project,
         Group = t.Group,
         Harness = t.Harness,
         AgentRunning = t.IsAgent && t.State is not (Core.Agents.AgentState.Exited or Core.Agents.AgentState.Unknown),
@@ -715,22 +715,33 @@ public partial class MainWindow
         };
     }
 
-    /// <summary>What a saved tab is called in the picker: its label, else its harness, else its profile.</summary>
-    private string NameOf(SavedTab tab) =>
-        tab.Label ?? (tab.Harness is { } h ? _agents.Rules.Find(h)?.DisplayName ?? h : null)
-        ?? _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, tab.ProfileId, StringComparison.OrdinalIgnoreCase))?.Name
-        ?? "tab";
+    /// <summary>History uses the same primary-label preference as live tabs.</summary>
+    private string NameOf(SavedTab tab)
+    {
+        if (!string.IsNullOrWhiteSpace(tab.Label)) return tab.Label;
+        var harness = (tab.Harness is { } h ? _agents.Rules.Find(h)?.DisplayName ?? h : null) ?? string.Empty;
+        var profile = _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, tab.ProfileId, StringComparison.OrdinalIgnoreCase))?.Name ?? "tab";
+        var project = tab.Project ?? (tab.WorkingDirectory is { } cwd ? TerminalTab.FindProjectName(cwd) : string.Empty);
+        var terminal = tab.Harness is null ? tab.TerminalTitle : Core.Tabs.TabLabels.FromTerminal(tab.TerminalTitle, tab.Harness, harness, profile, project);
+        return Core.Tabs.TabLabels.Primary(_settings.Tabs.EffectiveLabelMode, tab.Harness is not null, tab.SessionTitle, terminal, project, harness, profile);
+    }
 
     internal IReadOnlyList<PaletteItem> BuildHistoryItems(PaletteQuery query)
     {
         var items = new List<(int Score, int Order, PaletteItem Item)>();
         var order = 0;
 
-        foreach (var entry in Enumerable.Reverse(_recentlyClosed))
+        var closed = Enumerable.Reverse(_recentlyClosed).ToArray();
+        var prefixes = Core.Tabs.TabLabels.Prefixes(closed.Select((tab, index) => new Core.Tabs.TabLabelEntry(
+            index.ToString(), tab.NamingId ?? tab.Id ?? index.ToString(), NameOf(tab),
+            tab.Project ?? (tab.WorkingDirectory is { } cwd ? TerminalTab.FindProjectName(cwd) : string.Empty),
+            !string.IsNullOrWhiteSpace(tab.Label))).ToArray());
+        for (var index = 0; index < closed.Length; index++)
         {
-            var name = NameOf(entry);
+            var entry = closed[index];
+            var name = prefixes[index.ToString()] + NameOf(entry);
             var detail = $"closed {entry.ClosedAt?.ToLocalTime():HH:mm}{(entry.AgentRunning ? " · agent was running" : string.Empty)}{(entry.WorkingDirectory is null ? string.Empty : $"  ·  {entry.WorkingDirectory}")}";
-            var score = FuzzyMatcher.Score(query.Text, name, entry.WorkingDirectory ?? string.Empty, entry.Harness ?? string.Empty);
+            var score = FuzzyMatcher.Score(query.Text, name, entry.SessionTitle, entry.TerminalTitle, entry.Project, entry.WorkingDirectory, entry.Harness);
             if (score is null)
             {
                 continue;
@@ -752,7 +763,7 @@ public partial class MainWindow
             var how = session.Interrupted ? "interrupted" : session.CloseReason == SessionCloseReason.SessionEnding ? "Windows signed out" : "closed";
             var title = $"Session {how} {when:ddd HH:mm}";
             var detail = SessionSnapshot.Describe(session.Tabs, NameOf);
-            var score = FuzzyMatcher.Score(query.Text, title, detail, how);
+            var score = FuzzyMatcher.Score(query.Text, title, detail, how, string.Join(" ", session.Tabs.Select(t => t.SessionTitle)));
             if (score is null)
             {
                 continue;

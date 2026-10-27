@@ -40,6 +40,15 @@ public sealed class NotificationSettings
 
 public sealed class TabSettings
 {
+    /// <summary>Automatic primary labels: session (default), project, or harness.</summary>
+    public string LabelMode { get; init; } = "session";
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public OverShell.Core.Tabs.TabLabelMode EffectiveLabelMode
+    {
+        get { OverShell.Core.Tabs.TabLabels.TryMode(LabelMode, out var mode); return mode; }
+    }
+
     /// <summary>Two-line tab items (label + state/cwd) instead of one.</summary>
     public bool TwoLine { get; init; } = true;
 
@@ -316,6 +325,8 @@ public sealed class AppSettings
         }
 
         settings.Problems.AddRange(problems);
+        if (!OverShell.Core.Tabs.TabLabels.TryMode(settings.Tabs.LabelMode, out _))
+            settings.Problems.Add($"tabs.labelMode: unknown value '{settings.Tabs.LabelMode}'; using session");
         return settings;
     }
 }

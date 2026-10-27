@@ -42,6 +42,12 @@ public static class IntegrationInstaller
 
     public static string OpenCodePluginPath() => Path.Combine(OpenCodeConfigDir(), "plugins", "overshell.ts");
 
+    public static string OpenCodeV2PluginDirectory() => Path.Combine(OpenCodeConfigDir(), "plugins", "overshell-v2");
+
+    public static string OpenCodeV2IndexContent() => EmbeddedResources.Read("integrations/opencode-v2-index.ts");
+    public static string OpenCodeV2TuiContent() => EmbeddedResources.Read("integrations/opencode-v2-tui.ts");
+    private const string OpenCodeV2Marker = "// OverShell OpenCode V2 integration";
+
     /// <summary>Copilot's user directory: <c>$COPILOT_HOME</c>, else <c>~/.copilot</c>.</summary>
     public static string CopilotHomeDir()
     {
@@ -78,6 +84,7 @@ public static class IntegrationInstaller
 
     // ------------------------------------------------------------------ content
 
+    /// <summary>The legacy V1 payload, retained for migration checks. New installs use the V2 directory.</summary>
     public static string OpenCodePluginContent() => EmbeddedResources.Read("integrations/opencode-overshell.ts");
 
     public static string CodexScriptContent() => EmbeddedResources.Read("integrations/codex-overshell-notify.ps1");
@@ -197,7 +204,7 @@ public static class IntegrationInstaller
 
     public static IntegrationStatus Status(string id) => id.ToLowerInvariant() switch
     {
-        "opencode" => Describe(id, OpenCodePluginPath(), OpenCodePluginContent(), "opencode"),
+        "opencode" => OpenCodeStatus(),
         "copilot" => Describe(id, CopilotHookPath(), CopilotHookContent(), "copilot"),
         "claude" => ClaudeStatus(),
         "codex" => CodexStatus(),
@@ -210,8 +217,7 @@ public static class IntegrationInstaller
         switch (id.ToLowerInvariant())
         {
             case "opencode":
-                WriteFile(OpenCodePluginPath(), OpenCodePluginContent());
-                return Status(id);
+                return InstallOpenCodeAt(OpenCodeConfigDir());
             case "copilot":
                 WriteFile(CopilotHookPath(), CopilotHookContent());
                 return Status(id);
@@ -228,6 +234,11 @@ public static class IntegrationInstaller
 
     public static IntegrationStatus Uninstall(string id)
     {
+        if (id.Equals("opencode", StringComparison.OrdinalIgnoreCase))
+        {
+            return UninstallOpenCodeAt(OpenCodeConfigDir());
+        }
+
         if (id.Equals("claude", StringComparison.OrdinalIgnoreCase))
         {
             return ClaudeInstall(remove: true);
@@ -256,6 +267,55 @@ public static class IntegrationInstaller
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content, new System.Text.UTF8Encoding(false));
+    }
+
+    internal static IntegrationStatus InstallOpenCodeAt(string configDir)
+    {
+        var directory = Path.Combine(configDir, "plugins", "overshell-v2");
+        var legacy = Path.Combine(configDir, "plugins", "overshell.ts");
+        foreach (var (path, marker) in new[] { (legacy, "// OverShell integration"), (Path.Combine(directory, "index.ts"), OpenCodeV2Marker), (Path.Combine(directory, "tui.ts"), OpenCodeV2Marker) })
+        {
+            if (File.Exists(path) && SafeRead(path)?.StartsWith(marker, StringComparison.Ordinal) != true)
+                return OpenCodeStatus(configDir) with { Installed = false, Current = false, Note = $"{path} is not an OverShell-owned file; it was kept" };
+        }
+        WriteFile(Path.Combine(directory, "index.ts"), OpenCodeV2IndexContent());
+        WriteFile(Path.Combine(directory, "tui.ts"), OpenCodeV2TuiContent());
+        // A V1 entrypoint produces a failed-plugin badge in V2. Remove our old file only
+        // after both replacement entrypoints have been written successfully.
+        if (File.Exists(legacy)) File.Delete(legacy);
+        return OpenCodeStatus(configDir);
+    }
+
+    internal static IntegrationStatus UninstallOpenCodeAt(string configDir)
+    {
+        var directory = Path.Combine(configDir, "plugins", "overshell-v2");
+        foreach (var name in new[] { "index.ts", "tui.ts" })
+        {
+            var path = Path.Combine(directory, name);
+            if (SafeRead(path)?.StartsWith(OpenCodeV2Marker, StringComparison.Ordinal) == true) File.Delete(path);
+        }
+        if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory);
+        var legacy = Path.Combine(configDir, "plugins", "overshell.ts");
+        if (SafeRead(legacy)?.StartsWith("// OverShell integration", StringComparison.Ordinal) == true) File.Delete(legacy);
+        return OpenCodeStatus(configDir);
+    }
+
+    private static IntegrationStatus OpenCodeStatus(string? configDir = null)
+    {
+        configDir ??= OpenCodeConfigDir();
+        var directory = Path.Combine(configDir, "plugins", "overshell-v2");
+        var legacy = Describe("opencode", Path.Combine(configDir, "plugins", "overshell.ts"), OpenCodePluginContent(), "opencode");
+        var index = Describe("opencode", Path.Combine(directory, "index.ts"), OpenCodeV2IndexContent(), "opencode");
+        var tui = Describe("opencode", Path.Combine(directory, "tui.ts"), OpenCodeV2TuiContent(), "opencode");
+        var legacyOwned = SafeRead(legacy.Path)?.StartsWith("// OverShell integration", StringComparison.Ordinal) == true;
+        var uiOwned = SafeRead(index.Path)?.StartsWith(OpenCodeV2Marker, StringComparison.Ordinal) == true && SafeRead(tui.Path)?.StartsWith(OpenCodeV2Marker, StringComparison.Ordinal) == true;
+        return legacy with
+        {
+            Path = uiOwned ? index.Path : legacy.Path,
+            Installed = legacyOwned || uiOwned,
+            Current = !legacyOwned && index.Current && tui.Current,
+            Note = legacyOwned ? "legacy OpenCode integration present; reinstall to migrate to V2" : uiOwned ? "OpenCode V2 per-client session/title bridge" : null,
+        };
     }
 
     private static IntegrationStatus Describe(string id, string path, string expected, string exe)

@@ -51,8 +51,7 @@ public sealed partial class TerminalTab
         {
             if (IsAgent)
             {
-                var what = Agent.Summary ?? (_branch is null ? string.Empty : _dirty == true ? _branch + "*" : _branch);
-                return what.Length == 0 ? StateText : StateText.Length == 0 ? what : $"{StateText} · {what}";
+                return AgentDetail();
             }
 
             var branch = _branch is null ? string.Empty : _dirty == true ? _branch + "*" : _branch;

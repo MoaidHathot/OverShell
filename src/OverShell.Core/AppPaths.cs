@@ -53,6 +53,7 @@ public static class AppPaths
     /// <summary>Named tab sets (§12.14), in the configuration root so they travel with the dotfiles.</summary>
     public static string WorkspacesDir => Path.Combine(ConfigRoot, "workspaces");
 
+    /// <summary>The legacy profile/directory label cache; current labels live in the session snapshot.</summary>
     public static string StateFile => Path.Combine(StateRoot, "state.json");
 
     /// <summary>The tabs and view of the last run (§12.11); machine-local, never roams.</summary>

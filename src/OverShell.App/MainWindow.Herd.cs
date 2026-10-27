@@ -29,7 +29,6 @@ public partial class MainWindow
     private readonly TraceLog _trace = TraceLog.Agents;
     private AppSettings _settings = null!;
     private AgentRules _rules = null!;
-    private PersistedState _state = null!;
     private KeybindingMap _keybindings = null!;
     private AgentServices _agents = null!;
     private IntegrationEndpoint? _endpoint;
@@ -69,8 +68,6 @@ public partial class MainWindow
         {
             _trace.Write($"settings: {problem}");
         }
-
-        _state = PersistedState.Load(AppPaths.StateFile);
 
         _rules = AgentRules.Load(AppPaths.AgentsDir);
         foreach (var problem in _rules.Problems)
@@ -293,7 +290,7 @@ public partial class MainWindow
                     continue;
                 }
 
-                var score = FuzzyMatcher.Score(query.Text, tab.Label, tab.Title, tab.Project, tab.WorkingDirectory, tab.Harness, tab.StateText);
+                var score = FuzzyMatcher.Score(query.Text, tab.Label, tab.Title, tab.SessionTitle, tab.Project, tab.WorkingDirectory, tab.Harness, tab.StateText);
                 if (score is null)
                 {
                     continue;
@@ -327,11 +324,7 @@ public partial class MainWindow
         _palette?.Close();
         _palette = PaletteWindow.Prompt(this, "Tab name — empty restores the automatic label", tab.UserLabel ?? string.Empty, text =>
         {
-            tab.UserLabel = text;
-            if (!_state.SetLabel(tab.Profile.Id, tab.WorkingDirectory, text))
-            {
-                _trace.Write("state: could not save labels");
-            }
+            RenameTab(tab, text);
         });
         _palette.Closed += (_, _) =>
         {

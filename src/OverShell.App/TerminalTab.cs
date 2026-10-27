@@ -1,8 +1,6 @@
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -31,18 +29,7 @@ namespace OverShell.App;
 /// </summary>
 public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, Core.Extensibility.ITab
 {
-    // OSC 0 / OSC 2 -> window title. OSC 9;9 -> working directory (shell integration).
-    [GeneratedRegex("\u001b\\][02];([^\u0007\u001b]*)(?:\u0007|\u001b\\\\)", RegexOptions.Compiled)]
-    private static partial Regex OscTitleRegex { get; }
-
-    [GeneratedRegex("\u001b\\]9;9;\"?([^\"\u0007\u001b]*)\"?(?:\u0007|\u001b\\\\)", RegexOptions.Compiled)]
-    private static partial Regex OscCwdRegex { get; }
-
-    // OSC 7 -> file://host/path, the cross-shell convention.
-    [GeneratedRegex("\u001b\\]7;file://[^/]*(/[^\u0007\u001b]*)(?:\u0007|\u001b\\\\)", RegexOptions.Compiled)]
-    private static partial Regex Osc7CwdRegex { get; }
-
-    private readonly StringBuilder _tail = new();
+    private readonly TerminalAnnouncements _announcements = new();
     private readonly Lock _tailGate = new();
     private readonly TerminalStreamState _stream = new();
     private readonly Dispatcher _dispatcher;
@@ -57,12 +44,13 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     private bool _disposed;
     private DispatcherTimer? _revealTimeout;
 
-    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null, string? preamble = null)
+    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null, string? preamble = null, string? namingId = null)
     {
         Profile = profile;
         Scheme = scheme;
         _dispatcher = dispatcher;
-        _userLabel = string.IsNullOrWhiteSpace(userLabel) ? null : userLabel.Trim();
+        _userLabel = Core.Tabs.TabLabels.Clean(userLabel) is { Length: > 0 } label ? label : null;
+        NamingId = Core.Tabs.TabLabels.IsNamingId(namingId) ? namingId!.ToLowerInvariant() : Guid.NewGuid().ToString("N");
 
         Accent = TabAccent.For(profile.Id);
         Background = TerminalThemeMapper.ToBrush(scheme.Background);
@@ -178,7 +166,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     public Brush Foreground { get; }
 
     /// <summary>
-    /// What the tab shows: the shell's own title when it is meaningful, else the profile
+    /// The application's emitted title when it is meaningful, else the profile
     /// name — without the state icon an agent puts in front (<see cref="TitleText.ForDisplay"/>);
     /// the state dot carries that. Detection reads the raw title.
     /// </summary>
@@ -405,27 +393,12 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
 
         lock (_tailGate)
         {
-            _tail.Append(chunk);
-            if (_tail.Length > 8192)
-            {
-                _tail.Remove(0, _tail.Length - 8192);
-            }
-
-            var text = _tail.ToString();
-            var titleMatches = OscTitleRegex.Matches(text);
-            var cwdMatches = OscCwdRegex.Matches(text);
-            var cwd7Matches = Osc7CwdRegex.Matches(text);
-
-            title = titleMatches.Count > 0 ? titleMatches[^1].Groups[1].Value : null;
-
-            cwd = cwdMatches.Count > 0
-                ? cwdMatches[^1].Groups[1].Value
-                : cwd7Matches.Count > 0
-                    ? Uri.UnescapeDataString(cwd7Matches[^1].Groups[1].Value).TrimStart('/').Replace('/', '\\')
-                    : null;
+            (title, cwd) = _announcements.Observe(chunk);
         }
 
-        var titleChanged = title is not null && title != _shellTitle;
+        // A fresh announcement can reclaim title ownership after an integration unloads,
+        // even when its text happens to equal a title emitted by an earlier session.
+        var titleChanged = title is not null;
         var cwdChanged = cwd is not null && cwd != _workingDirectory;
 
         // The shell told us itself: from here on the process probe defers to it (the
@@ -481,6 +454,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         Raise(nameof(WorkingDirectory));
         Raise(nameof(Project));
         Raise(nameof(ProjectAndBranch));
+        RefreshLabelInputs();
         Raise(nameof(Detail));
         Raise(nameof(SidebarDetail));
         Raise(nameof(Tooltip));
@@ -521,7 +495,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
             return false;
         }
 
-        if (title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        if (title.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && (Path.IsPathRooted(title) || !title.Contains(' ')))
         {
             return false;
         }

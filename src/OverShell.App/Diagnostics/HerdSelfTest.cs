@@ -28,7 +28,7 @@ internal static partial class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency" or "settings" or "unfocused" or "transfers" or "promptattachments";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency" or "settings" or "unfocused" or "transfers" or "promptattachments" or "labels" or "labels1" or "labels2" or "opencode-labels";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -162,6 +162,18 @@ internal static partial class HerdSelfTest
                         break;
                     case "promptattachments":
                         await RunPromptAttachmentsAsync(window, firstTab);
+                        break;
+                    case "labels":
+                        await RunLabelsAsync(window, firstTab);
+                        break;
+                    case "labels1":
+                        await RunLabelsSaveAsync(window, firstTab);
+                        break;
+                    case "labels2":
+                        await RunLabelsRestoreAsync(window, firstTab);
+                        break;
+                    case "opencode-labels":
+                        await RunOpenCodeLabelsAsync(window, firstTab);
                         break;
                     default:
                         await RunAsync(window, firstTab);
@@ -3893,8 +3905,8 @@ internal static partial class HerdSelfTest
         Log($"  title: raw harness={tab.Harness ?? "-"} shown='{tab.Title}' caption='{window.Title}' tooltip-first='{tab.Tooltip.Split('\n')[0]}'");
         Check(tab.Harness == "opencode", "the raw title (with the bell icon) still detects OpenCode");
         Check(tab.Title == "OC | OverShell | polish", "the shown title has the icon stripped");
-        Check(!window.Title.Contains(bell, StringComparison.Ordinal) && window.Title.StartsWith("OC | OverShell | polish", StringComparison.Ordinal), "the window caption has it stripped too");
-        Check(tab.Tooltip.Split('\n')[0] == "OC | OverShell | polish", "and the tooltip's first line");
+        Check(!window.Title.Contains(bell, StringComparison.Ordinal) && window.Title == tab.Label + " — OverShell", "the window caption follows the descriptive label without the status icon");
+        Check(tab.Tooltip.Split('\n')[0] == tab.Label && tab.Tooltip.Contains("OC | OverShell | polish", StringComparison.Ordinal), "the tooltip shows the label and the full emitted title");
 
         // ---- duplicate: same profile, same directory, same group, right after the source ----
         await Task.Delay(2000); // the title command's sleep ends
@@ -4705,20 +4717,17 @@ internal static partial class HerdSelfTest
             }
         }
 
-        // ---- 9. labels persist against profile + directory ----
+        // ---- 9. labels persist on their own saved tab ----
         window.Commands.TryExecute("tab.rename");
         await Task.Delay(500);
         Check(window.Palette is { IsVisible: true }, "tab.rename opened the prompt");
         window.Palette?.Close();
         await Task.Delay(300);
-        tab.UserLabel = "selftest label";
-        var state = OverShell.Core.Settings.PersistedState.Load(OverShell.Core.AppPaths.StateFile);
-        state.SetLabel(tab.Profile.Id, tab.WorkingDirectory, "selftest label");
-        var reloaded = OverShell.Core.Settings.PersistedState.Load(OverShell.Core.AppPaths.StateFile);
-        Check(reloaded.LabelFor(tab.Profile.Id, tab.WorkingDirectory) == "selftest label", "label round-trips through state.json");
+        window.RenameTab(tab, "selftest label");
+        var reloaded = SessionSnapshot.Load(AppPaths.SessionFile, out _);
+        Check(reloaded?.Tabs.SingleOrDefault(t => t.NamingId == tab.NamingId)?.Label == "selftest label", "label round-trips on its own saved tab");
         Check(tab.Label == "selftest label", "the tab shows the user's label");
-        state.SetLabel(tab.Profile.Id, tab.WorkingDirectory, null);
-        tab.UserLabel = null;
+        window.RenameTab(tab, null);
 
         // ---- 10. views and layouts (P1) ----
         window.Commands.TryExecute("view.herd");

@@ -92,7 +92,7 @@ public static class SessionHistory
 
     /// <summary>The tabs as identity: what they run and where, not where their windows sat or when they closed.</summary>
     private static string TabsJson(IReadOnlyList<SavedTab> tabs) =>
-        System.Text.Json.JsonSerializer.Serialize(tabs.Select(t => new { t.ProfileId, t.WorkingDirectory, t.Label, t.Group, t.Harness, t.AgentRunning, t.SessionId, t.ResumeCommand, t.Detached }), Jsonc.SerializerOptions);
+        System.Text.Json.JsonSerializer.Serialize(tabs.Select(t => new { t.ProfileId, t.WorkingDirectory, t.Label, t.SessionTitle, t.TerminalTitle, t.Group, t.Harness, t.AgentRunning, t.SessionId, t.ResumeCommand, t.Detached }), Jsonc.SerializerOptions);
 
     private static void Prune(string directory)
     {

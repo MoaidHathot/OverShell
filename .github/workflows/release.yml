@@ -61,6 +61,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+
       - name: Resolve version
         id: version
         run: |
@@ -83,7 +87,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet test tests/OverShell.Tests/OverShell.Tests.csproj -c Debug -p:Platform=x64
 
+      - name: Test OpenCode V2 bridge
+        run: node --experimental-vm-modules --test tests/OverShell.Tests/OpenCodeV2Bridge.test.mjs
+
       - name: Publish, pack, stage for signing
+        # The interactive bridge ships inside the application resources.
         run: ./build/Release.ps1 -Version ${{ steps.version.outputs.version }} -Phase build
 
       - name: Azure login (OIDC)

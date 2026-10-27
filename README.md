@@ -37,10 +37,11 @@ Microsoft's signature. `overshell version` prints the version and where it runs 
 dotnet build OverShell.slnx -c Debug -p:Platform=x64
 .\artifacts\bin\OverShell.App\debug_win-x64\OverShell.exe
 dotnet test OverShell.slnx -c Debug -p:Platform=x64
+node --experimental-vm-modules --test tests/OverShell.Tests/OpenCodeV2Bridge.test.mjs
 ```
 
 Requires the .NET 10 SDK and Windows 10 19041+ (Windows 11 22621+ for the system
-backdrop). x64 only.
+backdrop). x64 only. The OpenCode bridge tests additionally use Node.js 22.13+ (CI uses 24).
 
 | Environment variable | Values | Purpose |
 |---|---|---|
@@ -50,7 +51,7 @@ backdrop). x64 only.
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused`, `transfers`, `promptattachments` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`); `opencode` runs the real `opencode run` with the plugin installed; `session1` then `session2` check restore across a restart; the rest one feature each. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused`, `transfers`, `promptattachments`, `labels`, `labels1`/`labels2`, `opencode-labels` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`). `opencode-labels` checks real OpenCode V2 clients; the older run-based OpenCode probes target the legacy integration. `session1`/`session2` and `labels1`/`labels2` check restoration across a restart. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
@@ -61,6 +62,9 @@ inside a tab: it prints every case with what should happen.
 `tools\Invoke-SelfTest.ps1 -Mode transfers` checks file/media drops through the real
 terminal and ConPTY, including detach/reattach, on a private desktop.
 `-Mode promptattachments` checks prompt attachments, broadcasts and rejected drafts.
+`-Mode labels` checks naming and live settings; `labels1` then `labels2 -KeepState`
+checks a real restart. `-Mode opencode-labels` uses two real OpenCode V2 clients with a
+scratch database and metadata-only operations, without model requests.
 
 ## Configuration
 
@@ -95,7 +99,7 @@ what the program already emits (title, OSC 9;4 progress, notifications, bell, sc
 text, the process tree) plus, when installed, the harness's own hooks:
 
 ```powershell
-OverShell integrations install opencode   # writes a plugin into OpenCode's plugins folder
+OverShell integrations install opencode   # installs the per-client OpenCode V2 bridge
 OverShell integrations install copilot    # writes hooks into ~/.copilot/hooks
 OverShell integrations install claude     # merges hook entries into ~/.claude/settings.json
 OverShell integrations install codex      # a notify script + one line in ~/.codex/config.toml
@@ -119,6 +123,20 @@ curl.exe -X POST "$env:OVERSHELL_ENDPOINT/v1/report?token=$env:OVERSHELL_TOKEN" 
 
 Rules per harness live in `agents\*.jsonc` in the configuration directory (bundled defaults inside
 the app; a file with the same name replaces one wholesale).
+
+**Recognizable tab names.** Agent tabs show their session/task title prominently, with
+project, branch and state underneath. The icon identifies the harness. When metadata is
+unavailable, the terminal title and then the project supply a name. Duplicate automatic
+names get a project qualifier or a short persistent identifier that stays visible before
+truncated text. `Ctrl+Shift+R` gives one tab a custom name; restoring or reopening that tab
+keeps it, and new tabs in the same folder start with their own names.
+
+**Setting: Tab labels** in the palette changes `tabs.labelMode` live: `session` (default),
+`project` (project followed by task), or `harness`. For reliable OpenCode session switching
+and renames, rerun `OverShell integrations install opencode` with this build and restart
+the clients. It installs `plugins/overshell-v2/index.ts` and `tui.ts` and migrates OverShell's
+old V1 file; the bridge reads the selected session in each client, including when OpenCode's
+terminal-title updates are disabled.
 
 **Spawning and orchestration.** `agent.new` (herd mode `N`) opens a tab that starts a harness
 in a directory with a **first prompt**, delivered once the agent shows its composer;

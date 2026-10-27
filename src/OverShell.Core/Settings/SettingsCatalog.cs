@@ -179,6 +179,12 @@ public static class SettingsCatalog
                 new("\"zen\"", "zen", "the terminal alone"),
             ]),
         new("tabs.twoLine", "Two-line tabs", "A second line under each tab's label with its state and project.", SettingKind.Toggle, [On, Off]),
+        new("tabs.labelMode", "Tab labels", "Automatic tab names. Manual names take priority; duplicate names are qualified. Applies live.", SettingKind.Choice,
+        [
+            new("\"session\"", "session", "Session/task title first (default)"),
+            new("\"project\"", "project", "Project, followed by the session/task title"),
+            new("\"harness\"", "harness", "The agent or harness name"),
+        ]),
         new("tabs.showHarnessGlyph", "Harness icons on tabs", "The OpenCode / Copilot / Claude / Codex icon on agent tabs.", SettingKind.Toggle, [On, Off]),
         new("attention.order", "Order of waiting tabs",
             "Which waiting tab a jump goes to.",
