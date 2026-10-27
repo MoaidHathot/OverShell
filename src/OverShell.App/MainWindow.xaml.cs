@@ -1051,6 +1051,36 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // -------------------------------------------------------- event handlers
 
+    private void ShowTabOverflowMenu(Button button)
+    {
+        var menu = new ContextMenu
+        {
+            Style = (Style)FindResource("ShellContextMenu"),
+            PlacementTarget = button,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+        };
+        foreach (var id in new[] { "palette.tabs", "tab.new", "tab.newWithProfile" })
+        {
+            if (_commands.Find(id) is not { } command) continue;
+            var item = new MenuItem
+            {
+                Header = command.Title,
+                Tag = command.Id,
+                InputGestureText = HintFor(command.Id) ?? string.Empty,
+                Style = (Style)FindResource("ShellMenuItem"),
+                IsEnabled = command.IsEnabled,
+            };
+            item.Click += (_, _) =>
+            {
+                // Close the menu before a palette or a new native terminal takes focus.
+                menu.IsOpen = false;
+                Dispatcher.BeginInvoke(() => _commands.TryExecute(command.Id), DispatcherPriority.Input);
+            };
+            menu.Items.Add(item);
+        }
+        OpenButtonMenu(button, menu);
+    }
+
     private void ShowProfilesMenu(Button button)
     {
         var menu = new ContextMenu
@@ -1074,18 +1104,36 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             };
 
             var id = profile.Id;
-            item.Click += (_, _) => OpenProfileTab(id);
+            item.Click += (_, _) =>
+            {
+                menu.IsOpen = false;
+                Dispatcher.BeginInvoke(() => OpenProfileTab(id), DispatcherPriority.Input);
+            };
             menu.Items.Add(item);
         }
 
         menu.Items.Add(new Separator { Style = (Style)FindResource("MenuSeparator") });
         var search = new MenuItem { Header = "Search profiles…", Style = itemStyle, InputGestureText = HintFor("tab.newWithProfile") ?? string.Empty };
-        search.Click += (_, _) => Dispatcher.BeginInvoke(OpenProfilePicker, DispatcherPriority.Input);
+        search.Click += (_, _) =>
+        {
+            menu.IsOpen = false;
+            Dispatcher.BeginInvoke(OpenProfilePicker, DispatcherPriority.Input);
+        };
         menu.Items.Add(search);
         var source = new MenuItem { Header = $"Source: {_catalog.Location.Source}" + (_catalog.Diagnostics.Count > 0 ? $" ({_catalog.Diagnostics.Count} diagnostics)" : string.Empty), Style = itemStyle, ToolTip = ProfileSourceDescription };
         source.Click += (_, _) => ShowStatusMessage(ProfileSourceDescription);
         menu.Items.Add(source);
 
+        OpenButtonMenu(button, menu);
+    }
+
+    private static void OpenButtonMenu(Button button, ContextMenu menu)
+    {
+        button.ContextMenu = menu;
+        menu.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(button.ContextMenu, menu)) button.ClearValue(ContextMenuProperty);
+        };
         menu.IsOpen = true;
     }
 

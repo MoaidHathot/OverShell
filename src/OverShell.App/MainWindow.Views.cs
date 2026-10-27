@@ -92,12 +92,13 @@ public partial class MainWindow
 
         _tabStrip.Tabs = Tabs;
         _tabStrip.TabSelected += tab => ActiveTab = tab;
-        _tabStrip.OverflowRequested += () => _commands.TryExecute("palette.tabs");
+        _tabStrip.OverflowRequested += ShowTabOverflowMenu;
         _tabStrip.EdgeFadeBrush = TitleBarSurface.Background;
         _tabStrip.TabCloseRequested += CloseTab;
         _tabStrip.TabMenuRequested += ShowTabMenu;
         _tabStrip.NewTabRequested += () => NewTab(_catalog.DefaultProfile);
         _tabStrip.ProfilesRequested += ShowProfilesMenu;
+        _tabStrip.SetActionHints(HintFor("tab.new"), HintFor("tab.newWithProfile"));
 
         _sidebar.TabSelected += tab => ActiveTab = tab;
         _sidebar.TabMenuRequested += ShowTabMenu;

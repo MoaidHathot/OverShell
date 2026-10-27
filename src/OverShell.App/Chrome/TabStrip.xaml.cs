@@ -85,8 +85,14 @@ public partial class TabStrip : UserControl
     /// <summary>True while more tabs exist than the strip can show - diagnostics and the self-test.</summary>
     public bool IsOverflowing => _mode == TabsStyle.Strip && Scroller.ScrollableWidth > 0.5;
 
-    /// <summary>The overflow chevron was clicked: the window opens the tab switcher.</summary>
-    public event Action? OverflowRequested;
+    /// <summary>The overflow button was clicked: the window offers tab switching and creation actions.</summary>
+    public event Action<Button>? OverflowRequested;
+
+    public void SetActionHints(string? newTab, string? profiles)
+    {
+        BtnNewTab.ToolTip = "New tab" + (newTab is null ? string.Empty : $"  ({newTab})");
+        BtnProfiles.ToolTip = "Open a specific profile" + (profiles is null ? string.Empty : $"  ({profiles})");
+    }
 
     /// <summary>Scrolls the strip so <paramref name="tab"/>'s item is in view (the active tab, after a switch or a new tab).</summary>
     public void EnsureVisible(TerminalTab tab)
@@ -131,7 +137,7 @@ public partial class TabStrip : UserControl
     /// <summary>
     /// Fits the tabs to the room there is: between 150 and 240 px each while they fit, then
     /// every tab the same width down to 104 px, then the strip scrolls (wheel, the active tab
-    /// brought into view, fades at the edges, a chevron that opens the switcher).
+    /// brought into view, fades at the edges, an overflow menu). Action buttons are pinned.
     /// </summary>
     private void UpdateOverflow()
     {
@@ -143,14 +149,16 @@ public partial class TabStrip : UserControl
             return;
         }
 
-        // The room is the control's own width: its host stretches it over the caption column
-        // (the scroller inside stays left-aligned and sizes to its content while that fits).
+        // The scroller fills the space left by the pinned action bar, including its
+        // overflow button when shown. Action buttons never contribute to the scroll extent.
         var count = _view.Count;
-        var room = ActualWidth - Actions.ActualWidth - 6;
-        if (count > 0 && room > 0 && count * (RelaxedMinWidth + 2) > room)
+        var room = Scroller.ActualWidth - GroupHeaderWidth(Items) - 6;
+        if (count > 0)
         {
-            var each = Math.Max(CrowdedMinWidth, Math.Floor(room / count) - 2);
-            TabMinWidth = each;
+            // Cap long labels even while the 150 px minimum fits; otherwise their
+            // natural widths can overflow a strip with room to show every tab.
+            var each = Math.Clamp(Math.Floor(room / count) - 2, CrowdedMinWidth, RelaxedMaxWidth);
+            TabMinWidth = Math.Min(RelaxedMinWidth, each);
             TabMaxWidth = each;
         }
         else
@@ -164,6 +172,15 @@ public partial class TabStrip : UserControl
             var scrollable = Scroller.ScrollableWidth > 0.5;
             SetOverflowChrome(scrollable, scrollable && Scroller.HorizontalOffset > 0.5, scrollable && Scroller.HorizontalOffset < Scroller.ScrollableWidth - 0.5);
         }, DispatcherPriority.Loaded);
+    }
+
+    private static double GroupHeaderWidth(DependencyObject root)
+    {
+        var width = root is GroupItem group && group.Template?.FindName("Header", group) is FrameworkElement { Visibility: Visibility.Visible } header
+            ? header.ActualWidth + header.Margin.Left + header.Margin.Right : 0;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+            width += GroupHeaderWidth(VisualTreeHelper.GetChild(root, i));
+        return width;
     }
 
     private void SetOverflowChrome(bool chevron, bool fadeLeft, bool fadeRight)
@@ -196,7 +213,7 @@ public partial class TabStrip : UserControl
         e.Handled = true;
     }
 
-    private void Overflow_Click(object sender, RoutedEventArgs e) => OverflowRequested?.Invoke();
+    private void Overflow_Click(object sender, RoutedEventArgs e) => OverflowRequested?.Invoke(BtnOverflow);
 
     public event Action<TerminalTab>? TabSelected;
 
@@ -275,6 +292,11 @@ public partial class TabStrip : UserControl
         Items.GroupStyle.Add((GroupStyle)Resources[horizontal ? "StripGroupStyle" : "ListGroupStyle"]);
 
         Row.Orientation = horizontal ? Orientation.Horizontal : Orientation.Vertical;
+        Grid.SetColumnSpan(Scroller, horizontal ? 1 : 2);
+        Grid.SetColumn(ActionBar, horizontal ? 1 : 0);
+        Grid.SetRow(ActionBar, horizontal ? 0 : 1);
+        Grid.SetColumnSpan(ActionBar, horizontal ? 1 : 2);
+        ActionBar.HorizontalAlignment = horizontal ? HorizontalAlignment.Left : HorizontalAlignment.Center;
         Actions.Orientation = horizontal ? Orientation.Horizontal : Orientation.Vertical;
         Actions.HorizontalAlignment = horizontal ? HorizontalAlignment.Left : HorizontalAlignment.Center;
         Actions.Margin = horizontal ? new Thickness(0) : new Thickness(0, 4, 0, 6);
@@ -282,7 +304,7 @@ public partial class TabStrip : UserControl
         Scroller.HorizontalScrollBarVisibility = horizontal ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Disabled;
         Scroller.VerticalScrollBarVisibility = horizontal ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
         Scroller.VerticalAlignment = horizontal ? VerticalAlignment.Bottom : VerticalAlignment.Stretch;
-        Scroller.HorizontalAlignment = horizontal ? HorizontalAlignment.Left : HorizontalAlignment.Stretch;
+        Scroller.HorizontalAlignment = HorizontalAlignment.Stretch;
         Scroller.Padding = horizontal ? new Thickness(0) : new Thickness(0, 6, 0, 0);
         UpdateOverflow();
     }

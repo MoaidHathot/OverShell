@@ -171,6 +171,7 @@ public partial class MainWindow
     private void LoadKeybindings()
     {
         _keybindings = KeybindingMap.Load(File.Exists(AppPaths.KeybindingsFile) ? AppPaths.KeybindingsFile : null, _shell?.ExtensionDefaults);
+        _tabStrip?.SetActionHints(HintFor("tab.new"), HintFor("tab.newWithProfile"));
         foreach (var problem in _keybindings.Problems)
         {
             _trace.Write($"keybindings: {problem}");

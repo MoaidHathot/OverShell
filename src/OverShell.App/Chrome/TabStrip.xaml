@@ -405,6 +405,10 @@
     </UserControl.Resources>
 
     <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
@@ -416,7 +420,7 @@
                   HorizontalScrollBarVisibility="Hidden"
                   VerticalScrollBarVisibility="Disabled"
                   VerticalAlignment="Bottom"
-                  HorizontalAlignment="Left"
+                  HorizontalAlignment="Stretch"
                   ScrollChanged="Scroller_ScrollChanged"
                   SizeChanged="Scroller_SizeChanged"
                   PreviewMouseWheel="Scroller_PreviewMouseWheel">
@@ -429,10 +433,6 @@
                 </ItemsControl.ItemsPanel>
             </ItemsControl>
 
-            <StackPanel x:Name="Actions" Orientation="Horizontal">
-                <Button x:Name="BtnNewTab" Content="&#xE710;" Margin="4,0,0,1" VerticalAlignment="Center" ToolTip="New tab  (Ctrl+Shift+T)" Style="{StaticResource ChromeIconButton}" Click="NewTab_Click" />
-                <Button x:Name="BtnProfiles" Content="&#xE70D;" FontSize="9" Width="22" Margin="1,0,0,1" VerticalAlignment="Center" ToolTip="Open a specific profile" Style="{StaticResource ChromeIconButton}" Click="Profiles_Click" />
-            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 
@@ -458,8 +458,15 @@
             </Border.OpacityMask>
         </Border>
 
-        <!-- More tabs than fit: the chevron opens the switcher, where every tab is a row. -->
-        <Button x:Name="BtnOverflow" Grid.Column="1" Content="&#xE712;" Margin="2,0,2,1" VerticalAlignment="Bottom" Height="{StaticResource Metrics.TabHeight}"
-                ToolTip="More tabs - open the switcher  (Ctrl+Shift+Space)" Style="{StaticResource ChromeIconButton}" Visibility="Collapsed" Click="Overflow_Click" />
+        <!-- Actions have their own fixed slot: only tabs scroll. In list/rail mode this
+             slot moves below the scroller so creation and profile selection stay reachable. -->
+        <StackPanel x:Name="ActionBar" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+            <Button x:Name="BtnOverflow" Content="&#xE712;" Margin="2,0,2,1" VerticalAlignment="Bottom" Height="{StaticResource Metrics.TabHeight}"
+                    AutomationProperties.Name="More tab actions" ToolTip="More tab actions" Style="{StaticResource ChromeIconButton}" Visibility="Collapsed" Click="Overflow_Click" />
+            <StackPanel x:Name="Actions" Orientation="Horizontal">
+                <Button x:Name="BtnNewTab" Content="&#xE710;" Margin="4,0,0,1" VerticalAlignment="Center" AutomationProperties.Name="New tab" ToolTip="New tab" Style="{StaticResource ChromeIconButton}" Click="NewTab_Click" />
+                <Button x:Name="BtnProfiles" Content="&#xE70D;" FontSize="9" Width="22" Margin="1,0,0,1" VerticalAlignment="Center" AutomationProperties.Name="Open a specific profile" ToolTip="Open a specific profile" Style="{StaticResource ChromeIconButton}" Click="Profiles_Click" />
+            </StackPanel>
+        </StackPanel>
     </Grid>
 </UserControl>

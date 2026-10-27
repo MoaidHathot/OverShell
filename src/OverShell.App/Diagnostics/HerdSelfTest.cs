@@ -3490,6 +3490,13 @@ internal static partial class HerdSelfTest
         Check(TabWidth() is >= 150 and <= 240 && !strip.IsOverflowing && !chevron.IsVisible, "4 tabs: relaxed widths, no overflow chrome");
         SaveVisual(caption, "overshell-selftest-overflow-04.png");
 
+        var groupBefore = window.Tabs.Select(t => (Tab: t, t.Group)).ToArray();
+        for (var i = 0; i < window.Tabs.Count; i++) window.Tabs[i].Group = i < 2 ? "one" : "two";
+        await Task.Delay(300);
+        Check(!strip.IsOverflowing && TabWidth() is >= 150 and <= 240, "group headers share the width budget with long tab labels");
+        foreach (var (groupTab, group) in groupBefore) groupTab.Group = group;
+        await Task.Delay(300);
+
         await AddUntil(12);
         var w12 = TabWidth();
         Log($"  12 tabs: width={w12:F0} overflow={strip.IsOverflowing} chevron={chevron.IsVisible} fades={fadeLeft.IsVisible}/{fadeRight.IsVisible}");
@@ -3520,13 +3527,7 @@ internal static partial class HerdSelfTest
         await Task.Delay(700);
         Check(scroller.HorizontalOffset < 1, "activating the first tab scrolled back to the start");
 
-        // The chevron opens the switcher.
-        window.Commands.TryExecute("palette.tabs");
-        await Task.Delay(600);
-        var items = window.Palette?.FindName("List") is System.Windows.Controls.ListBox list ? list.Items.Count : -1;
-        Check(items == 20 || window.Palette is null, $"the switcher (what the chevron opens) lists every tab ({items})");
-        window.Palette?.Close();
-        await Task.Delay(300);
+        await CheckOverflowActionsAsync(window, Check);
 
         // Back to few tabs: relaxed again.
         foreach (var extra in window.Tabs.Skip(1).ToArray())
