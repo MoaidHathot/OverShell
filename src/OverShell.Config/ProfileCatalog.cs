@@ -59,6 +59,17 @@ public sealed class ProfileCatalog
         return string.IsNullOrWhiteSpace(nameOrId) ? DefaultProfile : Match(Profiles, nameOrId, out error);
     }
 
+    /// <summary>Restore by identity, then a unique saved name (another channel/machine), then the current default with a note.</summary>
+    public TerminalProfile? ResolveRestoredProfile(string? id, string? name, out string? note)
+    {
+        note = null;
+        if (FindById(id) is { } byId) return byId;
+        if (!string.IsNullOrWhiteSpace(name) && Match(Profiles, name, out _) is { } byName) return byName;
+        if (!string.IsNullOrWhiteSpace(id) || !string.IsNullOrWhiteSpace(name))
+            note = $"Saved profile '{name ?? id}' is unavailable; using '{DefaultProfile?.Name ?? "no profile"}'";
+        return DefaultProfile;
+    }
+
     private static string NormalizeId(string id) => Json.NormalizeGuid(id) ?? id.Trim();
 
     private static TerminalProfile? Match(IReadOnlyList<TerminalProfile> profiles, string nameOrId, out string? error)

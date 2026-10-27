@@ -163,7 +163,7 @@ public partial class MainWindow
             }, description: $"Layout '{_settings.ViewFor(id).Layout}'; again moves the cursor into its sidebar or cards");        }
 
         _commands.Register("view.toggle", "View: toggle last two", "View", () => ApplyView(_previousViewId), description: "Switch between the current view and the one before it");
-        _commands.Register("settings.reload", "Reload configuration", "Settings", () => ReloadConfiguration(all: true), description: "settings.jsonc, keybindings.jsonc, snippets.jsonc, agents\\, layouts\\, skins\\, workspaces\\");
+        _commands.Register("settings.reload", "Reload configuration", "Settings", () => ReloadConfiguration(all: true), description: "settings.jsonc, imported profiles, keybindings.jsonc, snippets.jsonc, agents\\, layouts\\, skins\\, workspaces\\");
 
         RegisterLayoutCommands();
     }
@@ -526,7 +526,7 @@ public partial class MainWindow
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
             _agents.Detection = _settings.Detection;
-        _agents.Compatibility = _settings.Compatibility;
+            _agents.Compatibility = _settings.Compatibility;
             TerminalTab.TabSettings = _settings.Tabs;
             foreach (var tab in Tabs)
             {
@@ -642,5 +642,6 @@ public partial class MainWindow
         {
             ShowStatusMessage($"Reloaded {string.Join(", ", parts)}");
         }
+        if (all || settings) RequestProfileReload(force: all);
     }
 }

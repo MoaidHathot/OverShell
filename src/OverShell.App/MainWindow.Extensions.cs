@@ -110,12 +110,16 @@ public partial class MainWindow
     }
 
     /// <summary>Opens a tab the way an extension asks for one: profile by name, directory, label, group, a command typed at the prompt.</summary>
-    internal TerminalTab? OpenTabFor(TabRequest request)
+    internal TerminalTab? OpenTabFor(TabRequest request) => OpenTabFor(request, out _);
+
+    internal TerminalTab? OpenTabFor(TabRequest request, out string? error)
     {
-        var profile = ProfileNamed(request.Profile);
+        var profile = _catalog.ResolveProfile(request.Profile, out error);
         if (profile is null)
         {
-            _trace.Write($"open tab: no launchable profile for '{request.Profile}' and no default");
+            error ??= "No launchable profile";
+            _trace.Write($"open tab: {error}");
+            ShowStatusMessage(error);
             return null;
         }
 
@@ -153,6 +157,7 @@ public partial class MainWindow
             tab.ScheduleFirstPrompt(request.Prompt.Trim());
         }
 
+        if (request.Activate) PresentNewTab(tab);
         return tab;
     }
 
@@ -271,6 +276,13 @@ public partial class MainWindow
         _commandTarget = TearOffForRoot(_shortcuts.CurrentRoot)?.Tab;
         try
         {
+            if (command.StartsWith("tab.newProfile.", StringComparison.OrdinalIgnoreCase) && _commands.Find(command) is null)
+            {
+                // A binding can outlive a profile removed from the source. Explain that
+                // request rather than leaking its shortcut into the foreground shell.
+                OpenProfileTab(command["tab.newProfile.".Length..]);
+                return true;
+            }
             var taken = _commands.TryExecute(command);
 
             // A key that ran inside a sequence is always consumed, even by a command that declined.

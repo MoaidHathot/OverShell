@@ -22,7 +22,7 @@ namespace OverShell.App;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
-    private readonly ProfileCatalog _catalog;
+    private ProfileCatalog _catalog;
     private readonly DispatcherTimer _statusTimer;
     private readonly ShortcutRouter _shortcuts;
     private readonly TerminalTextProbe _textProbe = new();
@@ -99,6 +99,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var initialView = RestoreOrOpenDefault();
         ApplyView(initialView);
         WatchConfiguration();
+        InitializeProfiles();
 
         _statusTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -1011,10 +1012,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (profile is not null)
         {
             var tab = AddTab(profile, activate: true);
-            if (_settings.ViewFor(_viewId).Content != ViewContent.Terminal) ApplyView("terminal");
-            BringToFront();
-            Dispatcher.BeginInvoke(() => { if (IsActive && ReferenceEquals(ActiveTab, tab)) tab.Surface.Focus(); }, DispatcherPriority.ApplicationIdle);
+            PresentNewTab(tab);
         }
+    }
+
+    private void PresentNewTab(TerminalTab tab)
+    {
+        if (_settings.ViewFor(_viewId).Content != ViewContent.Terminal) ApplyView("terminal");
+        BringToFront();
+        Dispatcher.BeginInvoke(() => { if (IsActive && ReferenceEquals(ActiveTab, tab)) tab.Surface.Focus(); }, DispatcherPriority.ApplicationIdle);
     }
     /// <summary>
     /// A new tab of the same profile in the same directory and group, placed right after
@@ -1131,6 +1137,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _statusTimer.Stop();
         _reloadTimer?.Stop();
         _configWatcher?.Dispose();
+        StopProfiles();
 
         // The session is written while the tabs are still alive, so their directories and
         // session ids are the real ones; "closed" tells the next start this was a clean end.

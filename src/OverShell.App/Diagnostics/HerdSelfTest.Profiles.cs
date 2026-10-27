@@ -138,6 +138,7 @@ internal static partial class HerdSelfTest
             count = window.Tabs.Count;
             ProfileKey(window.Palette!, Key.Return);
             Check(await TransferUntilAsync(() => window.Tabs.Count == count + 1 && window.IsActive && window.ActiveTab?.Profile.Id == ProfileTwo && ShortcutRouter.FocusedWindow() == window.ActiveTab.TerminalHwnd), "selecting from a detached picker activates and focuses the new main-window tab");
+            Log($"  selected tab focus: count={window.Tabs.Count} expected={count + 1} mainActive={window.IsActive} tearOffActive={tearOff.IsActive} id={window.ActiveTab?.Profile.Id} visible={window.ActiveTab?.View.IsVisible} focused=0x{ShortcutRouter.FocusedWindow():X} terminal=0x{window.ActiveTab?.TerminalHwnd:X} logical={Keyboard.FocusedElement?.GetType().Name}");
             window.Attach(first);
 
             window.Commands.TryExecute("settings.set.profiles.defaultProfile");
@@ -167,6 +168,8 @@ internal static partial class HerdSelfTest
             await Task.Delay(100);
             ProfileKey(ExtensionPalette(), Key.Escape);
             Check(await picked is null, "Escape still cancels an extension picker");
+
+            await RunProfileReloadsAsync(window, first, Check);
         }
         finally
         {
@@ -177,5 +180,150 @@ internal static partial class HerdSelfTest
             Environment.SetEnvironmentVariable("OVERSHELL_WT_SETTINGS", _profilesEnvironmentBefore);
         }
         Log($"=== selftest (profiles) result: {(pass ? "ALL PASS" : "FAILED")} ===");
+    }
+
+    private static async Task RunProfileReloadsAsync(MainWindow window, TerminalTab first, Action<bool, string> check)
+    {
+        var originalProfile = first.Profile;
+        var originalHwnd = first.TerminalHwnd;
+        var secondCommand = MainWindow.ProfileCommandId(window.Catalog.FindById(ProfileTwo)!);
+        var thirdCommand = MainWindow.ProfileCommandId(window.Catalog.FindById(ProfileThree)!);
+
+        window.Commands.TryExecute("settings.set.profiles.defaultProfile");
+        await Task.Delay(100);
+        ProfileInput(window.Palette!).Text = "Profile PowerShell";
+        ProfileKey(window.Palette!, Key.Return);
+        check(await TransferUntilAsync(() => window.Catalog.DefaultProfile?.Id == ProfileOne), "choosing a default in the settings picker applies live");
+        window.Commands.TryExecute("tab.new");
+        check(window.ActiveTab?.Profile.Id == ProfileOne, "new-tab commands use the live default");
+        window.ApplySetting(SettingsCatalog.Find("profiles.defaultProfile")!, "null");
+        await TransferUntilAsync(() => window.CurrentSettings.Profiles.DefaultProfile is null);
+        await window.ProfileReloadTask;
+        check(window.Catalog.DefaultProfile?.Id == ProfileOne, "clearing the override follows the imported name-based default");
+
+        var other = Path.Combine(Path.GetDirectoryName(ProfileFixture)!, "other.json");
+        File.WriteAllText(other, ProfileFixtureJson("Other Cmd"));
+        window.ApplySetting(SettingsCatalog.Find("profiles.settingsPath")!, JsoncEdit.ToJson(other));
+        check(await TransferUntilAsync(() => window.Catalog.SettingsPath == other), "changing settingsPath swaps the imported source live");
+        check(window.Commands.Find(secondCommand)?.Title == "New tab: Other Cmd", "profile commands are re-registered from the new source");
+        window.Commands.TryExecute(secondCommand);
+        check(window.ActiveTab?.Profile.Name == "Other Cmd", "direct commands launch the reloaded profile definition");
+        check(ReferenceEquals(first.Profile, originalProfile) && first.TerminalHwnd == originalHwnd && first.IsRunning, "existing tabs retain their profile and live native session across a source change");
+
+        window.Commands.TryExecute("tab.newWithProfile");
+        await Task.Delay(100);
+        ProfileInput(window.Palette!).Text = ProfileTwo;
+        File.WriteAllText(other + ".tmp", ProfileFixtureJson("Renamed Cmd"));
+        File.Move(other + ".tmp", other, overwrite: true);
+        check(await TransferUntilAsync(() => window.Catalog.FindById(ProfileTwo)?.Name == "Renamed Cmd"), "atomic replacement of the imported file reloads automatically");
+        check(window.Palette is { IsVisible: true } && ProfileRows(window.Palette).Single().Title == "Renamed Cmd", "an open profile picker refreshes without losing keyboard focus");
+        ProfileKey(window.Palette!, Key.Escape);
+
+        var good = window.Catalog;
+        File.WriteAllText(other, "{ temporarily invalid");
+        check(await TransferUntilAsync(() => window.ProfileReloadError is not null) && ReferenceEquals(window.Catalog, good), "a malformed imported file retains the last good catalog with a diagnostic");
+        File.WriteAllText(other, ProfileFixtureJson("Recovered Cmd"));
+        check(await TransferUntilAsync(() => window.ProfileReloadError is null && window.Catalog.FindById(ProfileTwo)?.Name == "Recovered Cmd"), "fixing the imported file recovers automatically");
+
+        good = window.Catalog;
+        var settings = File.ReadAllText(AppPaths.SettingsFile);
+        File.WriteAllText(AppPaths.SettingsFile, "{ temporarily invalid");
+        check(await TransferUntilAsync(() => window.CurrentSettings.HasLoadError) && ReferenceEquals(window.Catalog, good), "malformed OverShell settings do not replace the loaded profile source");
+        File.WriteAllText(AppPaths.SettingsFile, settings);
+        await TransferUntilAsync(() => !window.CurrentSettings.HasLoadError);
+
+        var missing = Path.Combine(Path.GetDirectoryName(ProfileFixture)!, "created-later", "settings.json");
+        window.ApplySetting(SettingsCatalog.Find("profiles.settingsPath")!, JsoncEdit.ToJson(missing));
+        check(await TransferUntilAsync(() => window.ProfileReloadError?.Contains(missing, StringComparison.Ordinal) == true) && ReferenceEquals(window.Catalog, good), "a missing explicit source reports its path and retains usable profiles");
+        Directory.CreateDirectory(Path.GetDirectoryName(missing)!);
+        File.WriteAllText(missing, ProfileFixtureJson());
+        check(await TransferUntilAsync(() => window.Catalog.SettingsPath == missing && window.ProfileReloadError is null), "creating a missing source directory and file recovers through the watcher");
+
+        window.Commands.TryExecute("tab.newWithProfile");
+        await Task.Delay(100);
+        ProfileInput(window.Palette!).Text = ProfileThree;
+        var staleRow = ProfileRows(window.Palette!).Single();
+        var removed = System.Text.Json.Nodes.JsonNode.Parse(ProfileFixtureJson())!;
+        var profiles = removed["profiles"]!["list"]!.AsArray();
+        profiles.RemoveAt(2);
+        File.WriteAllText(missing, removed.ToJsonString());
+        check(await TransferUntilAsync(() => window.Commands.Find(thirdCommand) is null), "removed profiles disappear from registered commands");
+        check(window.Palette is not null && ProfileRows(window.Palette).Count == 0, "removed profiles disappear from the open picker");
+        ProfileKey(window.Palette!, Key.Escape);
+        var count = window.Tabs.Count;
+        staleRow.Invoke();
+        check(window.Tabs.Count == count, "a stale picker action cannot silently launch the default profile");
+        check(window.DispatchChord(Key.D9, ModifierKeys.Control | ModifierKeys.Alt) && window.Tabs.Count == count,
+            "a shortcut for a removed profile is handled with an error rather than sent to the shell");
+
+        File.WriteAllText(missing, ProfileFixtureJson());
+        await TransferUntilAsync(() => window.Catalog.FindById(ProfileThree) is not null);
+        var previousLoad = window.ProfileReloadTask;
+        window.ApplySetting(SettingsCatalog.Find("tabs.twoLine")!, "false");
+        await TransferUntilAsync(() => !window.CurrentSettings.Tabs.TwoLine);
+        check(ReferenceEquals(previousLoad, window.ProfileReloadTask), "unrelated settings changes do not rerun profile generators");
+        window.Commands.TryExecute("settings.reload");
+        var manual = window.ProfileReloadTask;
+        await manual;
+        check(!ReferenceEquals(previousLoad, manual) && window.ProfileReloadError is null, "Reload configuration also refreshes imported profiles");
+
+        // Force an older load to finish last, proving edits cannot race back to old defaults.
+        var loader = window.ProfileLoader;
+        using var gate = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        window.ProfileLoader = options =>
+        {
+            if (options.DefaultProfile == ProfileTwo)
+            {
+                entered.TrySetResult();
+                if (!gate.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("profile load gate");
+            }
+            return loader(options);
+        };
+        try
+        {
+            window.ApplySetting(SettingsCatalog.Find("profiles.defaultProfile")!, JsoncEdit.ToJson(ProfileTwo));
+            window.ReloadConfiguration(all: false, settings: true);
+            var older = window.ProfileReloadTask;
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            window.ApplySetting(SettingsCatalog.Find("profiles.defaultProfile")!, JsoncEdit.ToJson(ProfileOne));
+            window.ReloadConfiguration(all: false, settings: true);
+            await window.ProfileReloadTask;
+            gate.Set();
+            await older;
+            check(window.Catalog.DefaultProfile?.Id == ProfileOne, "a slow older reload cannot overwrite a newer default selection");
+        }
+        finally { gate.Set(); window.ProfileLoader = loader; }
+
+        count = window.Tabs.Count;
+        check(window.OpenTabFor(new TabRequest(Profile: "missing-profile"), out var error) is null && error?.Contains("unavailable", StringComparison.Ordinal) == true && window.Tabs.Count == count,
+            "extension launches reject missing profiles with a useful error");
+        check(window.OpenTabFor(new TabRequest(Profile: "Duplicate"), out error) is null && error?.Contains("ambiguous", StringComparison.Ordinal) == true,
+            "extension launches reject ambiguous names");
+        var workspace = new Workspace { Name = "Profile resolution", Tabs = [new WorkspaceTab { Profile = "missing-profile" }, new WorkspaceTab { Profile = "{" + ProfileTwo.ToUpperInvariant() + "}" }] };
+        check(window.OpenWorkspace(workspace) == 1 && window.Tabs.Count == count + 1 && window.ActiveTab?.Profile.Id == ProfileTwo, "workspace launches skip missing profiles and resolve braced GUIDs exactly");
+        window.HandleArguments(["overshell://new?profile=missing-profile"]);
+        check(window.Tabs.Count == count + 1, "protocol launches reject missing profiles");
+        window.HandleArguments(["overshell://new?profile=" + Uri.EscapeDataString("{" + ProfileThree.ToUpperInvariant() + "}")]);
+        check(window.Tabs.Count == count + 2 && window.ActiveTab?.Profile.Id == ProfileThree, "protocol launches resolve the same normalized profile IDs");
+
+        using var http = new System.Net.Http.HttpClient();
+        http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", window.Endpoint!.Token);
+        using var refused = await http.PostAsync(window.Endpoint.BaseUrl + "/v1/tabs", new System.Net.Http.StringContent("{\"profile\":\"missing-profile\"}", System.Text.Encoding.UTF8, "application/json"));
+        check(!refused.IsSuccessStatusCode && (await refused.Content.ReadAsStringAsync()).Contains("missing-profile", StringComparison.Ordinal) && window.Tabs.Count == count + 2,
+            "the HTTP control API returns the profile error and opens no fallback tab");
+        using var opened = await http.PostAsync(window.Endpoint.BaseUrl + "/v1/tabs", new System.Net.Http.StringContent(Jsonc.Serialize(new { profile = "{" + ProfileTwo.ToUpperInvariant() + "}" }), System.Text.Encoding.UTF8, "application/json"));
+        check(opened.IsSuccessStatusCode && window.Tabs.Count == count + 3 && window.Tabs.Last().Profile.Id == ProfileTwo, "the HTTP control API opens an exact normalized profile ID");
+
+        var duplicate = window.OpenTabFor(new TabRequest(Profile: "44444444-dddd-4444-8888-444444444444"))!;
+        var savedWorkspace = window.SaveWorkspace("Duplicate profile round trip");
+        check(WorkspaceCatalog.Load(AppPaths.WorkspacesDir).All.Single(w => w.Name == "Duplicate profile round trip").Tabs.Any(t => t.Profile == duplicate.Profile.Id),
+            "saving a workspace preserves IDs for ambiguous profile names");
+        File.Delete(savedWorkspace);
+        window.SaveSession(force: true);
+        var saved = SessionSnapshot.Load(AppPaths.SessionFile, out _)!.Tabs.First(t => t.ProfileId == ProfileTwo);
+        check(saved.ProfileName == "Profile Cmd", "session snapshots retain the profile name for channel/machine changes");
+        var restored = window.OpenSavedTab(new SavedTab { ProfileId = "other-machine-id", ProfileName = "Profile Cmd" }, activate: false)!;
+        check(restored.Profile.Id == ProfileTwo, "restore resolves a saved unique name when its old profile ID is absent");
     }
 }

@@ -91,6 +91,14 @@ public interface IShell
     void ShowView(string viewId);
 
     ITab? OpenTab(TabRequest request);
+
+    /// <summary>Opens a tab with a diagnostic when its requested profile cannot be resolved.</summary>
+    ITab? OpenTab(TabRequest request, out string? error)
+    {
+        var tab = OpenTab(request);
+        error = tab is null ? "No launchable profile" : null;
+        return tab;
+    }
     void Activate(ITab tab);
 
     void Close(ITab tab);

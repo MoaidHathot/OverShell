@@ -26,6 +26,9 @@ public sealed class SavedTab
 
     public string? ProfileId { get; init; }
 
+    /// <summary>A unique name can recover the profile after switching Terminal channels or machines.</summary>
+    public string? ProfileName { get; init; }
+
     public string? WorkingDirectory { get; init; }
 
     public string? Label { get; init; }

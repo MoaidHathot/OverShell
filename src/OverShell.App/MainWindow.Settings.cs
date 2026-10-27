@@ -148,7 +148,6 @@ public partial class MainWindow
 
         var snapshot = SettingsFiles.Snapshot();
         var current = knob.DisplayValue(snapshot.Current(knob.Segments));
-        var choices = knob.Choices.Concat(knob.MoreChoices?.Invoke() ?? []).ToList();
         var hint = knob.Kind switch
         {
             SettingKind.Number => $"type a number{(double.IsFinite(knob.Min) && double.IsFinite(knob.Max) ? $" from {knob.Min:0.##} to {knob.Max:0.##}" : string.Empty)}, or pick one",
@@ -157,6 +156,8 @@ public partial class MainWindow
         };
         _palette = PaletteWindow.Picker(owner, SettingsGlyph, $"{knob.Title}: {hint}", query =>
         {
+            var choices = knob.Choices.Concat(knob.MoreChoices?.Invoke() ?? []).ToList();
+            if (knob.Path == "profiles.defaultProfile") current = knob.DisplayValue(JsoncEdit.ToJson(_settings.Profiles.DefaultProfile));
             var items = new List<PaletteItem>();
             if (knob.JsonForTyped(query.Text) is { } typedJson)
             {

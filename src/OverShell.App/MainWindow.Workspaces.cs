@@ -59,12 +59,14 @@ public partial class MainWindow
     {
         TerminalTab? first = null;
         var opened = 0;
+        var errors = new List<string>();
         foreach (var entry in workspace.Tabs)
         {
-            var profile = ProfileNamed(entry.Profile);
+            var profile = _catalog.ResolveProfile(entry.Profile, out var error);
             if (profile is null)
             {
-                _trace.Write($"workspace '{workspace.Name}': no launchable profile for '{entry.Profile}' and no default; tab skipped");
+                errors.Add(error ?? "No launchable profile");
+                _trace.Write($"workspace '{workspace.Name}': {errors[^1]}; tab skipped");
                 continue;
             }
 
@@ -137,18 +139,9 @@ public partial class MainWindow
         }
 
         _trace.Write($"workspace '{workspace.Name}': opened {opened} of {workspace.Tabs.Count} tab(s)");
-        ShowStatusMessage($"Workspace '{workspace.Name}': {opened} tab{(opened == 1 ? string.Empty : "s")} opened");
+        ShowStatusMessage($"Workspace '{workspace.Name}': {opened} of {workspace.Tabs.Count} tabs opened" +
+            (errors.Count == 0 ? string.Empty : " · " + string.Join("; ", errors.Distinct())));
         return opened;
-    }
-
-    /// <summary>A profile by name or id, else the default; null when nothing launchable exists.</summary>
-    private TerminalProfile? ProfileNamed(string? nameOrId)
-    {
-        var profile = nameOrId is null
-            ? null
-            : _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, nameOrId, StringComparison.OrdinalIgnoreCase) || string.Equals(p.Name, nameOrId, StringComparison.OrdinalIgnoreCase));
-        profile ??= _catalog.DefaultProfile;
-        return profile is { IsLaunchable: true } ? profile : null;
     }
 
     /// <summary>The open tabs as a workspace, named by the user through the prompt.</summary>
@@ -181,7 +174,7 @@ public partial class MainWindow
             View = _viewId,
             Tabs = Tabs.Where(t => t.IsRunning || !t.HasStarted).Select(t => new WorkspaceTab
             {
-                Profile = t.Profile.Name,
+                Profile = _catalog.ResolveProfile(t.Profile.Name, out _)?.Id == t.Profile.Id ? t.Profile.Name : t.Profile.Id,
                 Cwd = t.WorkingDirectory,
                 Label = t.UserLabel,
                 Group = t.Group,

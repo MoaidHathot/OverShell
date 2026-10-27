@@ -1,6 +1,9 @@
+using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 using OverShell.App.Chrome;
 using OverShell.Config;
+using OverShell.Core;
 using OverShell.Core.Search;
 using OverShell.Core.Settings;
 
@@ -10,6 +13,16 @@ public partial class MainWindow
 {
     private const string ProfileGlyph = "\uE756";
     private PaletteWindow? _profilePicker;
+    private FileSystemWatcher? _profileWatcher;
+    private DispatcherTimer? _profileReloadTimer;
+    private string? _profileWatchPath;
+    private int _profileReloadVersion;
+    private bool _profilesStopped;
+    private ProfileSettings? _requestedProfileSettings;
+
+    internal string? ProfileReloadError { get; private set; }
+    internal Task ProfileReloadTask { get; private set; } = Task.CompletedTask;
+    internal Func<ProfileSettings, ProfileCatalog> ProfileLoader { get; set; } = options => ProfileCatalog.Load(options, AppPaths.ConfigRoot);
 
     internal static string ProfileCommandId(TerminalProfile profile) => "tab.newProfile." + profile.Id;
 
@@ -19,7 +32,119 @@ public partial class MainWindow
 
     private string ProfileSourceDescription =>
         $"{_catalog.Location.Source} · {_catalog.Location.Origin} · {_catalog.SettingsPath ?? "generated profiles"}\nDefault: {_catalog.DefaultProfile?.Name}" +
-        (_catalog.Diagnostics.Count == 0 ? string.Empty : "\n" + string.Join("\n", _catalog.Diagnostics));
+        (_catalog.Diagnostics.Count == 0 ? string.Empty : "\n" + string.Join("\n", _catalog.Diagnostics)) +
+        (ProfileReloadError is null ? string.Empty : "\nReload failed; showing the last loaded profiles: " + ProfileReloadError);
+
+    private void InitializeProfiles()
+    {
+        _requestedProfileSettings = _settings.Profiles;
+        WatchProfileSource(_catalog.SettingsPath);
+    }
+
+    private void RequestProfileReload(bool force = false)
+    {
+        if (_profilesStopped || _settings.HasLoadError || (!force && _requestedProfileSettings == _settings.Profiles)) return;
+        _requestedProfileSettings = _settings.Profiles;
+        ProfileReloadTask = ReloadProfilesAsync(++_profileReloadVersion, _settings.Profiles, ProfileLoader);
+    }
+
+    private async Task ReloadProfilesAsync(int version, ProfileSettings options, Func<ProfileSettings, ProfileCatalog> load)
+    {
+        try
+        {
+            // Generators may probe installed software. Keep their I/O off the UI thread;
+            // a later source/default edit owns the result even if an older load finishes last.
+            var catalog = await Task.Run(() => load(options));
+            if (_profilesStopped || version != _profileReloadVersion) return;
+            WatchProfileSource(catalog.SettingsPath);
+            ProfileReloadError = catalog.SettingsError;
+            if (ProfileReloadError is null)
+            {
+                _catalog = catalog;
+                Raise(nameof(Catalog));
+                RegisterProfileCommands();
+                _trace.Write($"profiles: {ProfileSourceDescription}");
+                ShowStatusMessage($"Profiles reloaded: {catalog.Location.Source} · default {catalog.DefaultProfile?.Name}" +
+                    (catalog.Diagnostics.Count == 0 ? string.Empty : " · " + string.Join("; ", catalog.Diagnostics)));
+            }
+            else
+            {
+                _trace.Write($"profiles: reload failed: {ProfileReloadError}");
+                ShowStatusMessage($"Profiles: {ProfileReloadError}; using the last loaded profiles");
+            }
+            _profilePicker?.SetContext(ProfileSourceDescription);
+            _palette?.RefreshItems();
+        }
+        catch (Exception e)
+        {
+            if (_profilesStopped || version != _profileReloadVersion) return;
+            ProfileReloadError = e.Message;
+            _trace.Write($"profiles: reload failed: {e}");
+            ShowStatusMessage($"Profiles could not reload: {e.Message}");
+        }
+    }
+
+    private void WatchProfileSource(string? path)
+    {
+        if (string.Equals(path, _profileWatchPath, StringComparison.OrdinalIgnoreCase) && _profileWatcher is not null) return;
+        _profileWatcher?.Dispose();
+        _profileWatcher = null;
+        _profileWatchPath = path;
+        if (path is null) return;
+        try
+        {
+            var parent = Path.GetDirectoryName(path);
+            var directory = parent;
+            // Watch an existing ancestor when a configured file/directory is missing, so
+            // creating it can recover without a restart or a second settings edit.
+            while (directory is not null && !Directory.Exists(directory)) directory = Path.GetDirectoryName(directory);
+            if (directory is null) return;
+            var watcher = new FileSystemWatcher(directory)
+            {
+                IncludeSubdirectories = !string.Equals(parent, directory, StringComparison.OrdinalIgnoreCase),
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            void Changed(string changedPath)
+            {
+                if (!string.Equals(path, changedPath, StringComparison.OrdinalIgnoreCase) &&
+                    !path.StartsWith(changedPath.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (_profilesStopped || !string.Equals(path, _profileWatchPath, StringComparison.OrdinalIgnoreCase)) return;
+                    _profileReloadTimer ??= new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(400) };
+                    _profileReloadTimer.Tick -= OnProfileReloadTimer;
+                    _profileReloadTimer.Tick += OnProfileReloadTimer;
+                    _profileReloadTimer.Stop();
+                    _profileReloadTimer.Start();
+                });
+            }
+            watcher.Changed += (_, e) => Changed(e.FullPath);
+            watcher.Created += (_, e) => Changed(e.FullPath);
+            watcher.Deleted += (_, e) => Changed(e.FullPath);
+            watcher.Renamed += (_, e) => { Changed(e.OldFullPath); Changed(e.FullPath); };
+            watcher.Error += (_, e) => _trace.Write($"profiles: file watcher: {e.GetException().Message}; Reload configuration can retry");
+            watcher.EnableRaisingEvents = true;
+            _profileWatcher = watcher;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _trace.Write($"profiles: could not watch '{path}': {e.Message}");
+        }
+    }
+
+    private void OnProfileReloadTimer(object? sender, EventArgs e)
+    {
+        _profileReloadTimer?.Stop();
+        RequestProfileReload(force: true);
+    }
+
+    private void StopProfiles()
+    {
+        _profilesStopped = true;
+        ++_profileReloadVersion;
+        _profileReloadTimer?.Stop();
+        _profileWatcher?.Dispose();
+    }
 
     private void RegisterProfileCommands()
     {

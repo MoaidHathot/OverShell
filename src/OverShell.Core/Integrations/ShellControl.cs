@@ -250,10 +250,10 @@ public sealed class ShellControl
             Command: command,
             Activate: Bool(body, "activate") ?? false,
             Prompt: Str(body, "prompt"));
-        var tab = _shell.OpenTab(request);
+        var tab = _shell.OpenTab(request, out var error);
         if (tab is null)
         {
-            return (null, ControlResult.Refused("no launchable profile"));
+            return (null, ControlResult.Refused(error ?? "no launchable profile"));
         }
 
         _shell.Trace($"[{tab.Id}] control: opened{(command is null ? string.Empty : $" with '{command}'")}{(request.Prompt is null ? string.Empty : " and a first prompt")}");

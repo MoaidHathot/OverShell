@@ -205,5 +205,35 @@ public sealed class ProfileCatalogTests : IDisposable
         Assert.Equal(new ProfileSettings(), AppSettings.Load(file).Profiles);
     }
 
+    [Fact]
+    public void A_saved_profile_survives_changed_ids_by_name_and_reports_an_unavailable_fallback()
+    {
+        var file = Write("custom", Settings("First"));
+        var snapshot = new SessionSnapshot { Tabs = [new SavedTab { ProfileId = "old-machine-id", ProfileName = "Second" }] };
+        var savedFile = Path.Combine(Config, "session.json");
+        Assert.True(snapshot.Save(savedFile, out _));
+        var saved = SessionSnapshot.Load(savedFile, out _)!.Tabs[0];
+        var catalog = Load(new() { SettingsPath = file });
+        Assert.Equal(Second, catalog.ResolveRestoredProfile(saved.ProfileId, saved.ProfileName, out var note)!.Id);
+        Assert.Null(note);
+        Assert.Equal(First, catalog.ResolveRestoredProfile(First, "Second", out _)!.Id);
+        Assert.Equal(First, catalog.ResolveRestoredProfile("missing", "also missing", out note)!.Id);
+        Assert.Contains("unavailable", note);
+    }
+
+    [Fact]
+    public void Invalid_user_json_is_distinguishable_from_individual_setting_warnings_for_live_reload()
+    {
+        var file = Write("custom", "{ broken");
+        Assert.True(AppSettings.Load(file).HasLoadError);
+        File.WriteAllText(file, """{ "profiles": 1 }""");
+        Assert.True(AppSettings.Load(file).HasLoadError);
+        File.WriteAllText(file, """{ "profiles": { "source": "preview" }, "tabs": { "labelMode": "unknown" } }""");
+        var settings = AppSettings.Load(file);
+        Assert.False(settings.HasLoadError);
+        Assert.Equal("preview", settings.Profiles.Source);
+        Assert.NotEmpty(settings.Problems);
+    }
+
     public void Dispose() => Directory.Delete(_root, recursive: true);
 }

@@ -115,6 +115,7 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public void ShowView(string viewId) => _window.ShowViewById(viewId);
     public ITab? OpenTab(TabRequest request) => _window.OpenTabFor(request);
+    public ITab? OpenTab(TabRequest request, out string? error) => _window.OpenTabFor(request, out error);
 
     public void Activate(ITab tab)
     {

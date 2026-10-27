@@ -291,7 +291,17 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
 
         // One turn at Render priority so the engine's first Present completes before the
         // window is unhidden.
-        _dispatcher.BeginInvoke(UpdateVisibility, DispatcherPriority.Render);
+        _dispatcher.BeginInvoke(() =>
+        {
+            if (_disposed) return;
+            UpdateVisibility();
+            // Earlier activation callbacks may have run while the native surface was
+            // still hidden. Complete that focus handoff once it can receive input, unless
+            // a picker, another window/tab, or an editing field now owns the keyboard.
+            if (IsActive && Window.GetWindow(View)?.IsActive == true &&
+                System.Windows.Input.Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase)
+                Surface.Focus();
+        }, DispatcherPriority.Render);
     }
 
     public event EventHandler? Exited;

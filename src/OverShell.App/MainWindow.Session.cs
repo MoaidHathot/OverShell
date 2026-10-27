@@ -305,9 +305,7 @@ public partial class MainWindow
     /// <summary>The saved tab's profile, else the default; null when nothing launchable exists.</summary>
     private TerminalProfile? ProfileFor(SavedTab savedTab)
     {
-        var profile = _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, savedTab.ProfileId, StringComparison.OrdinalIgnoreCase))
-                      ?? _catalog.DefaultProfile;
-        return profile is { IsLaunchable: true } ? profile : null;
+        return _catalog.ResolveRestoredProfile(savedTab.ProfileId, savedTab.ProfileName, out _);
     }
 
     /// <summary>The command line the planner judges: expanded, as the tab would launch it.</summary>
@@ -323,7 +321,7 @@ public partial class MainWindow
     /// </summary>
     internal TerminalTab? OpenSavedTab(SavedTab savedTab, bool activate, ResumePlan? plan = null)
     {
-        var profile = ProfileFor(savedTab);
+        var profile = _catalog.ResolveRestoredProfile(savedTab.ProfileId, savedTab.ProfileName, out var profileNote);
         if (profile is null)
         {
             return null;
@@ -359,7 +357,8 @@ public partial class MainWindow
             _ when savedTab.AgentRunning => $"agent not resumed ({plan.Reason})",
             _ => "directory only",
         };
-        tab.RestoreNote = $"restored from {when} · {how}";
+        tab.RestoreNote = $"restored from {when} · {how}" + (profileNote is null ? string.Empty : " · " + profileNote);
+        if (profileNote is not null) _trace.Write($"[{tab.Id}] restore: {profileNote}");
         if (savedTab.AgentRunning)
         {
             _trace.Write($"[{tab.Id}] restore: {savedTab.Harness ?? "agent"} {plan.Mode.ToString().ToLowerInvariant()} - {plan.Reason}{(plan.Command is null ? string.Empty : $": {plan.Command}")}");
@@ -374,6 +373,7 @@ public partial class MainWindow
         Id = t.Id,
         NamingId = t.NamingId,
         ProfileId = t.Profile.Id,
+        ProfileName = t.Profile.Name,
         WorkingDirectory = t.WorkingDirectory,
         Label = t.UserLabel,
         SessionTitle = t.IsAgent ? t.SessionTitle : null,
@@ -720,7 +720,7 @@ public partial class MainWindow
     {
         if (!string.IsNullOrWhiteSpace(tab.Label)) return tab.Label;
         var harness = (tab.Harness is { } h ? _agents.Rules.Find(h)?.DisplayName ?? h : null) ?? string.Empty;
-        var profile = _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, tab.ProfileId, StringComparison.OrdinalIgnoreCase))?.Name ?? "tab";
+        var profile = _catalog.FindById(tab.ProfileId)?.Name ?? tab.ProfileName ?? "tab";
         var project = tab.Project ?? (tab.WorkingDirectory is { } cwd ? TerminalTab.FindProjectName(cwd) : string.Empty);
         var terminal = tab.Harness is null ? tab.TerminalTitle : Core.Tabs.TabLabels.FromTerminal(tab.TerminalTitle, tab.Harness, harness, profile, project);
         return Core.Tabs.TabLabels.Primary(_settings.Tabs.EffectiveLabelMode, tab.Harness is not null, tab.SessionTitle, terminal, project, harness, profile);
@@ -868,19 +868,9 @@ public partial class MainWindow
 
             case ProtocolAction.New:
                 {
-                    var profile = request.Query.TryGetValue("profile", out var id)
-                        ? _catalog.Profiles.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase) || string.Equals(p.Name, id, StringComparison.OrdinalIgnoreCase))
-                        : null;
-                    profile ??= _catalog.DefaultProfile;
-                    if (profile is not null)
-                    {
-                        if (request.Query.TryGetValue("cwd", out var cwd) && Directory.Exists(cwd))
-                        {
-                            profile = profile with { StartingDirectory = cwd };
-                        }
-
-                        AddTab(profile, activate: true);
-                    }
+                    request.Query.TryGetValue("profile", out var id);
+                    request.Query.TryGetValue("cwd", out var cwd);
+                    OpenTabFor(new Core.Extensibility.TabRequest(Profile: id, WorkingDirectory: cwd, Activate: true));
 
                     break;
                 }

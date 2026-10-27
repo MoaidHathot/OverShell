@@ -264,6 +264,10 @@ public sealed class AppSettings
 
     public List<string> Problems { get; } = [];
 
+    /// <summary>A read/JSON/schema failure, as opposed to a recoverable individual setting warning.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasLoadError { get; private set; }
+
     /// <summary>Whether an extension is turned on: <c>extensions.&lt;id&gt;.enabled</c>, default true.</summary>
     public bool ExtensionEnabled(string id) =>
         !(Extensions.GetValueOrDefault(id) is System.Text.Json.Nodes.JsonObject o
@@ -298,6 +302,7 @@ public sealed class AppSettings
     public static AppSettings Load(string? userFilePath)
     {
         var problems = new List<string>();
+        var hasLoadError = false;
 
         var defaults = Jsonc.Parse(EmbeddedResources.Read("settings.jsonc"), out var defaultsError);
         if (defaultsError is not null)
@@ -311,6 +316,7 @@ public sealed class AppSettings
             var user = Jsonc.ReadFile(userFilePath, out var userError);
             if (userError is not null)
             {
+                hasLoadError = true;
                 problems.Add($"{userFilePath}: {userError}");
             }
             else if (user is not null)
@@ -322,11 +328,13 @@ public sealed class AppSettings
         var settings = Jsonc.To<AppSettings>(merged, out var shapeError);
         if (settings is null)
         {
+            hasLoadError = true;
             problems.Add($"settings: {shapeError ?? "empty"}");
             settings = Jsonc.To<AppSettings>(defaults, out _) ?? new AppSettings();
         }
 
         settings.Problems.AddRange(problems);
+        settings.HasLoadError = hasLoadError;
         if (!OverShell.Core.Tabs.TabLabels.TryMode(settings.Tabs.LabelMode, out _))
             settings.Problems.Add($"tabs.labelMode: unknown value '{settings.Tabs.LabelMode}'; using session");
         return settings;
