@@ -35,8 +35,8 @@ binaries with Azure Artifact Signing; the Windows Terminal control binaries arri
 same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
-**0.3.0:** [release highlights and upgrade instructions](docs/RELEASE-0.3.0.md),
-including the OpenCode V2 bridge migration and session-aware tab names.
+**0.3.1:** [release highlights and upgrade instructions](docs/RELEASE-0.3.1.md),
+including configurable profile sources/defaults, the keyboard picker, and small-window controls.
 
 ## Build & run
 
