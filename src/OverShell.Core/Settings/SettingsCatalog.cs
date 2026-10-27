@@ -112,6 +112,17 @@ public static class SettingsCatalog
 
     public static IReadOnlyList<SettingKnob> Knobs { get; } =
     [
+        new("profiles.source", "Profile source", "Windows Terminal configuration to import. settingsPath and OVERSHELL_WT_SETTINGS take precedence.", SettingKind.Choice,
+        [
+            new("\"auto\"", "auto", "Stable, then Preview, then unpackaged (default)"),
+            new("\"stable\"", "stable", "Windows Terminal"),
+            new("\"preview\"", "preview", "Windows Terminal Preview"),
+            new("\"unpackaged\"", "unpackaged", "Unpackaged Windows Terminal"),
+        ]),
+        new("profiles.settingsPath", "Profile settings file", "An explicit Windows Terminal settings file; environment variables expand and relative paths use OverShell's configuration directory.", SettingKind.Text,
+            [new("null", "use the selected source")]) { NullDisplay = "use the selected source", Validate = JsoncEdit.ToJson },
+        new("profiles.defaultProfile", "Default profile", "Profile name or ID for new tabs; choose one from the loaded source or follow Windows Terminal.", SettingKind.Text,
+            [new("null", "follow Windows Terminal")]) { NullDisplay = "follow Windows Terminal", Validate = JsoncEdit.ToJson },
         new("window.terminalOpacity", "Terminal body opacity",
             "How much the backdrop shows through the terminal's default background; 1 is opaque. Crossing 1 takes a restart.",
             SettingKind.Number,

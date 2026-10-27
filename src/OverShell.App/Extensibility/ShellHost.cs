@@ -213,15 +213,13 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
     public Task<string?> PromptAsync(string caption, string initial = "")
     {
         var completion = new TaskCompletionSource<string?>();
-        var accepted = false;
         var palette = PaletteWindow.Prompt(_window, caption, initial, text =>
         {
-            accepted = true;
             completion.TrySetResult(text);
         });
         palette.Closed += (_, _) =>
         {
-            if (!accepted)
+            if (!palette.Accepted)
             {
                 completion.TrySetResult(null);
             }
@@ -248,7 +246,7 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
         var palette = PaletteWindow.Picker(_window, glyph, emptyText, query => Filter(rows, query));
         palette.Closed += (_, _) =>
         {
-            completion.TrySetResult(null);
+            if (!palette.Accepted) completion.TrySetResult(null);
             _window.ActiveTab?.Surface.Focus();
         };
         return completion.Task;
@@ -261,7 +259,7 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
         var palette = PaletteWindow.Ask(_window, "\uE9CE", question, rows);
         palette.Closed += (_, _) =>
         {
-            completion.TrySetResult(-1);
+            if (!palette.Accepted) completion.TrySetResult(-1);
             _window.ActiveTab?.Surface.Focus();
         };
         return completion.Task;

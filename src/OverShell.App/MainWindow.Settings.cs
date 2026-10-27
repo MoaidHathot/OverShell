@@ -139,6 +139,8 @@ public partial class MainWindow
     /// </summary>
     private void OpenValuePicker(SettingKnob knob)
     {
+        var owner = CommandOwner();
+        knob = ProfileKnob(knob);
         if (_palette is { IsVisible: true })
         {
             _palette.Close();
@@ -153,7 +155,7 @@ public partial class MainWindow
             SettingKind.Text => "type a value, or pick one",
             _ => "no such value",
         };
-        _palette = PaletteWindow.Picker(this, SettingsGlyph, $"{knob.Title}: {hint}", query =>
+        _palette = PaletteWindow.Picker(owner, SettingsGlyph, $"{knob.Title}: {hint}", query =>
         {
             var items = new List<PaletteItem>();
             if (knob.JsonForTyped(query.Text) is { } typedJson)
@@ -176,7 +178,7 @@ public partial class MainWindow
                     continue;
                 }
 
-                var isCurrent = string.Equals(knob.DisplayValue(choice.Json), current, StringComparison.OrdinalIgnoreCase);
+                var isCurrent = string.Equals(knob.DisplayValue(choice.Json), current, StringComparison.OrdinalIgnoreCase) || ProfileChoiceIsCurrent(knob, choice.Json, current);
                 var captured = choice;
                 items.Add(new PaletteItem
                 {
@@ -189,8 +191,8 @@ public partial class MainWindow
             }
 
             return items;
-        });
-        _palette.Closed += (_, _) => { _palette = null; ActiveTab?.Surface.Focus(); };
+        }, literalQuery: true, context: knob.Path.StartsWith("profiles.", StringComparison.Ordinal) ? ProfileSourceDescription : null);
+        _palette.Closed += (_, _) => { _palette = null; RefocusOwner(owner); };
     }
 
     /// <summary>

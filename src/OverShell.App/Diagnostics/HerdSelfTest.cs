@@ -28,7 +28,7 @@ internal static partial class HerdSelfTest
 {
     private static readonly string? Mode = Environment.GetEnvironmentVariable("OVERSHELL_SELFTEST");
 
-    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency" or "settings" or "unfocused" or "transfers" or "promptattachments" or "labels" or "labels1" or "labels2" or "opencode-labels";
+    private static readonly bool Enabled = Mode is "1" or "opencode" or "opencode-resume" or "session1" or "session2" or "sessionend" or "history" or "icons" or "polish" or "cwd" or "resilience" or "ghost" or "workspaces" or "overflow" or "jumplist" or "theme" or "tearoff" or "find" or "inject" or "env" or "herdmode" or "mru" or "summon" or "address" or "keynav" or "inbox" or "opencode-reply" or "triage" or "spawn" or "spawn-opencode" or "mcp" or "herdlog" or "changes" or "transparency" or "settings" or "unfocused" or "transfers" or "promptattachments" or "labels" or "labels1" or "labels2" or "opencode-labels" or "profiles";
 
     private static readonly string LogPath =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest.log");
@@ -175,6 +175,9 @@ internal static partial class HerdSelfTest
                     case "opencode-labels":
                         await RunOpenCodeLabelsAsync(window, firstTab);
                         break;
+                    case "profiles":
+                        await RunProfilesAsync(window, firstTab);
+                        break;
                     default:
                         await RunAsync(window, firstTab);
                         break;
@@ -210,6 +213,9 @@ internal static partial class HerdSelfTest
             var now = DateTimeOffset.Now;
             switch (Mode)
             {
+                case "profiles":
+                    SeedProfiles();
+                    break;
                 case "history":
                     Seed(now.AddMinutes(-30), SessionCloseReason.Closed, Shell("archived one", @"C:\"), Shell("archived two", @"C:\Windows"));
                     break;

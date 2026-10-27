@@ -1010,7 +1010,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (profile is not null)
         {
-            AddTab(profile, activate: true);
+            var tab = AddTab(profile, activate: true);
+            if (_settings.ViewFor(_viewId).Content != ViewContent.Terminal) ApplyView("terminal");
+            BringToFront();
+            Dispatcher.BeginInvoke(() => { if (IsActive && ReferenceEquals(ActiveTab, tab)) tab.Surface.Focus(); }, DispatcherPriority.ApplicationIdle);
         }
     }
     /// <summary>
@@ -1057,27 +1060,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             var item = new MenuItem
             {
-                Header = profile.Name,
+                Header = ProfileTitle(profile),
                 Style = itemStyle,
                 DataContext = new MenuAccent(TabAccent.For(profile.Id)),
-                InputGestureText = profile.Id == _catalog.DefaultProfile?.Id ? "default" : string.Empty,
+                InputGestureText = profile.Id == _catalog.DefaultProfile?.Id ? "default" : HintFor(ProfileCommandId(profile)) ?? string.Empty,
+                ToolTip = $"{profile.CommandLine}\n{profile.Id}",
             };
 
-            var captured = profile;
-            item.Click += (_, _) => NewTab(captured);
+            var id = profile.Id;
+            item.Click += (_, _) => OpenProfileTab(id);
             menu.Items.Add(item);
         }
 
-        if (_catalog.Diagnostics.Count > 0)
-        {
-            menu.Items.Add(new Separator { Style = (Style)FindResource("MenuSeparator") });
-            menu.Items.Add(new MenuItem
-            {
-                Header = $"{_catalog.Diagnostics.Count} profile(s) unavailable",
-                Style = itemStyle,
-                IsEnabled = false,
-            });
-        }
+        menu.Items.Add(new Separator { Style = (Style)FindResource("MenuSeparator") });
+        var search = new MenuItem { Header = "Search profiles…", Style = itemStyle, InputGestureText = HintFor("tab.newWithProfile") ?? string.Empty };
+        search.Click += (_, _) => Dispatcher.BeginInvoke(OpenProfilePicker, DispatcherPriority.Input);
+        menu.Items.Add(search);
+        var source = new MenuItem { Header = $"Source: {_catalog.Location.Source}" + (_catalog.Diagnostics.Count > 0 ? $" ({_catalog.Diagnostics.Count} diagnostics)" : string.Empty), Style = itemStyle, ToolTip = ProfileSourceDescription };
+        source.Click += (_, _) => ShowStatusMessage(ProfileSourceDescription);
+        menu.Items.Add(source);
 
         menu.IsOpen = true;
     }

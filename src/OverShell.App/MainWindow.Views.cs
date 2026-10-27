@@ -272,7 +272,10 @@ public partial class MainWindow
 
         if (definition.Content == ViewContent.Terminal)
         {
-            Dispatcher.BeginInvoke(() => ActiveTab?.Surface.Focus(), DispatcherPriority.Input);
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (IsActive && _settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
+            }, DispatcherPriority.Input);
         }
     }
 

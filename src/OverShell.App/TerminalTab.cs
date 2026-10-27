@@ -234,7 +234,12 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
 
             if (value)
             {
-                _dispatcher.BeginInvoke(Surface.Focus, DispatcherPriority.Input);
+                _dispatcher.BeginInvoke(() =>
+                {
+                    // A picker, another tab or another application may have taken focus
+                    // since this was queued. A delayed activation must respect that choice.
+                    if (!_disposed && IsActive && Window.GetWindow(View)?.IsActive == true) Surface.Focus();
+                }, DispatcherPriority.Input);
             }
         }
     }

@@ -178,6 +178,14 @@
                        FontSize="{StaticResource Font.Size.Small}"
                        Foreground="{StaticResource Text.Disabled}"
                        Visibility="Collapsed" />
+            <TextBlock x:Name="TxtContext"
+                       Margin="16,4,16,12"
+                       FontFamily="{StaticResource Font.Ui}"
+                       FontSize="{StaticResource Font.Size.Small}"
+                       Foreground="{StaticResource Text.Secondary}"
+                       TextWrapping="Wrap"
+                       MaxHeight="120"
+                       Visibility="Collapsed" />
         </StackPanel>
     </Border>
 </Window>

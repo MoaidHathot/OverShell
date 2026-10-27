@@ -908,7 +908,10 @@ public partial class MainWindow
             _ = SetForegroundWindow(hwnd);
         }
 
-        Dispatcher.BeginInvoke(() => ActiveTab?.Surface.Focus(), System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (IsActive && _settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
+        }, System.Windows.Threading.DispatcherPriority.Input);
     }
 
     [DllImport("user32.dll")]

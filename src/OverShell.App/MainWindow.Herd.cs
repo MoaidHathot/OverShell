@@ -146,6 +146,9 @@ public partial class MainWindow
         var c = _commands;
 
         c.Register("tab.new", "New tab", "Tabs", () => NewTab(_catalog.DefaultProfile), description: "Open the default profile");
+        c.Register("tab.newWithProfile", "New tab with profile…", "Tabs", OpenProfilePicker, description: "Search profiles, then press Enter to open one");
+        c.Register("profiles.status", "Profiles: show source and diagnostics", "Profiles", () => ShowStatusMessage(ProfileSourceDescription), description: "Selected Windows Terminal settings file, default profile and import diagnostics");
+        RegisterProfileCommands();
         c.Register("tab.duplicate", "Duplicate tab", "Tabs", () => { if (TargetTab is { } t) DuplicateTab(t); }, () => TargetTab is not null, "Same profile, same directory, same group - next to this tab");
         c.Register("tab.close", "Close tab", "Tabs", () => { if (TargetTab is { } t) CloseTab(t); }, () => TargetTab is not null);
         c.Register("tab.next", "Next tab", "Tabs", () => ActivateRelative(1), () => Tabs.Count > 1);
@@ -227,7 +230,9 @@ public partial class MainWindow
             tab.RequestScreen();
         }
 
-        _palette = PaletteWindow.Show(this, initial, BuildPaletteItems);
+        var owner = CommandOwner();
+        var target = owner is TearOffWindow tearOff ? tearOff.Tab : ActiveTab;
+        _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target));
         _palette.Closed += (_, _) =>
         {
             _palette = null;
@@ -239,12 +244,12 @@ public partial class MainWindow
 
             if (!dashboard)
             {
-                ActiveTab?.Surface.Focus();
+                RefocusOwner(owner);
             }
         };
     }
 
-    private IReadOnlyList<PaletteItem> BuildPaletteItems(PaletteQuery query)
+    private IReadOnlyList<PaletteItem> BuildPaletteItems(PaletteQuery query, TerminalTab? target)
     {
         var scored = new List<(int Score, int Order, PaletteItem Item)>();
         var order = 0;
@@ -271,7 +276,13 @@ public partial class MainWindow
                     Detail = command.Description ?? command.Category,
                     Hint = HintFor(command.Id),
                     Glyph = "\u203A",
-                    Invoke = () => _commands.TryExecute(captured.Id),
+                    Invoke = () =>
+                    {
+                        var previous = _commandTarget;
+                        _commandTarget = target;
+                        try { _commands.TryExecute(captured.Id); }
+                        finally { _commandTarget = previous; }
+                    },
                 }));
             }
         }

@@ -63,6 +63,10 @@ public partial class PaletteWindow : Window
     private readonly Action<string>? _accept;
     private readonly DispatcherTimer _previewTimer;
     private bool _closing;
+    private bool _literalQuery;
+
+    /// <summary>Set before Closed; the chosen action runs afterwards, once focus traffic has settled.</summary>
+    public bool Accepted { get; private set; }
 
     private PaletteWindow(Window owner, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source, Action<string>? accept)
     {
@@ -75,7 +79,7 @@ public partial class PaletteWindow : Window
         _previewTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
         _previewTimer.Tick += (_, _) => UpdatePreview();
 
-        Deactivated += (_, _) => CloseOnce();
+        Deactivated += (_, _) => CloseOnce(restoreOwner: false);
         Loaded += (_, _) => { Input.Focus(); Input.CaretIndex = Input.Text.Length; Place(); };
         Closed += (_, _) => _previewTimer.Stop();
     }
@@ -96,9 +100,11 @@ public partial class PaletteWindow : Window
     /// with its own glyph and empty-list text; the text typed filters the list the way the
     /// switcher does, through <paramref name="source"/>.
     /// </summary>
-    public static PaletteWindow Picker(Window owner, string glyph, string emptyText, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source)
+    public static PaletteWindow Picker(Window owner, string glyph, string emptyText, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source,
+        bool literalQuery = false, string? context = null)
     {
-        var window = new PaletteWindow(owner, source, accept: null) { _promptGlyph = glyph, _emptyText = emptyText };
+        var window = new PaletteWindow(owner, source, accept: null) { _promptGlyph = glyph, _emptyText = emptyText, _literalQuery = literalQuery };
+        window.SetContext(context);
         window.Refresh();
         window.Place();
         window.Show();
@@ -128,6 +134,22 @@ public partial class PaletteWindow : Window
 
     private string? _promptGlyph;
     private string? _emptyText;
+
+    public void SetContext(string? text)
+    {
+        TxtContext.Text = text ?? string.Empty;
+        TxtContext.ToolTip = text;
+        TxtContext.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>Refresh a live source, retaining a selected row when it still exists.</summary>
+    public void RefreshItems()
+    {
+        var title = (List.SelectedItem as PaletteItem)?.Title;
+        Refresh();
+        if (title is not null && List.Items.Cast<PaletteItem>().FirstOrDefault(i => i.Title == title) is { } selected)
+            List.SelectedItem = selected;
+    }
 
     /// <summary>Opens a single-line prompt; Enter calls <paramref name="accept"/> with the text.</summary>
     public static PaletteWindow Prompt(Window owner, string prompt, string initial, Action<string> accept)
@@ -167,7 +189,8 @@ public partial class PaletteWindow : Window
             return;
         }
 
-        var query = _fixedQuery ? PaletteQuery.Parse(string.Empty) : PaletteQuery.Parse(Input.Text);
+        var query = _fixedQuery ? PaletteQuery.Parse(string.Empty) : _literalQuery
+            ? new PaletteQuery(false, Input.Text.Trim(), null, null) : PaletteQuery.Parse(Input.Text);
         var items = _source(query);
         List.ItemsSource = items;
         List.SelectedIndex = items.Count > 0 ? 0 : -1;
@@ -280,7 +303,7 @@ public partial class PaletteWindow : Window
     /// action's own focus changes (a new tab, a rename) are not undone by the palette's
     /// closing focus traffic.
     /// </summary>
-    private void CloseOnce(Action? then = null)
+    private void CloseOnce(Action? then = null, bool restoreOwner = true)
     {
         if (_closing)
         {
@@ -288,7 +311,14 @@ public partial class PaletteWindow : Window
         }
 
         _closing = true;
+        Accepted = then is not null;
+        var owner = Owner;
+        var returnFocus = restoreOwner && IsActive;
         Close();
+        // With several top-level terminal windows, WPF may activate the main window
+        // instead of this palette's owner. Explicit dismissal returns to its own window;
+        // dismissal by deactivation respects wherever the user clicked.
+        if (returnFocus && owner is { IsVisible: true }) owner.Activate();
 
         if (then is not null)
         {
