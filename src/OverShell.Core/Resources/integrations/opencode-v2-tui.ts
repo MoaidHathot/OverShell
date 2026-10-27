@@ -84,21 +84,31 @@ export default Plugin.define({
       } else if (command.kind === "question") {
         const form = command.requestId ? view.forms.find((f) => f.id === command.requestId) : view.form
         if (!form) throw new Error("That question is no longer open in this session")
+        const fields = form.fields.filter((field) => !("hidden" in field && field.hidden))
+        if (fields.length === 0) throw new Error("This form has no visible fields to answer")
         let answer: Record<string, string | number | boolean | string[]>
-        if (form.fields.length === 1) {
-          const field = form.fields[0]
+        if (fields.length === 1) {
+          const field = fields[0]
+          const options = "options" in field ? field.options : undefined
+          const optionValue = (text: string) => options?.find((option) => option.label === text || option.value === text)?.value ?? text
           let value: string | number | boolean | string[] = command.response
           if (field.type === "boolean") {
-            if (!/^(yes|no|true|false)$/i.test(command.response)) throw new Error("Answer this field with yes or no")
-            value = /^(yes|true)$/i.test(command.response)
+            const text = command.response.trim()
+            if (!/^(yes|no|true|false|y|n|1|0)$/i.test(text)) throw new Error("Answer this field with yes or no")
+            value = /^(yes|true|y|1)$/i.test(text)
           } else if (field.type === "number" || field.type === "integer") {
             if (command.response.trim().length === 0) throw new Error("Answer this field with a valid number")
             value = Number(command.response)
             if (!Number.isFinite(value) || (field.type === "integer" && !Number.isInteger(value))) throw new Error("Answer this field with a valid number")
           } else if (field.type === "multiselect") {
-            value = command.response.startsWith("[") ? JSON.parse(command.response) : [command.response]
+            const text = command.response.trim()
+            const whole = options?.find((option) => option.label === text || option.value === text)
+            value = text.startsWith("[") ? JSON.parse(text)
+              : whole ? [whole.value] : text.split(",").map((item) => item.trim()).filter(Boolean)
             if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) throw new Error("Expected a list of choices")
-          } else if (field.type !== "string") throw new Error("Complete this external field in OpenCode")
+            value = value.map(optionValue)
+          } else if (field.type === "string") value = optionValue(command.response)
+          else throw new Error("Complete this external field in OpenCode")
           answer = { [field.key]: value }
         } else {
           answer = JSON.parse(command.response)

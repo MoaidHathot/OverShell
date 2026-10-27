@@ -629,6 +629,11 @@ keep independent selected-session identities. It tracks renames and navigation w
 waiting for another turn and works with OpenCode's `terminal.title` disabled. Programs
 without an interactive bridge, including headless runs, use terminal/detector fallbacks.
 
+For a single visible form field, replies accept the displayed option label or its value.
+Multi-select replies accept comma-separated choices or a JSON string array; use JSON
+when a choice contains a comma. Boolean fields accept yes/no, true/false, y/n or 1/0.
+Forms with multiple visible fields accept a JSON object keyed by field name.
+
 ## 9. Notifications
 
 Events: **blocked**, **done**, **error**, **exited**. Each enabled **sink** in

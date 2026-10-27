@@ -226,3 +226,37 @@ test("a prompt from home creates and selects a session in this client", async ()
     assert.equal(client.reports.at(-1).session.id, "created")
   } finally { await client.dispose() }
 })
+
+test("visible form fields accept option labels and comma-separated or JSON choices", async () => {
+  const client = await bridge()
+  try {
+    const options = [{ label: "First choice", value: "first" }, { label: "Second choice", value: "second" }, { label: "Choice, with comma", value: "comma" }]
+    const field = { key: "choice", type: "string", options }
+    client.forms.set("a", [{ id: "form", sessionID: "a", fields: [{ key: "internal", type: "string", hidden: true }, field] }])
+    await client.command({ seq: 1, kind: "question", requestId: "form", response: "First choice" })
+    assert.deepEqual(client.calls.at(-1).input.answer, { choice: "first" })
+    field.type = "multiselect"
+    await client.command({ seq: 2, kind: "question", requestId: "form", response: "First choice, Second choice" })
+    assert.deepEqual(client.calls.at(-1).input.answer, { choice: ["first", "second"] })
+    await client.command({ seq: 3, kind: "question", requestId: "form", response: '["Choice, with comma", "Second choice"]' })
+    assert.deepEqual(client.calls.at(-1).input.answer, { choice: ["comma", "second"] })
+    await client.command({ seq: 4, kind: "question", requestId: "form", response: "Choice, with comma" })
+    assert.deepEqual(client.calls.at(-1).input.answer, { choice: ["comma"] })
+    assert.equal(client.toasts.length, 0)
+  } finally { await client.dispose() }
+})
+
+test("short boolean answers are supported and unknown answers are rejected", async () => {
+  const client = await bridge()
+  try {
+    client.forms.set("a", [{ id: "form", sessionID: "a", fields: [{ key: "enabled", type: "boolean" }] }])
+    let sequence = 0
+    for (const [response, expected] of [["y", true], [" N ", false], ["1", true], ["0", false]]) {
+      await client.command({ seq: ++sequence, kind: "question", requestId: "form", response })
+      assert.deepEqual(client.calls.at(-1).input.answer, { enabled: expected })
+    }
+    await client.command({ seq: ++sequence, kind: "question", requestId: "form", response: "maybe" })
+    assert.equal(client.calls.length, 4)
+    assert.equal(client.toasts.length, 1)
+  } finally { await client.dispose() }
+})
