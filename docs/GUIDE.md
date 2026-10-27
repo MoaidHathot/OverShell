@@ -114,6 +114,12 @@ init` gives you the full default file, commented, as a starting point.
   // The view shown at start: terminal | herd | dashboard | zen.
   "view": "terminal",
 
+  "profiles": {
+    "source": "auto",               // auto | stable | preview | unpackaged
+    "settingsPath": null,           // explicit Windows Terminal file, overriding source
+    "defaultProfile": null          // name or GUID; null follows the imported default
+  },
+
   // A view is a layout (a preset name or a file under layouts\) plus what the middle
   // shows: "terminal" (the live tab) or "dashboard" (one card per tab).
   "views": {
@@ -178,6 +184,86 @@ init` gives you the full default file, commented, as a starting point.
 }
 ```
 
+### 3.1 Profile source and default
+
+OverShell can import **Windows Terminal Stable**, **Windows Terminal Preview**, an
+**unpackaged** installation, or a file you select. To use Preview and give OverShell its
+own default profile, put this in `settings.jsonc` under your [configuration root](#2-where-configuration-lives):
+
+```jsonc
+{
+  "profiles": {
+    "source": "preview",
+    "defaultProfile": "PowerShell"
+  }
+}
+```
+
+`source: "auto"` is the default: the first existing settings file in this order wins:
+
+1. `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json`
+2. `%LOCALAPPDATA%\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json`
+3. `%LOCALAPPDATA%\Microsoft\Windows Terminal\settings.json`
+
+Choose `stable`, `preview`, or `unpackaged` to select that channel explicitly. Profiles,
+font settings, colour schemes and copy-on-select all come from the selected file.
+
+For a portable installation or a shared file, set `profiles.settingsPath`:
+
+```jsonc
+{ "profiles": { "settingsPath": "terminal/settings.json" } }
+```
+
+Relative paths are based on OverShell's configuration directory; `%VARIABLE%` and a
+leading `~/` expand. Source precedence is **`OVERSHELL_WT_SETTINGS` →
+`profiles.settingsPath` → `profiles.source`**. Clearing `settingsPath` to `null` follows
+`source` again. The environment variable is an explicit override too: a missing file is
+reported, rather than importing another installation's file.
+
+`profiles.defaultProfile` accepts a profile **name or ID**, case-insensitively; GUIDs
+with braces also work. `null` follows the imported Windows Terminal default. A missing
+or ambiguous configured default produces a diagnostic and uses the imported default,
+then PowerShell Core or the first available profile. Duplicate names
+can be selected precisely by ID. The default affects fresh tabs and an empty startup;
+session restoration uses saved profile identities, then unique saved names when IDs
+have changed, with a recorded default-profile fallback if the saved profile is gone.
+
+All three preferences are available from the command palette as **Setting: Profile
+source**, **Setting: Profile settings file**, and **Setting: Default profile**. The
+profile picker displays the effective source file and default. **Profiles: show source
+and diagnostics** also reports discovery and import problems.
+
+Settings changes and edits to the selected imported file reload for subsequent tab
+launches. A failed live import retains the last loaded profiles and reports the error;
+fixing or creating the selected file retries automatically. **Reload configuration**
+also refreshes profiles. At startup, when no usable source is available, generated
+profiles provide a working shell with the problem recorded in the picker.
+
+### 3.2 Open a specific profile with the keyboard
+
+- **Ctrl+Shift+T** opens the effective default profile.
+- **Ctrl+Shift+N** (`tab.newWithProfile`) opens the searchable profile picker.
+  Type a name, command line or ID, use **↑/↓**, and press **Enter** to open it. **Esc**
+  returns to the originating terminal. This works from every view and detached windows.
+- **Ctrl+Shift+P** → **New tab with profile…** opens the same picker. Individual
+  **New tab: &lt;profile&gt;** commands appear in the command palette too.
+
+To give a favourite profile its own shortcut, use its ID from the picker details or
+the imported file's `guid`, without braces, in `keybindings.jsonc`:
+
+```jsonc
+[
+  { "keys": "ctrl+alt+9", "command": "tab.newProfile.<profile-id>" },
+  { "keys": "ctrl+alt+n", "command": "tab.newWithProfile" },
+  { "keys": "ctrl+shift+n", "command": "unbound" }
+]
+```
+
+Replace `<profile-id>` with the actual ID. IDs keep shortcuts tied to the same profile
+when names or ordering change. A shortcut for a removed profile reports its absence.
+Workspaces, extensions, the HTTP/MCP control API and `overshell://new?profile=…` use the
+same name/ID resolution: an explicit missing or ambiguous profile produces an error.
+
 ## 4. Keys and the command palette
 
 Every chord resolves through `keybindings.jsonc` to a **command id**; nothing is
@@ -187,6 +273,7 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | Chord | Command | What |
 |---|---|---|
 | `Ctrl+Shift+T` | `tab.new` | New tab, default profile (`Ctrl+T` stays with the shell — PSReadLine uses it) |
+| `Ctrl+Shift+N` | `tab.newWithProfile` | Search profiles, then open the selected one with Enter |
 | `Ctrl+Shift+W` | `tab.close` | Close tab |
 | `Ctrl+Shift+D` | `tab.duplicate` | Another tab like this one: same profile, directory and group, next to it |
 | `Ctrl+Shift+Z` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |

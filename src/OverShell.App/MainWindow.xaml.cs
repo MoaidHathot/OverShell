@@ -195,10 +195,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ------------------------------------------------------------ tab model
 
-    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null, string? namingId = null, string? userLabel = null)
+    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null, string? namingId = null, string? userLabel = null, ColorScheme? scheme = null)
     {
         if (Tabs.Any(t => string.Equals(t.NamingId, namingId, StringComparison.OrdinalIgnoreCase))) namingId = null;
-        var tab = new TerminalTab(profile, _catalog.SchemeFor(profile), Dispatcher, _agents, userLabel, preamble, namingId);
+        var tab = new TerminalTab(profile, scheme ?? _catalog.SchemeFor(profile), Dispatcher, _agents, userLabel, preamble, namingId);
         tab.LabelInputsChanged += _ => RefreshTabLabels();
 
         // Extension state restored with the tab, before any extension hears of it.
@@ -1035,7 +1035,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             profile = profile with { StartingDirectory = source.WorkingDirectory };
         }
 
-        var tab = AddTab(profile, activate: true);
+        var tab = AddTab(profile, activate: true, scheme: source.Scheme);
 
         // Move first: MoveTab makes a tab adopt the group of the one it displaces (that is
         // what a drag across a group header means), which is not what a duplicate wants.

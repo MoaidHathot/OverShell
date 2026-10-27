@@ -61,6 +61,12 @@ public sealed class WindowsTerminalSettings
             throw new JsonException("Windows Terminal settings must be a JSON object");
 
         var profilesNode = root.Prop("profiles");
+        if (profilesNode is { } profilesValue && profilesValue.ValueKind is not (JsonValueKind.Object or JsonValueKind.Array))
+            throw new JsonException("profiles must be an object or an array");
+        if (profilesNode?.Prop("list") is { ValueKind: not JsonValueKind.Array })
+            throw new JsonException("profiles.list must be an array");
+        if (profilesNode?.Prop("defaults") is { ValueKind: not JsonValueKind.Object })
+            throw new JsonException("profiles.defaults must be an object");
         var defaults = profilesNode?.Prop("defaults") ?? default;
 
         // "profiles" may be an object with a "list", or (legacy) a bare array.
@@ -68,8 +74,10 @@ public sealed class WindowsTerminalSettings
             ? bare.EnumerateArray()
             : profilesNode?.Array("list") ?? [];
 
-        var profiles = list
-            .Where(p => p.ValueKind == JsonValueKind.Object)
+        var entries = list.ToArray();
+        if (entries.Any(p => p.ValueKind != JsonValueKind.Object))
+            throw new JsonException("profiles.list entries must be objects");
+        var profiles = entries
             .Select(p => ReadProfile(p, defaults))
             .ToList();
 

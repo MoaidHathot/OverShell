@@ -15,6 +15,10 @@ It reads your existing **Windows Terminal `settings.json`**: profiles, colour sc
 fonts are shared, and there is no second configuration to maintain. OverShell never
 writes to it.
 
+Choose **Stable, Preview, unpackaged, or a custom settings file**, and set OverShell's
+own default profile in `settings.jsonc`. **Ctrl+Shift+N** opens the keyboard profile
+picker. See [profile configuration](docs/GUIDE.md#31-profile-source-and-default).
+
 ## Install
 
 Windows 10 19041+ (Windows 11 22621+ for the system backdrop), x64 only.
@@ -54,7 +58,7 @@ backdrop). x64 only. The OpenCode bridge tests additionally use Node.js 22.13+ (
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused`, `transfers`, `promptattachments`, `labels`, `labels1`/`labels2`, `opencode-labels` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`). `opencode-labels` checks real OpenCode V2 clients; the older run-based OpenCode probes target the legacy integration. `session1`/`session2` and `labels1`/`labels2` check restoration across a restart. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused`, `transfers`, `promptattachments`, `labels`, `labels1`/`labels2`, `opencode-labels`, `profiles` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`). `opencode-labels` checks real OpenCode V2 clients; the older run-based OpenCode probes target the legacy integration. `session1`/`session2` and `labels1`/`labels2` check restoration across a restart. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
 Crashes are always logged to `%TEMP%\overshell-crash.log`.
@@ -68,6 +72,8 @@ terminal and ConPTY, including detach/reattach, on a private desktop.
 `-Mode labels` checks naming and live settings; `labels1` then `labels2 -KeepState`
 checks a real restart. `-Mode opencode-labels` uses two real OpenCode V2 clients with a
 scratch database and metadata-only operations, without model requests.
+`-Mode profiles` seeds isolated profile files and checks startup overrides, keyboard
+selection and focus, live reload/recovery, and workspace/protocol/HTTP profile launches.
 
 ## Configuration
 
@@ -91,6 +97,16 @@ change from the palette is one line written into the file, the rest of it untouc
 All files are JSONC and reload live when saved: `settings.jsonc`, `keybindings.jsonc`,
 `snippets.jsonc`, `agents\*.jsonc`, `layouts\*.jsonc`, `skins\*.xaml`. Below,
 *the configuration directory* means that root.
+
+For example, to import Windows Terminal Preview and open a named profile by default:
+
+```jsonc
+{ "profiles": { "source": "preview", "defaultProfile": "PowerShell" } }
+```
+
+The palette offers **Setting: Profile source**, **Setting: Profile settings file**, and
+**Setting: Default profile**. Profile changes apply to new tabs; imported file edits
+reload automatically. `OVERSHELL_WT_SETTINGS` has priority over these source settings.
 
 ## Agents
 

@@ -18,10 +18,11 @@ internal static partial class HerdSelfTest
     private static string? _profilesEnvironmentBefore;
     private static string ProfileFixture => Path.Combine(AppPaths.StateRoot, "profiles", "imported.json");
 
-    private static string ProfileFixtureJson(string secondName = "Profile Cmd") => $$"""
+    private static string ProfileFixtureJson(string secondName = "Profile Cmd", string background = "#111111") => $$"""
         {
           "defaultProfile": "Profile PowerShell",
-          "profiles": { "list": [
+          "schemes": [{ "name": "Profile Test", "foreground": "#cccccc", "background": "{{background}}" }],
+          "profiles": { "defaults": { "colorScheme": "Profile Test" }, "list": [
             { "guid": "{{ProfileOne}}", "name": "Profile PowerShell", "commandline": "powershell.exe -NoLogo -NoProfile", "startingDirectory": "%USERPROFILE%" },
             { "guid": "{{ProfileTwo}}", "name": "{{secondName}}", "commandline": "cmd.exe /Q", "startingDirectory": "%USERPROFILE%" },
             { "guid": "{{ProfileThree}}", "name": "@remote #dev", "commandline": "cmd.exe /Q" },
@@ -130,6 +131,8 @@ internal static partial class HerdSelfTest
             window.Commands.TryExecute("palette.commands");
             await Task.Delay(100);
             Check(ReferenceEquals(window.Palette?.Owner, tearOff), "the command palette also belongs to the detached terminal");
+            ProfileInput(window.Palette!).Text = ">tab.attach";
+            Check(ProfileRows(window.Palette!).Any(r => r.Title == "Attach tab back to the main window"), "command availability is evaluated against the detached target");
             ProfileInput(window.Palette!).Text = ">tab.newWithProfile";
             ProfileKey(window.Palette!, Key.Return);
             Check(await TransferUntilAsync(() => window.Palette?.Title == "New tab with profile — OverShell"), "the command palette opens the profile picker with the keyboard");
@@ -202,13 +205,16 @@ internal static partial class HerdSelfTest
         check(window.Catalog.DefaultProfile?.Id == ProfileOne, "clearing the override follows the imported name-based default");
 
         var other = Path.Combine(Path.GetDirectoryName(ProfileFixture)!, "other.json");
-        File.WriteAllText(other, ProfileFixtureJson("Other Cmd"));
+        File.WriteAllText(other, ProfileFixtureJson("Other Cmd", "#222222"));
         window.ApplySetting(SettingsCatalog.Find("profiles.settingsPath")!, JsoncEdit.ToJson(other));
         check(await TransferUntilAsync(() => window.Catalog.SettingsPath == other), "changing settingsPath swaps the imported source live");
         check(window.Commands.Find(secondCommand)?.Title == "New tab: Other Cmd", "profile commands are re-registered from the new source");
         window.Commands.TryExecute(secondCommand);
         check(window.ActiveTab?.Profile.Name == "Other Cmd", "direct commands launch the reloaded profile definition");
+        check(window.ActiveTab?.Scheme.Background == "#222222" && first.Scheme.Background == "#111111", "new tabs use the new source's appearance while existing tabs retain theirs");
         check(ReferenceEquals(first.Profile, originalProfile) && first.TerminalHwnd == originalHwnd && first.IsRunning, "existing tabs retain their profile and live native session across a source change");
+        var duplicateAppearance = window.DuplicateTab(first);
+        check(ReferenceEquals(duplicateAppearance.Scheme, first.Scheme), "duplicating a live tab preserves its original appearance after the source changes");
 
         window.Commands.TryExecute("tab.newWithProfile");
         await Task.Delay(100);
@@ -325,5 +331,11 @@ internal static partial class HerdSelfTest
         check(saved.ProfileName == "Profile Cmd", "session snapshots retain the profile name for channel/machine changes");
         var restored = window.OpenSavedTab(new SavedTab { ProfileId = "other-machine-id", ProfileName = "Profile Cmd" }, activate: false)!;
         check(restored.Profile.Id == ProfileTwo, "restore resolves a saved unique name when its old profile ID is absent");
+        var fresh = window.OpenTabFor(new TabRequest(Profile: ProfileTwo, Activate: true))!;
+        var detached = window.Detach(fresh)!;
+        detached.Activate();
+        check(await TransferUntilAsync(() => fresh.IsRunning && fresh.TerminalHwnd != 0 && ShortcutRouter.FocusedWindow() == fresh.TerminalHwnd),
+            "a freshly created terminal detached before its first frame receives focus when ready");
+        Log($"  fresh detached focus: running={fresh.IsRunning} detached={fresh.Detached} visible={fresh.View.IsVisible} owner={Window.GetWindow(fresh.View)?.GetType().Name} active={detached.IsActive} mainActive={window.IsActive} focused=0x{ShortcutRouter.FocusedWindow():X} terminal=0x{fresh.TerminalHwnd:X} actual=0x{MainWindow.FindTerminalHwnd(fresh.View):X} logical={Keyboard.FocusedElement?.GetType().Name}");
     }
 }

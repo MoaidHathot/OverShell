@@ -68,6 +68,9 @@ public partial class PaletteWindow : Window
     /// <summary>Set before Closed; the chosen action runs afterwards, once focus traffic has settled.</summary>
     public bool Accepted { get; private set; }
 
+    /// <summary>Optional live context, recomputed when the source or query refreshes.</summary>
+    public Func<string?>? ContextSource { get; set; }
+
     private PaletteWindow(Window owner, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source, Action<string>? accept)
     {
         InitializeComponent();
@@ -184,6 +187,7 @@ public partial class PaletteWindow : Window
 
     private void Refresh()
     {
+        if (ContextSource is { } context) SetContext(context());
         if (_accept is not null)
         {
             return;

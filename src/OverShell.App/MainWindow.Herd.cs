@@ -258,7 +258,7 @@ public partial class MainWindow
         {
             foreach (var command in _commands.All.OrderBy(c => c.Category).ThenBy(c => c.Title))
             {
-                if (!command.IsEnabled)
+                if (!ForCommandTarget(target, () => command.IsEnabled))
                 {
                     continue;
                 }
@@ -276,13 +276,7 @@ public partial class MainWindow
                     Detail = command.Description ?? command.Category,
                     Hint = HintFor(command.Id),
                     Glyph = "\u203A",
-                    Invoke = () =>
-                    {
-                        var previous = _commandTarget;
-                        _commandTarget = target;
-                        try { _commands.TryExecute(captured.Id); }
-                        finally { _commandTarget = previous; }
-                    },
+                    Invoke = () => ForCommandTarget(target, () => _commands.TryExecute(captured.Id)),
                 }));
             }
         }
@@ -323,6 +317,14 @@ public partial class MainWindow
         }
 
         return scored.OrderByDescending(s => s.Score).ThenBy(s => s.Order).Select(s => s.Item).ToList();
+    }
+
+    private bool ForCommandTarget(TerminalTab? target, Func<bool> action)
+    {
+        var previous = _commandTarget;
+        _commandTarget = target;
+        try { return action(); }
+        finally { _commandTarget = previous; }
     }
 
     private void RenameActiveTab()

@@ -81,6 +81,7 @@ public partial class MainWindow
             ProfileReloadError = e.Message;
             _trace.Write($"profiles: reload failed: {e}");
             ShowStatusMessage($"Profiles could not reload: {e.Message}");
+            _palette?.RefreshItems();
         }
     }
 
@@ -122,12 +123,22 @@ public partial class MainWindow
             watcher.Created += (_, e) => Changed(e.FullPath);
             watcher.Deleted += (_, e) => Changed(e.FullPath);
             watcher.Renamed += (_, e) => { Changed(e.OldFullPath); Changed(e.FullPath); };
-            watcher.Error += (_, e) => _trace.Write($"profiles: file watcher: {e.GetException().Message}; Reload configuration can retry");
-            watcher.EnableRaisingEvents = true;
+            watcher.Error += (_, e) => Dispatcher.BeginInvoke(() =>
+            {
+                if (_profilesStopped || !ReferenceEquals(_profileWatcher, watcher)) return;
+                _trace.Write($"profiles: file watcher: {e.GetException().Message}; reattaching");
+                watcher.Dispose();
+                _profileWatcher = null;
+                WatchProfileSource(path);
+                RequestProfileReload(force: true);
+            });
             _profileWatcher = watcher;
+            watcher.EnableRaisingEvents = true;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
+            _profileWatcher?.Dispose();
+            _profileWatcher = null;
             _trace.Write($"profiles: could not watch '{path}': {e.Message}");
         }
     }
@@ -181,6 +192,7 @@ public partial class MainWindow
         var palette = PaletteWindow.Picker(owner, ProfileGlyph, "No matching profile", BuildProfileItems,
             literalQuery: true, context: ProfileSourceDescription);
         palette.Title = "New tab with profile — OverShell";
+        palette.ContextSource = () => ProfileSourceDescription;
         _profilePicker = _palette = palette;
         palette.Closed += (_, _) =>
         {
@@ -223,7 +235,7 @@ public partial class MainWindow
         Validate = text => _catalog.ResolveProfile(text, out _) is not null ? JsoncEdit.ToJson(text) : null,
     } : knob;
 
-    private bool ProfileChoiceIsCurrent(SettingKnob knob, string choice, string current) =>
-        knob.Path == "profiles.defaultProfile" && choice != "null" && current != knob.NullDisplay &&
-        _catalog.ResolveProfile(current, out _) is { } profile && JsoncEdit.ToJson(profile.Id) == choice;
+    private bool ProfileChoiceIsCurrent(SettingKnob knob, string choice) =>
+        knob.Path == "profiles.defaultProfile" && choice != "null" && !string.IsNullOrWhiteSpace(_settings.Profiles.DefaultProfile) &&
+        _catalog.ResolveProfile(_settings.Profiles.DefaultProfile, out _) is { } profile && JsoncEdit.ToJson(profile.Id) == choice;
 }

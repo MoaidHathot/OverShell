@@ -83,6 +83,9 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SendMessageW(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hwnd);
+
     public FrameworkElement View => _control;
 
     public SurfaceCapabilities Capabilities =>
@@ -218,7 +221,15 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
         }
     }
 
-    public void Focus() => _control.Focus();
+    public void Focus()
+    {
+        _control.Focus();
+        // After a reveal/reparent WPF can already consider TerminalControl focused while
+        // Win32 still focuses its owner. Focus() then emits no new WPF focus event, so
+        // explicitly complete the handoff to the visible terminal's child HWND.
+        if (_control.IsVisible && Window.GetWindow(_control)?.IsActive == true && _container is { Handle: var hwnd } && hwnd != IntPtr.Zero)
+            _ = SetFocus(hwnd);
+    }
 
     public string GetSelectedText() => _control.GetSelectedText();
 

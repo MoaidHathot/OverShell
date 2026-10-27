@@ -2876,6 +2876,58 @@ checks, 14 polish checks and 14 history checks, with no failures or skips.
 
 ---
 
+### 12.28 Profile source, independent defaults, and keyboard launches
+
+`profiles.source` selects `auto` (Stable → Preview → unpackaged), `stable`, `preview`,
+or `unpackaged`. `profiles.settingsPath` overrides the channel and expands environment
+variables, home and config-relative paths; `OVERSHELL_WT_SETTINGS` overrides both.
+`ProfileSourceLocation` records the selected path, origin and errors. The same file
+supplies profiles and appearance. `profiles.defaultProfile` selects a name or normalized
+GUID independently of Windows Terminal's default; null follows the imported default.
+Windows Terminal's name-based defaults, previously discarded as invalid GUIDs, now work.
+
+`ProfileCatalog.ResolveProfile` resolves an explicit ID first, then a unique name;
+missing/ambiguous explicit requests return a diagnostic. The picker, workspace loader,
+extensions, protocol and HTTP/MCP control paths share it. A saved session carries both
+profile ID and name so a unique name can recover an identity after a channel/machine
+change. Restoring a missing profile records its fallback. Saved workspaces use IDs for
+ambiguous names. Duplicate IDs are diagnosed before commands are registered.
+
+`tab.newWithProfile` (Ctrl+Shift+N) reuses the owned palette, with literal fuzzy search
+over names, commands, IDs and sources. Ctrl+Shift+T uses the effective default. Each
+profile has a `tab.newProfile.<id>` command. The source/default settings have their own
+palette choices; the effective source path is visible. A stale picker action or key
+binding reports a removed profile rather than opening a different shell.
+
+Profile preferences reload live, and a debounced watcher observes the imported file,
+including atomic replacements and creation of a missing file. Discovery runs off the
+UI thread; monotonically ordered reloads prevent an older result replacing a newer
+request. A failed import retains the last catalog. Unrelated setting edits do not
+rerun generators. New launches use the new catalog, while live tabs own their original
+profile/session. Duplicating a live tab carries its original colour scheme as well as
+its profile. Reload configuration includes imports; shutdown stops the watcher.
+
+Native focus checks exposed delayed activation callbacks dismissing a newer picker,
+the wrong owner becoming active after a detached picker closed, and focus requested
+before a new terminal was revealed. Focus now respects active owners and is completed
+on reveal. The native surface also synchronizes Win32 focus with WPF logical focus
+after reparenting: WPF can already consider TerminalControl focused while Win32 still
+focuses its owner. Command availability and execution both use the originating tab. The
+shared palette records acceptance before Closed, fixing extension pick/prompt/ask
+tasks that previously completed as cancelled before their selected actions ran.
+
+Verification: `ProfileCatalogTests` uses isolated Stable/Preview/unpackaged/custom
+fixtures, names and GUIDs, hidden/duplicate entries, malformed sources, and saved-name
+recovery. `tools/Invoke-SelfTest.ps1 -Mode profiles` runs the real app and native shells
+on a private desktop: keyboard routing/focus across layouts and tear-offs, direct
+bindings, live source/default changes, failed-load recovery, deliberately out-of-order
+loads, and exact workspace/protocol/HTTP requests. Logs live under the selected TEMP;
+per-run evidence is copied to `artifacts/selftest/profiles/` during verification.
+
+Final verification (2026-10-27): Release build with warnings treated as errors, **487
+C# tests**, **11 bridge tests**, and **162 live checks**: profiles 69, settings 17,
+polish 14, history 14, workspaces 12, keynav 17, MRU 19. All passed, with no skips.
+
 ## 13. Distribution
 
 ### 13.1 Channels - and why each artefact is what it is

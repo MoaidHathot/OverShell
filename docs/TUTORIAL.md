@@ -18,12 +18,15 @@ dotnet tool install -g OverShell ; overshell        # or run once without instal
 # or: unzip OverShell-<version>-win-x64.zip from https://github.com/MoaidHathot/OverShell/releases and run OverShell.exe
 ```
 
-The first start opens one tab with your default Windows Terminal profile. Above its prompt,
-in dim text, a short welcome note names the three keys you need to begin and this page. It
+The first start opens one tab with your selected default profile. Above its prompt,
+in dim text, a short welcome note names the keys you need to begin and this page. It
 shows once: OverShell knows a first start because it has no state yet.
 
 > OverShell reads your Windows Terminal `settings.json` for the profiles, colour schemes and
 > font. It changes nothing there.
+> If your profiles are in **Windows Terminal Preview**, open the command palette and
+> choose **Setting: Profile source** → **preview**. **Setting: Default profile** lets
+> OverShell choose its own default. Both preferences live in OverShell's `settings.jsonc`.
 
 ## 1. The window, and the key that finds everything
 
@@ -45,12 +48,19 @@ tab's directory and, once there are agents, how many are working, waiting for yo
 
 ## 2. Tabs that remember who they are
 
+**Do:** press `Ctrl+Shift+N`, type part of a profile's name, and press `Enter`.
+
+**You see:** a searchable profile picker, showing the default and the imported settings
+file. Arrow keys select a row; Enter opens that profile and focuses its terminal; Esc
+cancels. **New tab: &lt;profile&gt;** in the command palette opens a profile directly.
+The [guide](GUIDE.md#32-open-a-specific-profile-with-the-keyboard) shows direct shortcuts.
+
 **Do:** `Ctrl+Shift+T` for a second tab. In it, `cd` somewhere. Press `Ctrl+Shift+R` and type
 a name, say `notes`. Press `Ctrl+Shift+G` and type a group name, say `writing`.
 
 **You see:** the tab's label is `notes`, the strip shows a `writing` header over it, and the
 status bar follows the directory as you `cd` - a plain PowerShell profile announces it from
-the first prompt without any setup on your part. Close the tab (`Ctrl+Shift+W`) and open the
+the first prompt without any setup on your part. Close the tab (`Ctrl+Shift+W`) and open
 another tab in the same directory: it has its own automatic name. Custom names belong
 to individual tabs and return when those tabs are restored or reopened.
 

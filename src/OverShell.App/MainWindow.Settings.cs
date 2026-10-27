@@ -179,7 +179,7 @@ public partial class MainWindow
                     continue;
                 }
 
-                var isCurrent = string.Equals(knob.DisplayValue(choice.Json), current, StringComparison.OrdinalIgnoreCase) || ProfileChoiceIsCurrent(knob, choice.Json, current);
+                var isCurrent = string.Equals(knob.DisplayValue(choice.Json), current, StringComparison.OrdinalIgnoreCase) || ProfileChoiceIsCurrent(knob, choice.Json);
                 var captured = choice;
                 items.Add(new PaletteItem
                 {
@@ -193,6 +193,7 @@ public partial class MainWindow
 
             return items;
         }, literalQuery: true, context: knob.Path.StartsWith("profiles.", StringComparison.Ordinal) ? ProfileSourceDescription : null);
+        if (knob.Path.StartsWith("profiles.", StringComparison.Ordinal)) _palette.ContextSource = () => ProfileSourceDescription;
         _palette.Closed += (_, _) => { _palette = null; RefocusOwner(owner); };
     }
 
@@ -247,6 +248,7 @@ public partial class MainWindow
             "OverShell - one window for your shells and the agents working in them.",
             $"  {Key("palette.commands", "Ctrl+Shift+P"),-18} commands - type to search; every feature is in there",
             $"  {Key("tab.new", "Ctrl+Shift+T"),-18} new tab        {Key("palette.tabs", "Ctrl+Shift+Space"),-18} switch tabs",
+            $"  {Key("tab.newWithProfile", "Ctrl+Shift+N"),-18} choose a profile - type to search, Enter to open",
             $"  {Key("tab.jumpToAttention", "Ctrl+Shift+J"),-18} jump to the agent that needs you",
             "  Help: Tutorial (in the palette) walks you through the rest in ten minutes.",
         };

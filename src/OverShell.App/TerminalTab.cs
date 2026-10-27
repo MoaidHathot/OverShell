@@ -298,7 +298,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
             // Earlier activation callbacks may have run while the native surface was
             // still hidden. Complete that focus handoff once it can receive input, unless
             // a picker, another window/tab, or an editing field now owns the keyboard.
-            if (IsActive && Window.GetWindow(View)?.IsActive == true &&
+            if ((IsActive || Detached) && Window.GetWindow(View)?.IsActive == true &&
                 System.Windows.Input.Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase)
                 Surface.Focus();
         }, DispatcherPriority.Render);

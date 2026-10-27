@@ -165,6 +165,10 @@ public sealed class ProfileCatalogTests : IDisposable
     [Theory]
     [InlineData("{ broken")]
     [InlineData("[]")]
+    [InlineData("{\"profiles\":42}")]
+    [InlineData("{\"profiles\":{\"list\":\"invalid\"}}")]
+    [InlineData("{\"profiles\":{\"defaults\":[]}}")]
+    [InlineData("{\"profiles\":{\"list\":[1]}}")]
     public void Malformed_source_is_a_load_error_with_a_usable_startup_fallback(string contents)
     {
         var file = Write("custom", contents);
