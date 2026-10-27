@@ -238,6 +238,8 @@ public sealed class AppSettings
 
     public TabSettings Tabs { get; init; } = new();
 
+    public OverShell.Config.ProfileSettings Profiles { get; init; } = new();
+
     public GitSettings Git { get; init; } = new();
 
     public SessionSettings Session { get; init; } = new();

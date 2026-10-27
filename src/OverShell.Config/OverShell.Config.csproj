@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Resources\DefaultSchemes.json" />
+    <InternalsVisibleTo Include="OverShell.Tests" />
   </ItemGroup>
 
 </Project>

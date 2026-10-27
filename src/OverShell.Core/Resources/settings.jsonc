@@ -9,6 +9,16 @@
   // The view shown at start: terminal | herd | dashboard | zen.
   "view": "terminal",
 
+  // Windows Terminal configuration: auto tries Stable, Preview, then unpackaged; or select
+  // stable | preview | unpackaged explicitly. settingsPath overrides source (environment
+  // variables expand; relative to this directory). OVERSHELL_WT_SETTINGS overrides both.
+  // defaultProfile is a name or GUID; null follows the imported Windows Terminal default.
+  "profiles": {
+    "source": "auto",
+    "settingsPath": null,
+    "defaultProfile": null
+  },
+
   // A view is a layout (a preset name or a file under %APPDATA%\OverShell\layouts\) plus
   // what the middle shows: "terminal" (the live tab) or "dashboard" (one card per tab).
   // Ctrl+Shift+1..4 switch; Ctrl+Shift+` toggles between the last two.

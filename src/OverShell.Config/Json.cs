@@ -44,5 +44,5 @@ internal static class Json
 
     /// <summary>Normalises <c>{GUID}</c> / <c>GUID</c> / mixed case into a single comparable form.</summary>
     public static string? NormalizeGuid(string? raw) =>
-        Guid.TryParse(raw?.Trim('{', '}'), out var guid) ? guid.ToString("D") : null;
+        Guid.TryParse(raw?.Trim(), out var guid) ? guid.ToString("D") : null;
 }

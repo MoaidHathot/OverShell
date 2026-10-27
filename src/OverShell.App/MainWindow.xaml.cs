@@ -73,11 +73,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ClipboardReader = asFiles => Clipboard.GetDataObject() is { } data
             ? Input.TerminalClipboard.Read(data, _transferFiles, asFiles)
             : Input.TransferContent.Empty;
-        _catalog = ProfileCatalog.Load();
-
         // Settings, rules, persisted labels and the integration endpoint come first: the
         // first tab's child process needs the endpoint's variables in its environment.
         InitializeHerd();
+        _catalog = ProfileCatalog.Load(_settings.Profiles, Core.AppPaths.ConfigRoot);
+        _trace.Write($"profiles: {_catalog.Location.Source} via {_catalog.Location.Origin} · {_catalog.SettingsPath ?? "generated profiles"} · default {_catalog.DefaultProfile?.Name}");
+        foreach (var problem in _catalog.Diagnostics) _trace.Write($"profiles: {problem}");
 
         InitializeComponent();
         DataContext = this;

@@ -26,6 +26,7 @@ public sealed class WindowsTerminalSettings
     public string Path { get; }
     public IReadOnlyList<TerminalProfile> Profiles { get; }
     public IReadOnlyList<ColorScheme> Schemes { get; }
+    /// <summary>A normalized GUID or a profile name, both accepted by Windows Terminal.</summary>
     public string? DefaultProfileId { get; }
     public bool CopyOnSelect { get; }
 
@@ -40,19 +41,11 @@ public sealed class WindowsTerminalSettings
             yield return explicitPath.Trim();
         }
 
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-
-        yield return System.IO.Path.Combine(
-            localAppData, "Packages", "Microsoft.WindowsTerminal_8wekyb3d8bbwe", "LocalState", "settings.json");
-
-        yield return System.IO.Path.Combine(
-            localAppData, "Packages", "Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe", "LocalState", "settings.json");
-
-        yield return System.IO.Path.Combine(
-            localAppData, "Microsoft", "Windows Terminal", "settings.json");
+        foreach (var candidate in ProfileSourceLocation.ChannelPaths(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)))
+            yield return candidate.Path!;
     }
 
-    public static string? Locate() => CandidatePaths().FirstOrDefault(File.Exists);
+    public static string? Locate() => ProfileSourceLocation.Resolve(new(), Environment.CurrentDirectory).Path;
 
     public static WindowsTerminalSettings? Load(string? path = null)
     {
@@ -64,6 +57,8 @@ public sealed class WindowsTerminalSettings
 
         using var document = JsonDocument.Parse(File.ReadAllText(path), Json.DocumentOptions);
         var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Windows Terminal settings must be a JSON object");
 
         var profilesNode = root.Prop("profiles");
         var defaults = profilesNode?.Prop("defaults") ?? default;
@@ -87,7 +82,7 @@ public sealed class WindowsTerminalSettings
             path,
             profiles,
             schemes,
-            Json.NormalizeGuid(root.Str("defaultProfile")),
+            Json.NormalizeGuid(root.Str("defaultProfile")) ?? root.Str("defaultProfile")?.Trim(),
             root.Bool("copyOnSelect") ?? false);
     }
 
