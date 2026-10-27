@@ -2928,6 +2928,28 @@ Final verification (2026-10-27): Release build with warnings treated as errors, 
 C# tests**, **11 bridge tests**, and **162 live checks**: profiles 69, settings 17,
 polish 14, history 14, workspaces 12, keynav 17, MRU 19. All passed, with no skips.
 
+### 12.29 Profile access in crowded windows
+
+The tab strip's `+` and profile-arrow buttons used to live inside its ScrollViewer:
+enough tabs, or a narrow window, scrolled the buttons away. The remaining ellipsis
+opened only the tab switcher. Actions now occupy a separate Auto-sized grid column;
+in list/rail layouts that slot moves to an Auto-sized row below the scroller. Only
+the tab items scroll. The ellipsis offers `palette.tabs`, `tab.new`, and
+`tab.newWithProfile`, with current shortcut hints. Menus close before dispatching a
+palette or native-terminal launch, and the pinned buttons' tooltips reload with keys.
+
+The width calculation also caps long labels while the relaxed minimum still fits,
+and reserves measured group-header widths. Previously four long names could overflow
+despite enough room for four readable tabs. Tabs still stop shrinking at 104 DIP.
+
+Verification: Release build with warnings as errors, **487 C# tests**, and **117 live
+checks** (overflow 34, profiles 69, polish 14), all passing. The overflow run exercises
+the button/menu handlers rather than invoking their commands directly, checks full
+button bounds and window hit tests at minimum window size, opens an exact profile
+through both menus, checks rebound shortcut hints, and covers top/bottom/left/right
+list/rail layouts. Captions are captured as WPF images. This run's evidence is under
+`artifacts/selftest/profile-overflow/`.
+
 ## 13. Distribution
 
 ### 13.1 Channels - and why each artefact is what it is

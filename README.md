@@ -74,6 +74,8 @@ checks a real restart. `-Mode opencode-labels` uses two real OpenCode V2 clients
 scratch database and metadata-only operations, without model requests.
 `-Mode profiles` seeds isolated profile files and checks startup overrides, keyboard
 selection and focus, live reload/recovery, and workspace/protocol/HTTP profile launches.
+`-Mode overflow` checks crowded tabs, minimum-window-size controls, profile/overflow
+menus, and pinned actions in top, bottom, side-list and rail layouts.
 
 ## Configuration
 
@@ -98,7 +100,9 @@ All files are JSONC and reload live when saved: `settings.jsonc`, `keybindings.j
 `snippets.jsonc`, `agents\*.jsonc`, `layouts\*.jsonc`, `skins\*.xaml`. Below,
 *the configuration directory* means that root.
 
-For example, to import Windows Terminal Preview and open a named profile by default:
+### Profiles and tab controls
+
+To import Windows Terminal Preview and open a named profile by default:
 
 ```jsonc
 { "profiles": { "source": "preview", "defaultProfile": "PowerShell" } }
@@ -107,6 +111,19 @@ For example, to import Windows Terminal Preview and open a named profile by defa
 The palette offers **Setting: Profile source**, **Setting: Profile settings file**, and
 **Setting: Default profile**. Profile changes apply to new tabs; imported file edits
 reload automatically. `OVERSHELL_WT_SETTINGS` has priority over these source settings.
+
+| Action | Default shortcut | Mouse |
+|---|---|---|
+| Open the default profile | `Ctrl+Shift+T` | **+** or **… → New tab** |
+| Choose a profile | `Ctrl+Shift+N` | **⌄** for the profile list, or **… → New tab with profile…** for the searchable picker |
+| Switch to an open tab | `Ctrl+Shift+Space` | **… → Switch tab…** |
+
+When tabs overflow, **+** and **⌄** stay pinned beside the scrolling tabs, including at
+minimum window size. In side-list and rail layouts they stay below the scrolling list.
+The **…** menu includes both tab switching and profile creation. Shortcut hints follow
+your keybindings. See the [guide](docs/GUIDE.md#32-open-a-specific-profile-with-the-keyboard)
+for direct per-profile shortcuts and the [tutorial](docs/TUTORIAL.md#2-tabs-that-remember-who-they-are)
+for a walkthrough.
 
 ## Agents
 
@@ -242,7 +259,7 @@ Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.js
 `Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
 screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
 `Ctrl+Shift+1..4` views · `Ctrl+Shift+Enter` prompt bar · `Ctrl+Shift+G` group · `Ctrl+Shift+E` explain ·
-`Ctrl+Shift+F` find · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Alt+1..9` tabs (Windows
+`Ctrl+Shift+F` find · `Ctrl+Shift+N` choose a profile · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Alt+1..9` tabs (Windows
 Terminal's chords; `Ctrl+T` stays with the shell) · `Ctrl+Tab` / `Ctrl+Shift+Tab` right / left along the
 strip, wrapping (or the most-recent switcher, opt-in) · `Ctrl+Shift+K` then a key: **herd mode** (`j`/`k` tabs, `b` the tab waiting longest,
 `1-9`, `l` last, `s`/`c` a cursor into the sidebar / cards, `i` the inbox, `m`/`w` mute / watch, `N`/`W` spawn an agent / on a worktree, `L` the herd log, `D` what changed while away, `?` the keys) · `` Win+` `` summon from

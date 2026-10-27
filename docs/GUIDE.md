@@ -248,6 +248,16 @@ profiles provide a working shell with the problem recorded in the picker.
 - **Ctrl+Shift+P** → **New tab with profile…** opens the same picker. Individual
   **New tab: &lt;profile&gt;** commands appear in the command palette too.
 
+**Mouse controls and small windows.** Click **+** to open the default profile or **⌄**
+to choose a profile from the dropdown. These controls have a fixed slot beside the
+horizontal tab scroller, so they remain reachable when the window is small or many
+tabs are open. In vertical list/rail layouts they sit below the scrolling list.
+
+When tabs overflow, **…** opens a menu containing **Switch tab…**, **New tab**, and
+**New tab with profile…**. The last entry opens the searchable profile picker. Button
+tooltips and menu shortcut hints follow changes to `keybindings.jsonc`. Long labels
+and group headers share the available width before the strip starts scrolling.
+
 To give a favourite profile its own shortcut, use its ID from the picker details or
 the imported file's `guid`, without braces, in `keybindings.jsonc`:
 

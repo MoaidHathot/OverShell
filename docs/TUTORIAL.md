@@ -48,12 +48,20 @@ tab's directory and, once there are agents, how many are working, waiting for yo
 
 ## 2. Tabs that remember who they are
 
-**Do:** press `Ctrl+Shift+N`, type part of a profile's name, and press `Enter`.
+**Do:** press `Ctrl+Shift+N` and type part of a profile's name.
 
 **You see:** a searchable profile picker, showing the default and the imported settings
 file. Arrow keys select a row; Enter opens that profile and focuses its terminal; Esc
 cancels. **New tab: &lt;profile&gt;** in the command palette opens a profile directly.
 The [guide](GUIDE.md#32-open-a-specific-profile-with-the-keyboard) shows direct shortcuts.
+
+**Do:** open several tabs, then make the window narrow.
+
+**You see:** the tabs shrink and then scroll, while **+** (new default-profile tab) and
+**⌄** (profile list) stay pinned beside them. **…** opens a menu with **Switch tab…**,
+**New tab**, and **New tab with profile…**. Choose the last entry to open the same
+searchable picker. In a side-list or rail layout, the creation/profile buttons stay
+below the scrolling list. The button tooltips and menu show your configured shortcuts.
 
 **Do:** `Ctrl+Shift+T` for a second tab. In it, `cd` somewhere. Press `Ctrl+Shift+R` and type
 a name, say `notes`. Press `Ctrl+Shift+G` and type a group name, say `writing`.
