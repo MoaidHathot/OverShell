@@ -27,7 +27,8 @@
                             BorderBrush="{StaticResource Surface.Border}"
                             BorderThickness="1"
                             Cursor="Hand"
-                            MouseLeftButtonDown="Card_MouseLeftButtonDown">
+                            MouseLeftButtonDown="Card_MouseLeftButtonDown"
+                            MouseEnter="Card_MouseEnter" MouseLeave="Card_MouseLeave">
                         <DockPanel>
                             <!-- header -->
                             <Grid DockPanel.Dock="Top" Margin="14,10,10,8">

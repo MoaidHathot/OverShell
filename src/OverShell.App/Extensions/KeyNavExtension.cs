@@ -8,7 +8,7 @@ namespace OverShell.App.Extensions;
 /// separate from the active tab. <c>sidebar.focus</c> / <c>dashboard.focus</c> (herd mode
 /// <c>s</c> / <c>c</c>, or the view's own chord pressed again) put the cursor on the active
 /// tab; ↑↓ / j k move it, Home/End jump, Enter activates (the dashboard then opens the tab
-/// in the terminal view), Space activates and keeps the cursor, Esc returns to the
+/// in the terminal view), Space enlarges a dashboard preview or activates a sidebar row, Esc returns to the
 /// terminal. While the cursor is up the extension owns those keys; everything else goes
 /// where it always went.
 /// </summary>
@@ -34,7 +34,7 @@ public sealed class KeyNavExtension : IExtension
         shell.Commands.Register("sidebar.focus", "Sidebar: move the cursor into it", "View", () => Enter(Pane.Sidebar), () => shell.SidebarVisible,
             "Arrows or j/k move, Enter switches to the tab, Esc returns to the terminal");
         shell.Commands.Register("dashboard.focus", "Dashboard: move the cursor into it", "View", () => Enter(Pane.Dashboard), () => shell.DashboardVisible,
-            "Arrows or j/k move, Enter opens the tab, Esc returns to the terminal");
+            "Arrows or j/k move, Space previews, Enter opens the tab, Esc returns to the terminal");
         shell.Commands.Register("nav.leave", "Leave the sidebar / dashboard cursor", "View", Leave, () => _pane != Pane.None);
 
         shell.Keys.AddDefaults(
@@ -114,6 +114,11 @@ public sealed class KeyNavExtension : IExtension
 
     private bool OnChord(KeyChord chord)
     {
+        if (!PaneVisible(_pane))
+        {
+            Leave();
+            return false;
+        }
         if (chord.Modifiers is not (ChordModifiers.None or ChordModifiers.Shift))
         {
             // A real chord (Ctrl+..., the leader) is not ours: leave the cursor so the chord lands cleanly.
@@ -149,6 +154,7 @@ public sealed class KeyNavExtension : IExtension
 
                 return true;
             case "Space":
+                if (_pane == Pane.Dashboard && _shell.Commands.TryExecute("tab.preview")) return true;
                 if (_shell.Cursor is { } peek)
                 {
                     _shell.Activate(peek);

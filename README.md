@@ -76,6 +76,11 @@ scratch database and metadata-only operations, without model requests.
 selection and focus, live reload/recovery, and workspace/protocol/HTTP profile launches.
 `-Mode overflow` checks crowded tabs, minimum-window-size controls, profile/overflow
 menus, and pinned actions in top, bottom, side-list and rail layouts.
+`-Mode previews` checks dashboard and enlarged previews, focus, clipping and cleanup;
+`previewnative -Visible` checks the native mirror's pixels on an unlocked desktop.
+`previewbench` records repeatable CPU/GPU-counter/memory measurements. See the
+[preview design and evidence](docs/DASHBOARD-PREVIEWS.md) for the local native dependency
+and benchmark protocol.
 
 ## Configuration
 
@@ -235,8 +240,26 @@ switch in the caption bar with a badge for tabs that need you:
 |---|---|
 | **Terminal** | The live tab; tab strip in the caption bar |
 | **Herd** | The live tab plus a sidebar: every tab grouped by project, the ones needing you first |
-| **Dashboard** | One card per tab — header, the last screen rows in the tab's colours, state and activity — no live terminal is shrunk into a tile |
+| **Dashboard** | One card per tab with an aspect-fit live terminal mirror or styled viewport snapshot, plus state and activity |
 | **Zen** | Just the terminal |
+
+Dashboard cards preserve the terminal's original rows and columns. Hover to enlarge a
+card, or press `Ctrl+Shift+3` again, move with arrows and press **Space**. **Ctrl+Shift+O**
+opens an enlarged preview of the current terminal from any view. In that window,
+arrows change tab, **Enter** opens the terminal, and **Esc** returns. Hovering keeps
+keyboard focus where it was.
+
+```jsonc
+{ "dashboard": { "previewMode": "auto", "snapshotIntervalMs": 1000,
+                 "hoverPreview": true, "hoverDelayMs": 500 } }
+```
+
+`auto` shares the live GPU-rendered surface where supported (the composed renderer),
+with styled cell snapshots for opaque terminals. `styled` selects snapshots explicitly;
+`text` selects the legacy last rows. The card footer names the active backend. Visible
+styled consumers share a change-driven drawing; hidden/scrolled-out previews release
+their work. The native preview API is supplied by the local preview-capable terminal
+package described in the [build notes](docs/DASHBOARD-PREVIEWS.md#building-the-local-preview-dependency).
 
 A view is a **layout** plus what the middle shows. Layouts are small JSONC files: where
 the tabs go (`top`, `bottom`, `left`, `right`, `hidden`), how they look (`strip`, `list`,
@@ -259,7 +282,7 @@ Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.js
 `Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
 screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
 `Ctrl+Shift+1..4` views · `Ctrl+Shift+Enter` prompt bar · `Ctrl+Shift+G` group · `Ctrl+Shift+E` explain ·
-`Ctrl+Shift+F` find · `Ctrl+Shift+N` choose a profile · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Alt+1..9` tabs (Windows
+`Ctrl+Shift+F` find · `Ctrl+Shift+N` choose a profile · `Ctrl+Shift+O` enlarge terminal preview · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Alt+1..9` tabs (Windows
 Terminal's chords; `Ctrl+T` stays with the shell) · `Ctrl+Tab` / `Ctrl+Shift+Tab` right / left along the
 strip, wrapping (or the most-recent switcher, opt-in) · `Ctrl+Shift+K` then a key: **herd mode** (`j`/`k` tabs, `b` the tab waiting longest,
 `1-9`, `l` last, `s`/`c` a cursor into the sidebar / cards, `i` the inbox, `m`/`w` mute / watch, `N`/`W` spawn an agent / on a worktree, `L` the herd log, `D` what changed while away, `?` the keys) · `` Win+` `` summon from

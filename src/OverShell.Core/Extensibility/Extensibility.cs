@@ -262,7 +262,7 @@ public enum ReplyChannel
 }
 
 /// <summary>A new tab.</summary>
-/// <param name="Profile">Profile id or name; the default profile when null or unknown.</param>
+/// <param name="Profile">Profile id or unique name; null uses the default. Unknown or ambiguous requests are rejected.</param>
 /// <param name="WorkingDirectory">Starting directory; the profile's own when null.</param>
 /// <param name="Label">A label to set.</param>
 /// <param name="Group">A group to join.</param>

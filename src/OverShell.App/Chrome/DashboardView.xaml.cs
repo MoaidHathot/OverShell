@@ -42,6 +42,27 @@ public partial class DashboardView : UserControl
     /// <summary>The user wants to work in this tab: switch to the terminal view on it.</summary>
     public event Action<TerminalTab>? OpenRequested;
 
+    public event Action<TerminalTab, FrameworkElement>? HoverRequested;
+    public event Action<TerminalTab>? HoverEnded;
+
+    private void Card_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: TerminalTab tab } card) HoverRequested?.Invoke(tab, card);
+    }
+
+    private void Card_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: TerminalTab tab }) HoverEnded?.Invoke(tab);
+    }
+
+    internal void EnsureVisible(TerminalTab tab)
+    {
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (Cards.ItemContainerGenerator.ContainerFromItem(tab) is FrameworkElement element) element.BringIntoView();
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
     private void Card_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: TerminalTab tab })

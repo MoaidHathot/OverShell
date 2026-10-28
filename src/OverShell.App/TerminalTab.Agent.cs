@@ -431,6 +431,9 @@ public sealed partial class TerminalTab
     /// shells too, about once a second while output changes, regardless of settling.
     /// </summary>
     public bool ScreenWatched { get; set; }
+    internal int TextPreviewReaders { get; private set; }
+    internal void AddTextPreviewReader() => TextPreviewReaders++;
+    internal void RemoveTextPreviewReader() => TextPreviewReaders = Math.Max(0, TextPreviewReaders - 1);
 
     /// <summary>"just now", "12 s ago", "3 min ago" — refreshed by the heartbeat.</summary>
     public string ActivityText { get; private set; } = string.Empty;
@@ -704,7 +707,7 @@ public sealed partial class TerminalTab
             var agentDue = IsAgent &&
                            sinceOutput >= TimeSpan.FromMilliseconds(_agents.Detection.SnapshotDebounceMs) &&
                            sinceSnapshot >= TimeSpan.FromMilliseconds(_agents.Detection.SnapshotMinIntervalMs);
-            var watchedDue = ScreenWatched && sinceSnapshot >= TimeSpan.FromSeconds(1);
+            var watchedDue = (ScreenWatched || TextPreviewReaders > 0) && sinceSnapshot >= TimeSpan.FromSeconds(1);
 
             if (agentDue || watchedDue)
             {

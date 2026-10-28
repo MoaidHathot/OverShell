@@ -258,6 +258,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     internal void CloseTab(TerminalTab tab)
     {
+        if (ReferenceEquals(_terminalPreview?.Tab, tab) || ReferenceEquals(_hoverPreviewTab, tab)) CloseTerminalPreview();
         var index = Tabs.IndexOf(tab);
         if (index < 0)
         {
@@ -1182,6 +1183,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     }
 
     protected override void OnClosed(EventArgs e)    {
+        CloseTerminalPreview();
         _statusTimer.Stop();
         _reloadTimer?.Stop();
         _configWatcher?.Dispose();

@@ -115,7 +115,10 @@ public static class SettingsCatalog
         new("dashboard.previewMode", "Dashboard previews", "Live rendered previews where supported, styled cell snapshots, or the legacy text extract. Applies live.", SettingKind.Choice,
         [new("\"auto\"", "auto", "live renderer with styled fallback (default)"), new("\"styled\"", "styled", "colours and formatting from terminal cells"), new("\"text\"", "text", "legacy last rows")]),
         new("dashboard.snapshotIntervalMs", "Preview snapshot interval", "Minimum interval between changed styled snapshots; live mirrors share renderer frames.", SettingKind.Number,
-            [new("250", "250 ms"), new("500", "500 ms", "default"), new("1000", "1 second"), new("2000", "2 seconds")]) { Min = 250, Max = 10000 },
+            [new("250", "250 ms"), new("500", "500 ms"), new("1000", "1 second", "default"), new("2000", "2 seconds")]) { Min = 250, Max = 10000 },
+        new("dashboard.hoverPreview", "Enlarge previews on hover", "Hover over a dashboard card for a larger read-only terminal preview. Space on a keyboard-selected card also opens it.", SettingKind.Toggle, [On, Off]),
+        new("dashboard.hoverDelayMs", "Preview hover delay", "How long the pointer rests on a dashboard card before its enlarged preview appears.", SettingKind.Number,
+            [new("300", "300 ms"), new("500", "500 ms", "default"), new("800", "800 ms")]) { Min = 150, Max = 3000 },
         new("profiles.source", "Profile source", "Windows Terminal configuration to import. settingsPath and OVERSHELL_WT_SETTINGS take precedence.", SettingKind.Choice,
         [
             new("\"auto\"", "auto", "Stable, then Preview, then unpackaged (default)"),

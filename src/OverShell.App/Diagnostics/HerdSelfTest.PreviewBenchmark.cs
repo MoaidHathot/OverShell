@@ -27,7 +27,7 @@ internal static partial class HerdSelfTest
             session = new { restore = false, confirmCloseWithAgents = false },
             detection = new { injectShellIntegration = false, cwdFromProcess = false },
             window = new { terminalOpacity = Environment.GetEnvironmentVariable("OVERSHELL_PREVIEW_OPAQUE") == "1" ? 1.0 : 0.85 },
-            dashboard = new { previewMode = Environment.GetEnvironmentVariable("OVERSHELL_PREVIEW_MODE") ?? "auto" },
+            dashboard = new { previewMode = Environment.GetEnvironmentVariable("OVERSHELL_PREVIEW_MODE") ?? "auto", hoverPreview = Mode != "previewbench" },
         }));
     }
 

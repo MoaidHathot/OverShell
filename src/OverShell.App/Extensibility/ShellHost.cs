@@ -110,6 +110,7 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
         if (_cursor is not null)
         {
             _cursor.IsCursor = true;
+            if (_window.DashboardVisible) _window.DashboardView.EnsureVisible(_cursor);
         }
     }
 

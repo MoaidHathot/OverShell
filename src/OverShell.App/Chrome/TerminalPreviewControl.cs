@@ -27,6 +27,8 @@ public sealed class TerminalPreviewControl : FrameworkElement
     private StyledPreviewSource? _styled;
     private bool _placementDirty = true;
     private bool _listening;
+    private bool _textDemand;
+    private DispatcherOperation? _placementUpdate;
 
     public TerminalPreviewControl()
     {
@@ -76,6 +78,8 @@ public sealed class TerminalPreviewControl : FrameworkElement
 
     private void Stop()
     {
+        _placementUpdate?.Abort();
+        _placementUpdate = null;
         Release();
         if (_source is not null) _source.PropertyChanged -= SourceChanged;
         if (_owner is not null)
@@ -96,7 +100,12 @@ public sealed class TerminalPreviewControl : FrameworkElement
     internal void InvalidatePlacement()
     {
         _placementDirty = true;
-        if (IsLoaded) Dispatcher.BeginInvoke(() => { if (_placementDirty) UpdatePlacement(); }, DispatcherPriority.Loaded);
+        if (IsLoaded && _placementUpdate?.Status != DispatcherOperationStatus.Pending)
+            _placementUpdate = Dispatcher.BeginInvoke(() =>
+            {
+                _placementUpdate = null;
+                if (_placementDirty) UpdatePlacement();
+            }, DispatcherPriority.Loaded);
     }
 
     private void OwnerSizeChanged(object sender, SizeChangedEventArgs e) => InvalidatePlacement();
@@ -128,6 +137,7 @@ public sealed class TerminalPreviewControl : FrameworkElement
             clip.Intersect(viewport);
         }
         if (clip.IsEmpty || clip.Width < 1 || clip.Height < 1) { Release(); return; }
+        if (!HasDemand) InvalidateVisual();
         HasDemand = true;
         var mode = Settings.EffectiveMode;
         if (mode == "auto" && tab.Surface.Capabilities.HasFlag(SurfaceCapabilities.LivePreview))
@@ -137,6 +147,7 @@ public sealed class TerminalPreviewControl : FrameworkElement
             if (_mirror is not null && _mirror.Update(Rect.Transform(rectangle, scale), Rect.Transform(clip, scale), 6 * scale.M11))
             {
                 ReleaseStyled();
+                ReleaseText();
                 _retry.Stop();
                 SetBackend("live");
                 return;
@@ -149,12 +160,14 @@ public sealed class TerminalPreviewControl : FrameworkElement
 
         if (mode != "text" && tab.Surface.Capabilities.HasFlag(SurfaceCapabilities.StyledPreview))
         {
+            ReleaseText();
             _styled ??= StyledPreviewSource.Acquire(tab, Settings.EffectiveInterval, DrawingChanged);
             SetBackend("styled");
         }
         else
         {
             ReleaseStyled();
+            if (!_textDemand) { tab.AddTextPreviewReader(); _textDemand = true; }
             SetBackend("text");
             if (tab.ScreenRows.Count == 0) tab.RequestScreen();
         }
@@ -168,13 +181,17 @@ public sealed class TerminalPreviewControl : FrameworkElement
     }
     private void DrawingChanged() => InvalidateVisual();
     private void ReleaseStyled() { _styled?.Release(DrawingChanged); _styled = null; }
+    private void ReleaseText() { if (_textDemand) _source?.RemoveTextPreviewReader(); _textDemand = false; }
     private void Release()
     {
+        var hadContent = _mirror is not null || _styled is not null || _textDemand;
         HasDemand = false;
         _retry.Stop();
         _mirror?.Dispose();
         _mirror = null;
         ReleaseStyled();
+        ReleaseText();
+        if (hadContent) InvalidateVisual();
     }
 
     protected override void OnRender(DrawingContext context)
@@ -184,12 +201,12 @@ public sealed class TerminalPreviewControl : FrameworkElement
         var bounds = new Rect(RenderSize);
         context.PushClip(new RectangleGeometry(bounds, 6, 6));
         context.DrawRectangle(tab.Background, null, bounds);
-        if (_mirror is null && _styled?.Image is { } image)
+        if (HasDemand && _mirror is null && _styled?.Image is { } image)
         {
             var fit = PreviewFit.Calculate(image.Width, image.Height, ActualWidth, ActualHeight);
             if (fit.Scale > 0) context.DrawImage(image, new Rect(fit.Left, fit.Top, fit.Width, fit.Height));
         }
-        else if (Backend == "text")
+        else if (HasDemand && Backend == "text")
         {
             var text = new FormattedText(tab.ScreenText, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
                 new Typeface((FontFamily)FindResource("Font.Mono"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal), 11, tab.Foreground, VisualTreeHelper.GetDpi(this).PixelsPerDip) { LineHeight = 15 };

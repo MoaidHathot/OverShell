@@ -13,6 +13,7 @@
   // is left to the shell (PSReadLine swaps characters on it).
   { "keys": "ctrl+shift+t",        "command": "tab.new" },
   { "keys": "ctrl+shift+n",        "command": "tab.newWithProfile" },
+  { "keys": "ctrl+shift+o",        "command": "tab.preview" },
   { "keys": "ctrl+shift+w",        "command": "tab.close" },
   { "keys": "ctrl+shift+d",        "command": "tab.duplicate" },
   { "keys": "ctrl+shift+z",        "command": "tab.reopenClosed" },

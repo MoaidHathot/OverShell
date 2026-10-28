@@ -202,16 +202,25 @@ SUCCEEDED` in a plain shell is the classic.
   needing you first, with how long since they did anything. Press `Ctrl+Shift+2` again and
   a cursor appears in the list: `j`/`k` move it, `Enter` switches, `Esc` returns to the
   terminal.
-- **Dashboard** - one card per tab: state, label, project and branch, the last rows of its
-  screen in the tab's colours. Text read from the terminal about once a second, never a live
-  terminal shrunk into a tile (that would reflow the agent's screen). Double-click a card to
-  open it.
+- **Dashboard** - one card per tab: state, label, project and branch, with a live rendered
+  preview or a styled full-viewport snapshot. Colours and formatting are preserved, and
+  the terminal keeps its original dimensions. The footer identifies the preview backend.
+  Double-click a card to open it.
 - **Zen** - the terminal alone.
 - **Terminal** - back to the strip in the caption bar. `` Ctrl+Shift+` `` bounces between the
   last two views.
 
 A view is a layout plus what the middle shows; the five-line layout files are yours to edit
 ([guide, section 6](GUIDE.md#6-views-and-layouts)).
+
+**Do:** hover over a dashboard card, or press `Ctrl+Shift+3` again, choose a card with
+arrows and press `Space`.
+
+**You see:** an enlarged, read-only preview. Hovering keeps your keyboard focus in place.
+The keyboard preview supports arrows to change tab, `Enter` to open it and `Esc` to
+return. `Ctrl+Shift+O` opens a preview from any view. **Setting: Dashboard previews**
+chooses automatic live/styled previews, always-styled snapshots, or the legacy text
+extract; **Enlarge previews on hover** controls mouse enlargement.
 
 ## 8. Say it once, to several
 

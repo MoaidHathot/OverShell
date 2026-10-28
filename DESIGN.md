@@ -2950,6 +2950,39 @@ through both menus, checks rebound shortcut hints, and covers top/bottom/left/ri
 list/rail layouts. Captions are captured as WPF images. This run's evidence is under
 `artifacts/selftest/profile-overflow/`.
 
+### 12.30 Faithful dashboard and enlarged previews
+
+Dashboard cards use a read-only preview surface. In composed mode, a native preview
+token attaches a second DirectComposition visual to the existing renderer surface;
+its aspect-fit transform never changes the terminal grid. The native API tracks the
+renderer's size (a hidden HWND can have different layout bounds), updates mirrors on
+swap-chain replacement, and invalidates their tokens on source teardown. The local
+fork implementation and package are described in [DASHBOARD-PREVIEWS.md](docs/DASHBOARD-PREVIEWS.md).
+
+Opaque terminals use a versioned cell snapshot with resolved foreground/background
+colours, text styles and wide-glyph cell widths. The native read is coherent and bounded;
+managed decoding validates every size/offset. Styled drawings are built off the UI
+thread, frozen, and shared by consumers of the same tab, with two drawing jobs at most.
+Only changed, visible styled sources are captured; the default interval is one second.
+Live mirrors have no capture timer after attachment. The legacy text mode remains a
+compatibility fallback and a profiling reference. Offscreen/hidden consumers release
+their leases, drawing subscriptions and text-reader references. Placement requests
+are coalesced, and discarded drawings are cleared from the control's render data.
+
+Hover opens an owned, non-activating preview; a card and its enlarged view form one
+hover region with a short close grace period. Keyboard enlargement (`tab.preview`,
+Ctrl+Shift+O, or Space on the dashboard cursor) uses an activated owned window: arrows
+navigate, Enter opens the source terminal and Esc returns. Preview windows are tool
+windows, fit the monitor work area in physical pixels, and close with their source tab
+or owner. They use the same preview control and share styled captures with cards.
+
+Keeping the terminal host `Hidden` rather than `Collapsed` also fixes background tabs
+created on the dashboard starting with tiny grids. Source creation/layout stays full
+sized. Keyboard navigation now releases a stale pane cursor after a view change.
+The test harness rechecks desktop/foreground availability so a lock screen is not
+mistaken for the application's pixels. Benchmarks and acceptance evidence, including
+the original text baseline, are recorded in [the preview report](docs/DASHBOARD-PREVIEWS.md).
+
 ## 13. Distribution
 
 ### 13.1 Channels - and why each artefact is what it is

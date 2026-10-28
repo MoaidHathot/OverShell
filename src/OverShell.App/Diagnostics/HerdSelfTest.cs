@@ -258,14 +258,16 @@ internal static partial class HerdSelfTest
                     // The MRU switcher is the opt-in mode (12.25); this mode tests it, so it asks for it.
                     _settingsBeforeSeed = System.IO.File.Exists(AppPaths.SettingsFile) ? System.IO.File.ReadAllText(AppPaths.SettingsFile) : null;
                     System.IO.Directory.CreateDirectory(AppPaths.ConfigRoot);
-                    System.IO.File.WriteAllText(AppPaths.SettingsFile, """{ "extensions": { "tabs.mru": { "switcherMode": "mru" } } }""");
+                    System.IO.File.WriteAllText(AppPaths.SettingsFile, Jsonc.Serialize(Jsonc.Merge(
+                        Jsonc.Parse(_settingsBeforeSeed ?? "{}", out _), Jsonc.Parse("""{ "extensions": { "tabs.mru": { "switcherMode": "mru" } } }""", out _))));
                     break;
                 case "transparency":
                     // The composed body is decided before the first tab, from the settings as
                     // loaded at start; the mode puts the original file back when it ends.
                     _settingsBeforeSeed = System.IO.File.Exists(AppPaths.SettingsFile) ? System.IO.File.ReadAllText(AppPaths.SettingsFile) : null;
                     System.IO.Directory.CreateDirectory(AppPaths.ConfigRoot);
-                    System.IO.File.WriteAllText(AppPaths.SettingsFile, """{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""");
+                    System.IO.File.WriteAllText(AppPaths.SettingsFile, Jsonc.Serialize(Jsonc.Merge(
+                        Jsonc.Parse(_settingsBeforeSeed ?? "{}", out _), Jsonc.Parse("""{ "window": { "backdrop": "acrylic", "terminalOpacity": 0.5 } }""", out _))));
                     break;
             }
         }
@@ -4617,9 +4619,15 @@ internal static partial class HerdSelfTest
         Check(tab.Agent.Authority == AgentAuthority.Detector, "an integration with no harness process below the shell is released within two probes");
 
         // ---- 6. GET /v1/tabs through the endpoint (diagnostics route) ----
-        tab.SendText("curl.exe -s \"$env:OVERSHELL_ENDPOINT/v1/tabs?token=$env:OVERSHELL_TOKEN\" | Set-Content \"$env:TEMP\\overshell-selftest-tabs.json\"\r");
-        await Task.Delay(2000);
         var tabsPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest-tabs.json");
+        System.IO.File.Delete(tabsPath);
+        // Child shells can rebuild TEMP from the registry; use this run's explicit path.
+        tab.SendText($"curl.exe -s \"$env:OVERSHELL_ENDPOINT/v1/tabs?token=$env:OVERSHELL_TOKEN\" | Set-Content -LiteralPath '{tabsPath.Replace("'", "''", StringComparison.Ordinal)}'\r");
+        await TransferUntilAsync(() =>
+        {
+            try { return System.IO.File.Exists(tabsPath) && System.IO.File.ReadAllText(tabsPath).Contains(second.Id, StringComparison.Ordinal); }
+            catch (System.IO.IOException) { return false; }
+        });
         var tabsJson = System.IO.File.Exists(tabsPath) ? System.IO.File.ReadAllText(tabsPath) : string.Empty;
         Log($"  /v1/tabs: {tabsJson.Trim()}");
         Check(tabsJson.Contains(tab.Id) && tabsJson.Contains(second.Id), "GET /v1/tabs lists both tabs");
@@ -4969,13 +4977,31 @@ internal static partial class HerdSelfTest
 
         // ---- 14. P3: Codex notify shim, native toast, tear-off ----
         // The Codex shim exactly as installed (script from the embedded resource, JSON as the
-        // last argument), run from the second tab, which nothing has claimed.
+        // last argument), with the second tab's integration environment.
         var codexScript = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "overshell-selftest-codex-notify.ps1");
         System.IO.File.WriteAllText(codexScript, IntegrationInstaller.CodexScriptContent());
         window.ActiveTab = second;
         await Task.Delay(300);
         var codexJson = "{\"type\":\"agent-turn-complete\",\"thread-id\":\"thr-selftest\",\"turn-id\":\"t1\",\"cwd\":\"C:\\\\x\",\"input-messages\":[\"hi\"],\"last-assistant-message\":\"All done here.\"}";
-        second.SendText($"& powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File '{codexScript}' '{codexJson}'; Write-Host selftest-codex-done\r");
+        // Codex starts a native process with argv, not through an interactive shell's
+        // quoting/line editor. Exercise that same boundary and preserve embedded JSON.
+        var codexStart = new ProcessStartInfo("powershell.exe")
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        foreach (var argument in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", codexScript, codexJson }) codexStart.ArgumentList.Add(argument);
+        foreach (var pair in window.Endpoint!.EnvironmentFor(second.Id)) codexStart.Environment[pair.Key] = pair.Value;
+        using var codexProcess = Process.Start(codexStart)!;
+        var codexOutput = codexProcess.StandardOutput.ReadToEndAsync();
+        var codexError = codexProcess.StandardError.ReadToEndAsync();
+        try { await codexProcess.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30)); }
+        catch (TimeoutException)
+        {
+            codexProcess.Kill(entireProcessTree: true);
+            await codexProcess.WaitForExitAsync();
+            throw;
+        }
+        Log($"  codex process: exit={codexProcess.ExitCode} stdout='{await codexOutput}' stderr='{await codexError}'");
         var codexDeadline = DateTime.UtcNow.AddSeconds(15);
         while (DateTime.UtcNow < codexDeadline && second.Agent.SessionId != "thr-selftest")
         {

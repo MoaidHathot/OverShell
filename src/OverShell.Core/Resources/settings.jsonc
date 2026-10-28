@@ -15,7 +15,7 @@
   // share already-rendered frames. Hover/keyboard previews keep the terminal's grid size.
   "dashboard": {
     "previewMode": "auto",
-    "snapshotIntervalMs": 500,
+    "snapshotIntervalMs": 1000,
     "hoverPreview": true,
     "hoverDelayMs": 500
   },

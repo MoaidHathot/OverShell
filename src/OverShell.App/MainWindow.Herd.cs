@@ -147,6 +147,9 @@ public partial class MainWindow
 
         c.Register("tab.new", "New tab", "Tabs", () => NewTab(_catalog.DefaultProfile), description: "Open the default profile");
         c.Register("tab.newWithProfile", "New tab with profile…", "Tabs", OpenProfilePicker, description: "Search profiles, then press Enter to open one");
+        c.Register("tab.preview", "Preview terminal…", "Tabs",
+            () => OpenTerminalPreview(DashboardVisible && _shell?.Cursor is TerminalTab cursor ? cursor : TargetTab, keyboard: true),
+            () => TargetTab is not null, "Read-only enlarged preview; arrows change tab, Enter opens it, Esc returns");
         c.Register("profiles.status", "Profiles: show source and diagnostics", "Profiles", () => ShowStatusMessage(ProfileSourceDescription), description: "Selected Windows Terminal settings file, default profile and import diagnostics");
         RegisterProfileCommands();
         c.Register("tab.duplicate", "Duplicate tab", "Tabs", () => { if (TargetTab is { } t) DuplicateTab(t); }, () => TargetTab is not null, "Same profile, same directory, same group - next to this tab");

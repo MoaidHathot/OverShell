@@ -6,7 +6,7 @@ public sealed record DashboardSettings
 {
     /// <summary>auto: live where supported, otherwise styled; styled: cell drawings; text: legacy rows.</summary>
     public string PreviewMode { get; init; } = "auto";
-    public int SnapshotIntervalMs { get; init; } = 500;
+    public int SnapshotIntervalMs { get; init; } = 1000;
     public bool HoverPreview { get; init; } = true;
     public int HoverDelayMs { get; init; } = 500;
 

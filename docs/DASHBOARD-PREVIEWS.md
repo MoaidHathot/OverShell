@@ -44,6 +44,23 @@ GPU counters are labelled unavailable when Windows exposes no matching counters;
 private-desktop run does not establish on-screen composition fidelity. Pixel checks
 are a separate, short, isolated input-desktop test.
 
+## Building the local preview dependency
+
+The renderer work is committed locally in `W:\Github\terminal` as `0f7770824`.
+Its source files touched by this work use LF line endings. On a machine with the
+fork's documented Visual Studio/SDK prerequisites, run from that repository:
+
+```powershell
+.\build\overshell\Build.ps1 -Platform x64 -Wpf -Version 1.26.260930.4
+.\build\overshell\Pack.ps1 -Version 1.26.260930.4-preview.1 -Platforms x64
+dotnet nuget push .\artifacts\packages\OverShell.Terminal.Wpf.1.26.260930.4-preview.1.nupkg --source C:\nuget\local-feed
+```
+
+OverShell's `Directory.Packages.props` selects that local preview package. Its new
+entrypoints are capability-detected; a renderer without them uses the text fallback.
+The local package carries x64, matching OverShell's supported architecture. A public
+native release remains subject to the terminal repository's contribution rules.
+
 ## Evidence
 
 Baseline and per-stage results will be recorded here after each measured run. Raw
@@ -92,10 +109,11 @@ most two background drawing jobs. Offscreen/hidden consumers release leases and 
 snapshot work. The terminal host remains laid out while hidden, fixing background
 tabs starting with tiny grids when created directly on the dashboard.
 
-Validation: **513 C# tests**; composed dashboard **15 checks**, opaque dashboard **14
-checks**. Card-level pixel verification was interrupted by the Windows lock screen
-and remains pending; the earlier native mirror pixel proof passed on an unlocked
-desktop. The harness now rechecks desktop/foreground availability.
+Validation at this stage: **513 C# tests**; composed dashboard **15 checks**, opaque
+dashboard **14 checks**. Card-level pixel verification was initially interrupted by
+the Windows lock screen; it was completed in the final stage below. Pixel probes now
+check that the sampled point actually belongs to the test window, so a lock screen or
+another window cannot be mistaken for the application.
 
 Matched 8-tab integration runs (private desktop, same build, 8-second busy phase):
 
@@ -108,3 +126,81 @@ Matched 8-tab integration runs (private desktop, same build, 8-second busy phase
 All three modes performed zero preview captures while the dashboard was hidden.
 The timing variance and styled-mode cost motivate conservative snapshot intervals and
 another matched comparison after enlargement/lifecycle hardening.
+
+### Enlargement and lifecycle hardening
+
+Hover previews are owned tool windows with no-activate behavior; keyboard previews
+accept navigation/Open/Close keys and explicitly return focus. Both share the card's
+preview source. A source-tab close, view change, minimize or owner close removes the
+enlarged view. Placement uses physical monitor work areas, including negative monitor
+coordinates. Keyboard navigation also scrolls the chosen card into view.
+
+The styled default is now **1000 ms**. Placement updates are coalesced, and offscreen
+controls discard retained drawings as well as native leases. Legacy enlarged previews
+have reference-counted text readers so they continue refreshing outside the dashboard
+and release that polling when closed. The integration checks cover native and styled
+consumers, keyboard/hover focus, snapshot sharing, resize without reflow, close-tab
+cleanup and twenty repeated enlarged-window lifecycles with bounded handle use.
+
+The regression pass also exposed older harness assumptions about child TEMP and JSON
+argument quoting. The full harness now uses explicit output paths and native argv for
+the Codex hook; a focused process test verifies quotes and Unicode through the installed
+script. Direct programmatic palette dismissal now restores owner activation without
+stealing focus from a replacement picker.
+
+For a reproducible final comparison (including an archived baseline when available):
+
+```powershell
+.\tools\Invoke-PreviewBenchmarks.ps1 `
+  -Exe .\artifacts\previews-build\bin\OverShell.App\release_win-x64\OverShell.exe `
+  -BaselineExe .\artifacts\baselines\dashboard-text-0.3.1\OverShell.exe `
+  -ResultsDir .\artifacts\selftest\dashboard-previews\final-bench -Repeats 2
+```
+
+The helper retains raw JSON/logs and a CSV, alternates mode order, and adds a doubled-tab
+auto-mode case. Hover is disabled for these timed workloads to keep pointer position
+from changing the number of preview consumers.
+
+### Final comparison and requirements audit
+
+Two alternating-order runs per mode used eight tabs with the same deterministic
+workload, 123 × 36 source grids and a private desktop. CPU is the measured range as a
+percentage of one core; allocation/private columns are two-run means for the busy
+8-second phase. These short samples include observer/system variability, so the CPU
+numbers establish the measured envelope rather than a precise speedup.
+
+| Build/mode | CPU range | Allocated | Private bytes | Visible preview work |
+|---|---:|---:|---:|---|
+| Archived original text baseline | 10.00–28.98% | 37.98 MiB | 324.5 MiB | 48–56 UIA reads per run |
+| Final auto/live | 22.85–23.93% | 32.85 MiB | 327.1 MiB | 4 leases, zero captures/drawings |
+| Final styled, 1000 ms | 15.17–22.40% | 40.10 MiB | 325.6 MiB | 4 sources, 32–36 captures |
+| Final text reference | 16.32–26.87% | 35.44 MiB | 325.8 MiB | 48 UIA reads per run |
+
+The live path allocated about **13.5% less** than the archived baseline in these
+workloads, while retaining full visual fidelity. Its CPU range lies within the observed
+baseline range; no exact CPU improvement is claimed. Relative to the previous stage,
+the conservative styled interval reduced captures from 64 to 32–36 in eight seconds.
+The 16-tab live run still had **four visible leases and zero captures**; its host used
+479.0 MiB private memory and 56.56% of one core while busy. Every mode released all
+preview consumers and performed zero preview captures in the hidden-dashboard phase.
+
+Final validation:
+
+- **518 C# tests**, **11 bridge tests**, and a warnings-as-errors Release publish passed.
+- **43 input-desktop preview checks** passed with no skips, including actual styled,
+  live-card and enlarged-window pixels. Native red/green/blue changes were observed
+  without activating or resizing the source terminal.
+- **39 opaque-mode checks** passed on the private desktop; its on-screen checks were
+  intentionally skipped there. Styled card pixels were also verified with an offscreen
+  WPF render.
+- Existing UI regressions passed: full harness 100, keynav 17, MRU 19, polish 14,
+  history 14, profiles 69, overflow 34 and settings 17.
+- Twenty enlarged-window open/close cycles left zero native/styled consumers and
+  bounded handle counts. Source-tab closure, owner/view changes, scrolling, and text
+  fallback reader cleanup were exercised.
+
+Evidence: `final-visible.log`, `final-opaque.log`, `regression-1-final.log`, the other
+`regression-*.log` files, `final-bench/summary.csv` and its raw JSON reports under
+`artifacts/selftest/dashboard-previews/`. Visual evidence is in
+`overshell-dashboard-previews.png` and `overshell-enlarged-preview.png`. The runnable
+publish output is `artifacts/dashboard-preview-package/OverShell.exe`.

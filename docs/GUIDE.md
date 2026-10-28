@@ -114,6 +114,13 @@ init` gives you the full default file, commented, as a starting point.
   // The view shown at start: terminal | herd | dashboard | zen.
   "view": "terminal",
 
+  "dashboard": {
+    "previewMode": "auto",          // auto | styled | text
+    "snapshotIntervalMs": 1000,      // changed styled snapshots; live mirrors share renderer frames
+    "hoverPreview": true,
+    "hoverDelayMs": 500
+  },
+
   "profiles": {
     "source": "auto",               // auto | stable | preview | unpackaged
     "settingsPath": null,           // explicit Windows Terminal file, overriding source
@@ -284,6 +291,7 @@ categories and ids; the bound chord is shown on the right). The defaults:
 |---|---|---|
 | `Ctrl+Shift+T` | `tab.new` | New tab, default profile (`Ctrl+T` stays with the shell — PSReadLine uses it) |
 | `Ctrl+Shift+N` | `tab.newWithProfile` | Search profiles, then open the selected one with Enter |
+| `Ctrl+Shift+O` | `tab.preview` | Read-only enlarged preview of the current terminal |
 | `Ctrl+Shift+W` | `tab.close` | Close tab |
 | `Ctrl+Shift+D` | `tab.duplicate` | Another tab like this one: same profile, directory and group, next to it |
 | `Ctrl+Shift+Z` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |
@@ -431,8 +439,9 @@ program already holds is reported in the status bar.
 **The cursor.** In the Herd view, press `Ctrl+Shift+2` again (or herd mode `s`): a cursor
 outline appears on the active tab's row; `↑`/`↓` or `j`/`k` move it, Home/End jump,
 **Enter** switches to that tab, **Space** switches but keeps the cursor, **Esc** returns to
-the terminal. The same on the Dashboard with `Ctrl+Shift+3` (or `c`); Enter there opens
-the tab in the terminal view. A chord pressed with the cursor up leaves it and runs.
+the terminal. On the Dashboard, `Ctrl+Shift+3` again (or herd mode `c`) places the cursor
+on a card; **Space** enlarges its preview, and **Enter** opens the tab in the terminal
+view. A chord pressed with the cursor up leaves it and runs.
 
 **Addressing a prompt.** In the prompt bar, start with where it should go: `@3 run the
 tests` (tab 3), `@api ...` (a tab by label, a prefix is enough), `#backend ...` (a group),
@@ -506,8 +515,8 @@ application/profile titles, with the same duplicate handling.
   tear-off act on its tab. After a restart a tear-off comes back as a tear-off, where it
   was.
 - **Many tabs**: the strip keeps every tab at least readable, scrolls with the wheel,
-  fades at the edges where more are hiding, and the `…` button at its end opens the
-  switcher.
+  fades at the edges where more are hiding, and the `…` menu offers switching and
+  profile creation. The `+` and profile arrow stay pinned beside the scrolling tabs.
 - **Explain** (`Ctrl+Shift+E`): state, why, who decided (detector or which integration),
   harness, session id, resume command, processes below the shell, the last transitions.
 
@@ -520,11 +529,44 @@ the tabs needing you:
 |---|---|---|
 | **Terminal** `Ctrl+Shift+1` | the live tab | tab strip in the caption bar |
 | **Herd** `Ctrl+Shift+2` | the live tab | plus a sidebar: every tab grouped by project, the ones needing you first, with activity age |
-| **Dashboard** `Ctrl+Shift+3` | one **card per tab** | header (state, label, project · branch), body = the last screen rows in the tab's colours, footer (state, summary, activity). Click selects, double-click or the button opens it in Terminal |
+| **Dashboard** `Ctrl+Shift+3` | one **card per tab** | header (state, label, project · branch), body = a faithful read-only terminal preview, footer (state, preview backend, summary, activity). Click selects, double-click or the button opens it in Terminal |
 | **Zen** `Ctrl+Shift+4` | the live tab | no tabs, no status bar, slim caption |
 
-Cards are text read from the terminal, refreshed about once a second — never a live
-terminal shrunk into a tile, which would reflow the agent's screen.
+### Faithful and enlarged previews
+
+`dashboard.previewMode` selects the preview backend:
+
+- **auto** (default): share the terminal's rendered GPU surface when the composed
+  renderer supports the preview API. Opaque terminals use styled snapshots.
+- **styled**: a full-viewport drawing of terminal cells, preserving foreground and
+  background colours, bold, italic, underline, strikethrough and Unicode text.
+- **text**: the legacy last-rows extract. It is also the compatibility fallback when
+  the terminal surface has no preview API.
+
+The footer shows **live**, **styled**, or **text**. Previews fit the original viewport
+into their available space; the terminal's rows and columns are independent of card
+or enlarged-window size. Live mirrors reuse rendered frames. Styled snapshots update
+only after content/viewport changes, at most once per `snapshotIntervalMs` (default
+1000, configurable from 250 to 10000). Visible consumers of the same tab share a drawing;
+offscreen cards and hidden/minimized preview windows release their preview work.
+
+Hover over a card for `hoverDelayMs` (default 500) to open an enlarged preview without
+taking keyboard focus. Move into that window to keep it open; leave both it and the
+card to dismiss it. Click its body or open button to work in the terminal.
+
+For keyboard use, press **Ctrl+Shift+3** again, choose a card with arrows and press
+**Space**. **Ctrl+Shift+O** (`tab.preview`) or **Preview terminal…** in the palette also
+opens a keyboard preview. There, arrow keys change tab, **Enter** opens it, and
+**Esc** or **Space** returns to the originating window. Closing the source tab closes
+its enlarged preview. `dashboard.hoverPreview: false` disables hover while retaining
+the keyboard command. These settings are available through **Setting: Dashboard
+previews**, **Preview snapshot interval**, **Enlarge previews on hover**, and
+**Preview hover delay**.
+
+Preview-capable native builds and validation details are documented in
+[DASHBOARD-PREVIEWS.md](DASHBOARD-PREVIEWS.md).
+
+### Layout files
 
 A view = a **layout** + what the middle shows. Layouts are five-line JSONC files that say
 where the tabs go and how they look, whether the sidebar shows, whether the status bar

@@ -1,7 +1,10 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Interop;
 using OverShell.App.Chrome;
 using OverShell.App.Terminal.WindowsTerminal;
 using OverShell.Core;
@@ -37,6 +40,10 @@ internal static partial class HerdSelfTest
             Check(tabs.Select(t => t.Grid).SequenceEqual(grids), "showing the dashboard preserves every terminal grid");
             if (expected == "live") Check(NativeTerminalPreview.ActiveLeases == Visible().Count, "native leases are bounded by visible cards");
 
+            await CheckEnlargedPreviewsAsync(window, tabs, Check);
+            window.ShowViewById("dashboard");
+            await TransferUntilAsync(() => Visible().Count > 0);
+
             var scroller = FindAll<ScrollViewer>(window.DashboardView).First();
             var originallyVisible = Visible().ToArray();
             scroller.ScrollToBottom();
@@ -51,20 +58,51 @@ internal static partial class HerdSelfTest
             var changed = Visible()[0].Tab!;
             changed.SendText(PreviewFillCommand(0, 255, 0));
             Check(await TransferUntilAsync(() => NativeTerminalPreview.SnapshotCount > captures), "changed terminal output refreshes a visible styled preview");
+            var styledCard = Visible().First(c => ReferenceEquals(c.Tab, changed));
+            bool StyledGreen()
+            {
+                var color = PreviewVisualPixel(styledCard);
+                return color.G > 220 && color.R < 40 && color.B < 40;
+            }
+            Check(await TransferUntilAsync(StyledGreen), "rendered styled card pixels retain coloured blank cells on a private desktop too");
+            scroller.ScrollToBottom();
+            await TransferUntilAsync(() => !styledCard.HasDemand);
+            scroller.ScrollToTop();
+            Check(await TransferUntilAsync(() => styledCard.HasDemand && styledCard.HasDrawing && StyledGreen()), "a styled card redraws immediately after scrolling back into view without new output");
 
-            if (OnInputDesktop && await BringToFrontAsync(window))
+            if (OnInputDesktop)
             {
                 window.Topmost = true;
-                window.Activate();
                 await Task.Delay(250);
                 var card = Visible().First(c => ReferenceEquals(c.Tab, changed));
-                var point = card.PointToScreen(new Point(card.ActualWidth / 2, card.ActualHeight / 2));
-                Check(await TransferUntilAsync(() => { var c = ScreenPixel((int)point.X, (int)point.Y); return c.G > 220 && c.R < 40 && c.B < 40; }), "PIXELS: styled card paints the terminal's coloured blank cells");
-                window.ApplySetting(SettingsCatalog.Find("dashboard.previewMode")!, "\"auto\"");
-                await TransferUntilAsync(() => card.Backend == expected);
-                changed.SendText(PreviewFillCommand(255, 0, 0));
-                Check(await TransferUntilAsync(() => { var c = ScreenPixel((int)point.X, (int)point.Y); return c.R > 220 && c.G < 40 && c.B < 40; }), "PIXELS: automatic card tracks the real terminal's new colour");
-                SaveScreen(window, "overshell-dashboard-previews.png");
+                Point Centre() => card.PointToScreen(new Point(card.ActualWidth / 2, card.ActualHeight / 2));
+                if (await TransferUntilAsync(() => PreviewOwnsPixel(window, Centre())))
+                {
+                    Check(await TransferUntilAsync(() => { var p = Centre(); var c = ScreenPixel((int)p.X, (int)p.Y); return c.G > 220 && c.R < 40 && c.B < 40; }), "PIXELS: styled card paints the terminal's coloured blank cells");
+                    window.ApplySetting(SettingsCatalog.Find("dashboard.previewMode")!, "\"auto\"");
+                    await TransferUntilAsync(() => card.Backend == expected);
+                    changed.SendText(PreviewFillCommand(255, 0, 0));
+                    Check(await TransferUntilAsync(() => { var p = Centre(); var c = ScreenPixel((int)p.X, (int)p.Y); return c.R > 220 && c.G < 40 && c.B < 40; }), "PIXELS: automatic card tracks the real terminal's new colour");
+                    window.OpenTerminalPreview(changed, keyboard: false, card);
+                    await TransferUntilAsync(() => window.TerminalPreview?.Preview.HasDemand == true);
+                    var enlarged = window.TerminalPreview!;
+                    Point EnlargedCentre() => enlarged.Preview.PointToScreen(new Point(enlarged.Preview.ActualWidth / 2, enlarged.Preview.ActualHeight / 2));
+                    changed.SendText(PreviewFillCommand(0, 0, 255));
+                    Check(await TransferUntilAsync(() =>
+                    {
+                        var p = EnlargedCentre();
+                        var c = ScreenPixel((int)p.X, (int)p.Y);
+                        return PreviewOwnsPixel(enlarged, p) && c.B > 220 && c.R < 40 && c.G < 40;
+                    }), "PIXELS: enlarged preview tracks the same source's live rendered pixels");
+                    changed.SendText("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); [Console]::Write(([string][char]27)+'[0m')\r");
+                    changed.SendText(PreviewFixtureCommand(1));
+                    await TransferUntilAsync(() => NativeTerminalPreview.Capture(changed.TerminalHwnd)?.Runs.Any(r => r.Text.Contains("中文", StringComparison.Ordinal)) == true);
+                    await Task.Delay(100);
+                    SaveScreen(enlarged, "overshell-enlarged-preview.png");
+                    enlarged.Dismiss(returnFocus: false);
+                    SaveScreen(window, "overshell-dashboard-previews.png");
+                }
+                else Log("  SKIP  another desktop/window obscures the card's pixel probe");
                 window.Topmost = false;
             }
             else Log("  SKIP  dashboard pixel comparison requires an unlocked desktop with the test window in front");
@@ -105,4 +143,23 @@ internal static partial class HerdSelfTest
         }
         Log($"=== selftest (previews) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
+
+    private static Color PreviewVisualPixel(FrameworkElement element)
+    {
+        var width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth));
+        var height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight));
+        var visual = new DrawingVisual();
+        using (var context = visual.RenderOpen()) context.DrawRectangle(new VisualBrush(element), null, new Rect(0, 0, width, height));
+        var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        var pixel = new byte[4];
+        bitmap.CopyPixels(new Int32Rect(width / 2, height / 2, 1, 1), pixel, 4, 0);
+        return Color.FromArgb(pixel[3], pixel[2], pixel[1], pixel[0]);
+    }
+
+    private static bool PreviewOwnsPixel(Window window, Point point) =>
+        PreviewGetAncestor(PreviewWindowFromPoint(new PreviewPixelPoint((int)point.X, (int)point.Y)), 2) == new WindowInteropHelper(window).Handle;
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct PreviewPixelPoint(int X, int Y);
+    [DllImport("user32.dll", EntryPoint = "WindowFromPoint")] private static extern nint PreviewWindowFromPoint(PreviewPixelPoint point);
+    [DllImport("user32.dll", EntryPoint = "GetAncestor")] private static extern nint PreviewGetAncestor(nint window, uint flags);
 }

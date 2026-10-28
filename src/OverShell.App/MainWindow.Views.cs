@@ -105,6 +105,7 @@ public partial class MainWindow
 
         Dashboard.Tabs = Tabs;
         Dashboard.PreviewSettings = _settings.Dashboard;
+        InitializePreviewActions();
         Dashboard.TabSelected += tab => ActiveTab = tab;
         Dashboard.OpenRequested += tab =>
         {
@@ -376,6 +377,7 @@ public partial class MainWindow
     private void ShowContent(ViewContent content)
     {
         var dashboard = content == ViewContent.Dashboard;
+        if (!dashboard) CloseTerminalPreview();
 
         // Hidden retains full-sized layout for background terminals opened on the dashboard.
         // Their rendering and grid remain independent of card dimensions.
@@ -532,6 +534,7 @@ public partial class MainWindow
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
             Dashboard.PreviewSettings = _settings.Dashboard;
+            PreviewSettingsChanged();
             _agents.Detection = _settings.Detection;
             _agents.Compatibility = _settings.Compatibility;
             TerminalTab.TabSettings = _settings.Tabs;

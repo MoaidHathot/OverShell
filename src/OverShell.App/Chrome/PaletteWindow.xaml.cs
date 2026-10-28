@@ -336,7 +336,19 @@ public partial class PaletteWindow : Window
     /// </summary>
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
+        var returnToOwner = !_closing && IsActive;
+        var owner = Owner;
         _closing = true;
         base.OnClosing(e);
+        if (e.Cancel) { _closing = false; return; }
+        if (returnToOwner && owner is not null)
+        {
+            // Direct programmatic Close has no CloseOnce action to restore activation.
+            // A replacement picker may already have opened by the time this runs.
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (owner.IsVisible && !Application.Current.Windows.OfType<Window>().Any(w => w.IsActive && !ReferenceEquals(w, owner))) owner.Activate();
+            }, DispatcherPriority.Input);
+        }
     }
 }
