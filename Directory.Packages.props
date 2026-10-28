@@ -15,8 +15,8 @@
         Microsoft.Terminal.Wpf.dll      managed HwndHost wrapper, ITerminalConnection
         Microsoft.Terminal.Control.dll  native - the real WT parser, buffer and AtlasEngine renderer
     -->
-    <!-- Locally built preview ABI; build/overshell/PREVIEWS.md in the terminal fork records its contract. -->
-    <PackageVersion Include="OverShell.Terminal.Wpf" Version="1.26.260930.4-preview.1" />
+    <!-- Preview ABI; build/overshell/PREVIEWS.md in the terminal fork records its contract. -->
+    <PackageVersion Include="OverShell.Terminal.Wpf" Version="1.26.260930.4" />
     <!--
       Microsoft's redistributable pseudoconsole: conpty.dll plus the OpenConsole.exe it
       launches, so ConPTY behaviour does not depend on the OS's conhost.exe.

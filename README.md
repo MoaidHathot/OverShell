@@ -35,8 +35,8 @@ binaries with Azure Artifact Signing; the Windows Terminal control binaries arri
 same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
-**0.3.1:** [release highlights and upgrade instructions](docs/RELEASE-0.3.1.md),
-including configurable profile sources/defaults, the keyboard picker, and small-window controls.
+**0.4.0:** [release highlights and upgrade instructions](docs/RELEASE-0.4.0.md),
+including faithful live dashboard previews and hover/keyboard enlargement.
 
 ## Build & run
 
@@ -79,7 +79,7 @@ menus, and pinned actions in top, bottom, side-list and rail layouts.
 `-Mode previews` checks dashboard and enlarged previews, focus, clipping and cleanup;
 `previewnative -Visible` checks the native mirror's pixels on an unlocked desktop.
 `previewbench` records repeatable CPU/GPU-counter/memory measurements. See the
-[preview design and evidence](docs/DASHBOARD-PREVIEWS.md) for the local native dependency
+[preview design and evidence](docs/DASHBOARD-PREVIEWS.md) for the native dependency
 and benchmark protocol.
 
 ## Configuration
@@ -258,8 +258,8 @@ keyboard focus where it was.
 with styled cell snapshots for opaque terminals. `styled` selects snapshots explicitly;
 `text` selects the legacy last rows. The card footer names the active backend. Visible
 styled consumers share a change-driven drawing; hidden/scrolled-out previews release
-their work. The native preview API is supplied by the local preview-capable terminal
-package described in the [build notes](docs/DASHBOARD-PREVIEWS.md#building-the-local-preview-dependency).
+their work. The native preview API ships in **OverShell.Terminal.Wpf 1.26.260930.4**;
+its dependency and validation details are in the [build notes](docs/DASHBOARD-PREVIEWS.md#native-preview-dependency).
 
 A view is a **layout** plus what the middle shows. Layouts are small JSONC files: where
 the tabs go (`top`, `bottom`, `left`, `right`, `hidden`), how they look (`strip`, `list`,

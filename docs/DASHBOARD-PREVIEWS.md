@@ -24,9 +24,10 @@ when cards, tabs or windows close.
    DPI/resize/scroll/close transitions, verify coloured pixels on the input desktop, run
    regressions and compare measurements against both baseline and the preceding stage.
 
-The terminal fork's AGENTS.md permits local AI-assisted work and restricts larger public
-contributions. Native changes and packages in this task are local; public submission
-follows that repository's contribution rules.
+The native implementation was initially built and tested locally under the terminal
+fork's contribution policy. On 2026-10-28, the fork's maintainer explicitly authorized
+public publication with AI-use disclosure. That disclosure is included in the native
+package documentation and release notes.
 
 ## Benchmark protocol
 
@@ -44,22 +45,23 @@ GPU counters are labelled unavailable when Windows exposes no matching counters;
 private-desktop run does not establish on-screen composition fidelity. Pixel checks
 are a separate, short, isolated input-desktop test.
 
-## Building the local preview dependency
+## Native preview dependency
 
-The renderer work is committed locally in `W:\Github\terminal` as `0f7770824`.
-Its source files touched by this work use LF line endings. On a machine with the
-fork's documented Visual Studio/SDK prerequisites, run from that repository:
+Normal OverShell builds restore **OverShell.Terminal.Wpf 1.26.260930.4**, which carries
+the preview ABI in signed x64 and ARM64 native binaries. The implementation originated
+in terminal-fork commit `0f7770824`; its touched source files use LF line endings.
+For a local rebuild with the fork's documented Visual Studio/SDK prerequisites:
 
 ```powershell
 .\build\overshell\Build.ps1 -Platform x64 -Wpf -Version 1.26.260930.4
-.\build\overshell\Pack.ps1 -Version 1.26.260930.4-preview.1 -Platforms x64
-dotnet nuget push .\artifacts\packages\OverShell.Terminal.Wpf.1.26.260930.4-preview.1.nupkg --source C:\nuget\local-feed
+.\build\overshell\Pack.ps1 -Version 1.26.260930.4-local.1 -Platforms x64
+dotnet nuget push .\artifacts\packages\OverShell.Terminal.Wpf.1.26.260930.4-local.1.nupkg --source C:\nuget\local-feed
 ```
 
-OverShell's `Directory.Packages.props` selects that local preview package. Its new
-entrypoints are capability-detected; a renderer without them uses the text fallback.
-The local package carries x64, matching OverShell's supported architecture. A public
-native release remains subject to the terminal repository's contribution rules.
+Select a local rebuild explicitly in `Directory.Packages.props` when testing it.
+Preview entrypoints are capability-detected; a renderer without them uses the text
+fallback. The local example builds x64, matching OverShell's supported architecture;
+the native release workflow builds both x64 and ARM64.
 
 ## Evidence
 
@@ -81,9 +83,9 @@ on-screen rendering evidence; the GPU column sums the process's matching engine 
 
 ### Native proof
 
-The local terminal fork commit `0f7770824` provides a token-based composition mirror
-and a bounded, versioned styled-viewport snapshot ABI. It is packaged locally as
-`OverShell.Terminal.Wpf 1.26.260930.4-preview.1` (x64). Mirrors share the renderer's
+Terminal fork commit `0f7770824` provides a token-based composition mirror
+and a bounded, versioned styled-viewport snapshot ABI. The original proof used the local
+`OverShell.Terminal.Wpf 1.26.260930.4-preview.1` package (x64). Mirrors share the renderer's
 surface, fit its rendered size, track swap-chain replacement and remove their visuals
 on disposal/source teardown. Short-lived composition targets are pruned from the cache.
 
