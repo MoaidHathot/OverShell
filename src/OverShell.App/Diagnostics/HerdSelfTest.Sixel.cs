@@ -37,16 +37,26 @@ internal static partial class HerdSelfTest
             if (Environment.GetEnvironmentVariable("OVERSHELL_SIXEL_APP") is { Length: > 0 } command)
             {
                 var result = Path.Combine(AppPaths.StateRoot, "sixel-app-exit.txt");
-                var script = Path.Combine(AppPaths.StateRoot, "sixel-app.ps1");
                 File.Delete(result);
-                File.WriteAllText(script, command + $"\n[IO.File]::WriteAllText('{Ps(result)}', [string]$LASTEXITCODE)\n", new UTF8Encoding(false));
                 Log($"  application: {command}");
-                tab.SendText($"& '{Ps(script)}'\r");
+                // Use the shell's interactive command path, so this check does not depend
+                // on the user's policy for executing unsigned PowerShell script files.
+                tab.SendText(command + $"; [IO.File]::WriteAllText('{Ps(result)}', [string]$LASTEXITCODE)\r");
                 var clock = Stopwatch.StartNew();
-                while (!File.Exists(result) && clock.Elapsed < TimeSpan.FromSeconds(60)) await Task.Delay(100);
+                var captured = false;
+                while (!File.Exists(result) && clock.Elapsed < TimeSpan.FromSeconds(60))
+                {
+                    await Task.Delay(100);
+                    if (!captured && clock.Elapsed >= TimeSpan.FromSeconds(3))
+                    {
+                        captured = true;
+                        File.WriteAllText(Path.Combine(AppPaths.StateRoot, "sixel-app-screen.json"), Jsonc.Serialize(NativeTerminalPreview.Capture(tab.TerminalHwnd)));
+                        if (OnInputDesktop) SaveScreen(window, "overshell-sixel-app.png");
+                    }
+                }
                 var exit = File.Exists(result) ? File.ReadAllText(result) : "timeout";
                 Check(exit == "0", $"the real Sixel application exits successfully (exit={exit})");
-                if (exit == "timeout") tab.SendText("\x03");
+                if (exit != "0") return;
                 await DrawFixture("the shell and image renderer remain usable after the application exits");
                 await CheckPixels();
             }
