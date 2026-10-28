@@ -1,5 +1,6 @@
 using System.Windows;
 using OverShell.Config;
+using OverShell.Core.Previews;
 
 namespace OverShell.App.Terminal;
 
@@ -29,6 +30,12 @@ public enum SurfaceCapabilities
 
     /// <summary>The surface detects and opens hyperlinks itself.</summary>
     Hyperlinks = 1 << 5,
+
+    /// <summary>A read-only composition mirror of the rendered terminal.</summary>
+    LivePreview = 1 << 6,
+
+    /// <summary>A coherent full viewport with terminal cell colours and styles.</summary>
+    StyledPreview = 1 << 7,
 }
 
 /// <summary>Pointer shapes the chrome may ask a surface to show over the terminal body.</summary>
@@ -111,4 +118,14 @@ public interface ITerminalSurface : IDisposable
 
     /// <summary>Selected text, or empty. Clears the selection, matching the native control.</summary>
     string GetSelectedText();
+
+    ITerminalPreview? CreatePreview(nint destination) => null;
+
+    TerminalPreviewFrame? CapturePreview() => null;
+}
+
+/// <summary>A read-only mirror on a top-level window; bounds are client-area physical pixels.</summary>
+public interface ITerminalPreview : IDisposable
+{
+    bool Update(Rect destination, Rect clip, double cornerRadius);
 }

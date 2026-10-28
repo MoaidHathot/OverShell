@@ -83,3 +83,28 @@ private bytes 327.7 MiB; there were **zero preview leases, styled captures and g
 updates**, as expected before integration. The CPU spread makes a single short timing
 insufficient to claim improvement/regression; final comparisons will include matched
 text/live runs and distinguish observer/system variability from preview work.
+
+### Dashboard integration
+
+Cards now own read-only preview consumers. Native mirrors have no capture timer once
+attached. Styled consumers share one cancellable snapshot/drawing per tab, with at
+most two background drawing jobs. Offscreen/hidden consumers release leases and stop
+snapshot work. The terminal host remains laid out while hidden, fixing background
+tabs starting with tiny grids when created directly on the dashboard.
+
+Validation: **513 C# tests**; composed dashboard **15 checks**, opaque dashboard **14
+checks**. Card-level pixel verification was interrupted by the Windows lock screen
+and remains pending; the earlier native mirror pixel proof passed on an unlocked
+desktop. The harness now rechecks desktop/foreground availability.
+
+Matched 8-tab integration runs (private desktop, same build, 8-second busy phase):
+
+| Mode | CPU, one core | Allocated | Private bytes | Preview work |
+|---|---:|---:|---:|---|
+| auto/live | 18.43% | 33.69 MiB | 323.5 MiB | 4 visible leases; 0 snapshots/drawings |
+| styled, 500 ms | 26.29% | 45.96 MiB | 333.4 MiB | 4 sources; 64 captures |
+| text | 44.55% | 36.22 MiB | 320.7 MiB | 56 UIA snapshots |
+
+All three modes performed zero preview captures while the dashboard was hidden.
+The timing variance and styled-mode cost motivate conservative snapshot intervals and
+another matched comparison after enlargement/lifecycle hardening.

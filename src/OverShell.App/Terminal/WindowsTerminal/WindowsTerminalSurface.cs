@@ -44,6 +44,8 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     private bool _loaded;
     private bool _connected;
     private bool _readyRaised;
+    private bool _disposed;
+    private readonly HashSet<NativeTerminalPreview.Lease> _previews = [];
 
     public WindowsTerminalSurface()
         : this(TerminalComposition.Opaque)
@@ -89,7 +91,8 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     public FrameworkElement View => _control;
 
     public SurfaceCapabilities Capabilities =>
-        SurfaceCapabilities.NativeHwnd | SurfaceCapabilities.LiveReattach | (_composed ? SurfaceCapabilities.Transparency : SurfaceCapabilities.None);
+        SurfaceCapabilities.NativeHwnd | SurfaceCapabilities.LiveReattach | (_composed ? SurfaceCapabilities.Transparency : SurfaceCapabilities.None) |
+        (NativeTerminalPreview.Available ? SurfaceCapabilities.StyledPreview | (_composed ? SurfaceCapabilities.LivePreview : SurfaceCapabilities.None) : SurfaceCapabilities.None);
 
     /// <summary>Whether this surface renders through the composition visual (fixed at creation).</summary>
     public bool IsComposed => _composed;
@@ -233,8 +236,29 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
 
     public string GetSelectedText() => _control.GetSelectedText();
 
+    public ITerminalPreview? CreatePreview(nint destination)
+    {
+        _control.Dispatcher.VerifyAccess();
+        if (_disposed || !_composed || _container is not { Handle: var hwnd }) return null;
+        var preview = NativeTerminalPreview.Create(hwnd, destination, _control.Dispatcher);
+        if (preview is not null)
+        {
+            _previews.Add(preview);
+            preview.Released = released => _previews.Remove(released);
+        }
+        return preview;
+    }
+
+    public Core.Previews.TerminalPreviewFrame? CapturePreview()
+    {
+        _control.Dispatcher.VerifyAccess();
+        return !_disposed && _container is { Handle: var hwnd } ? NativeTerminalPreview.Capture(hwnd) : null;
+    }
+
     public void Dispose()
     {
+        _disposed = true;
+        foreach (var preview in _previews.ToArray()) preview.Dispose();
         _control.Loaded -= OnLoaded;
         _dropTarget?.Dispose();
         _dropTarget = null;

@@ -94,6 +94,8 @@ internal static partial class HerdSelfTest
             var cpu = process.TotalProcessorTime;
             var allocations = GC.GetTotalAllocatedBytes();
             var reads = snapshots;
+            var nativeSnapshots = Terminal.WindowsTerminal.NativeTerminalPreview.SnapshotCount;
+            var drawings = Chrome.StyledPreviewSource.CompletedDrawings;
             var gpuValues = new List<double>();
             var clock = Stopwatch.StartNew();
             for (var i = 0; i < seconds; i++)
@@ -107,7 +109,9 @@ internal static partial class HerdSelfTest
             var sample = new PreviewBenchmarkSample(phase, elapsed, cpuMs, 100 * cpuMs / elapsed,
                 GC.GetTotalAllocatedBytes() - allocations, process.PrivateMemorySize64, process.WorkingSet64,
                 process.HandleCount, GetGuiResources(process.Handle, 0), GetGuiResources(process.Handle, 1), snapshots - reads,
-                gpuValues.Count == 0 ? null : gpuValues.Average());
+                gpuValues.Count == 0 ? null : gpuValues.Average(), Terminal.WindowsTerminal.NativeTerminalPreview.ActiveLeases,
+                Chrome.StyledPreviewSource.ActiveSources, Terminal.WindowsTerminal.NativeTerminalPreview.SnapshotCount - nativeSnapshots,
+                Chrome.StyledPreviewSource.CompletedDrawings - drawings);
             Log($"  MEASURE {phase}: cpu={sample.OneCorePercent:F2}% allocated={sample.AllocatedBytes / 1024d:F0} KiB private={sample.PrivateBytes / 1048576d:F1} MiB handles={sample.Handles} snapshots={sample.Snapshots} gpu={(sample.GpuEnginePercent is { } g ? g.ToString("F2") + "%" : "unavailable")}");
             return sample;
         }
@@ -119,7 +123,8 @@ internal static partial class HerdSelfTest
         "$e+'[48;2;30;80;140m BACKGROUND '+$e+'[0m'+\"`r`n\"+'Unicode: '+[char]0x250c+[char]0x2500+[char]0x2510+' '+[char]0x4e2d+[char]0x6587+\"`r`n\"+'Frame '+$i+\"`r`n\"); Start-Sleep -Milliseconds 100 } }\r";
 
     private sealed record PreviewBenchmarkSample(string Phase, double WallMilliseconds, double CpuMilliseconds, double OneCorePercent,
-        long AllocatedBytes, long PrivateBytes, long WorkingSetBytes, int Handles, uint GdiObjects, uint UserObjects, int Snapshots, double? GpuEnginePercent);
+        long AllocatedBytes, long PrivateBytes, long WorkingSetBytes, int Handles, uint GdiObjects, uint UserObjects, int Snapshots, double? GpuEnginePercent,
+        int LivePreviews, int StyledSources, long StyledCaptures, long StyledDrawings);
 
     [DllImport("user32.dll")]
     private static extern uint GetGuiResources(nint process, uint flags);

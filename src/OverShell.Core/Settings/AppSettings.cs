@@ -238,6 +238,8 @@ public sealed class AppSettings
 
     public TabSettings Tabs { get; init; } = new();
 
+    public DashboardSettings Dashboard { get; init; } = new();
+
     public OverShell.Config.ProfileSettings Profiles { get; init; } = new();
 
     public GitSettings Git { get; init; } = new();
@@ -337,6 +339,8 @@ public sealed class AppSettings
         settings.HasLoadError = hasLoadError;
         if (!OverShell.Core.Tabs.TabLabels.TryMode(settings.Tabs.LabelMode, out _))
             settings.Problems.Add($"tabs.labelMode: unknown value '{settings.Tabs.LabelMode}'; using session");
+        if (settings.Dashboard.PreviewMode?.ToLowerInvariant() is not ("auto" or "styled" or "text"))
+            settings.Problems.Add($"dashboard.previewMode: unknown value '{settings.Dashboard.PreviewMode}'; using auto");
         return settings;
     }
 }

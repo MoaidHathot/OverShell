@@ -47,10 +47,11 @@ internal static class NativeTerminalPreview
         return new Lease(token, dispatcher);
     }
 
-    internal sealed class Lease(ulong token, Dispatcher dispatcher) : IDisposable
+    internal sealed class Lease(ulong token, Dispatcher dispatcher) : ITerminalPreview
     {
         private ulong _token = token;
         private (PixelRect Destination, PixelRect Clip, float Radius)? _last;
+        internal Action<Lease>? Released { get; set; }
 
         public bool Update(Rect destination, Rect clip, double radius)
         {
@@ -74,6 +75,8 @@ internal static class NativeTerminalPreview
             _ = TerminalDestroyPreview(_token);
             _token = 0;
             ActiveLeases--;
+            Released?.Invoke(this);
+            Released = null;
         }
     }
 

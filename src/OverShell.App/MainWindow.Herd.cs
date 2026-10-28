@@ -239,7 +239,7 @@ public partial class MainWindow
             var dashboard = _settings.ViewFor(_viewId).Content == ViewContent.Dashboard;
             foreach (var tab in Tabs)
             {
-                tab.ScreenWatched = dashboard;
+                tab.ScreenWatched = DashboardNeedsText(tab);
             }
 
             if (!dashboard)

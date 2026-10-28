@@ -104,6 +104,7 @@ public partial class MainWindow
         _sidebar.TabMenuRequested += ShowTabMenu;
 
         Dashboard.Tabs = Tabs;
+        Dashboard.PreviewSettings = _settings.Dashboard;
         Dashboard.TabSelected += tab => ActiveTab = tab;
         Dashboard.OpenRequested += tab =>
         {
@@ -340,6 +341,7 @@ public partial class MainWindow
         {
             ApplyBackdrop();
         }
+        Dashboard.InvalidatePreviews();
     }
 
     /// <summary>Wraps a side panel with a hairline towards the terminal.</summary>
@@ -375,15 +377,15 @@ public partial class MainWindow
     {
         var dashboard = content == ViewContent.Dashboard;
 
-        // Hiding the terminal host hides the native windows with it; UIA still reads them
-        // (§12.7, spike 1), which is what the cards are built from.
-        TerminalHost.Visibility = dashboard ? Visibility.Collapsed : Visibility.Visible;
+        // Hidden retains full-sized layout for background terminals opened on the dashboard.
+        // Their rendering and grid remain independent of card dimensions.
+        TerminalHost.Visibility = dashboard ? Visibility.Hidden : Visibility.Visible;
         Dashboard.Visibility = dashboard ? Visibility.Visible : Visibility.Collapsed;
 
         foreach (var tab in Tabs)
         {
-            tab.ScreenWatched = dashboard || _palette is not null;
-            if (dashboard)
+            tab.ScreenWatched = DashboardNeedsText(tab) || _palette is not null;
+            if (dashboard && tab.ScreenWatched)
             {
                 tab.RequestScreen();
             }
@@ -395,6 +397,9 @@ public partial class MainWindow
             Focus();
         }
     }
+
+    private bool DashboardNeedsText(TerminalTab tab) => _settings.ViewFor(_viewId).Content == ViewContent.Dashboard &&
+        (_settings.Dashboard.EffectiveMode == "text" || !tab.Surface.Capabilities.HasFlag(Terminal.SurfaceCapabilities.StyledPreview));
 
     /// <summary>Heartbeat step for the views: sidebar order, activity texts, git decoration.</summary>
     private void RefreshViews(DateTimeOffset now)
@@ -526,6 +531,7 @@ public partial class MainWindow
         if (all || settings)
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
+            Dashboard.PreviewSettings = _settings.Dashboard;
             _agents.Detection = _settings.Detection;
             _agents.Compatibility = _settings.Compatibility;
             TerminalTab.TabSettings = _settings.Tabs;

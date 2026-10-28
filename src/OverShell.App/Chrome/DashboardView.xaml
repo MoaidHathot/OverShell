@@ -16,9 +16,8 @@
 
             <ItemsControl.ItemTemplate>
                 <DataTemplate DataType="{x:Type local:TerminalTab}">
-                    <!-- One card per tab (§12.5): header, body from UIA text in the tab's own
-                         colours, footer. Never a live scaled-down terminal — that would reflow
-                         the agent's PTY (§12.7, spike 6). -->
+                    <!-- The body mirrors rendered pixels or draws styled cells, preserving the
+                         source terminal's dimensions. A card never hosts/resizes its terminal. -->
                     <Border x:Name="Card"
                             Width="420"
                             Height="300"
@@ -60,6 +59,7 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock x:Name="FooterState" Text="{Binding StateText}" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Small}" Foreground="{StaticResource Text.Secondary}" />
+                                    <TextBlock Text="{Binding Backend, ElementName=PreviewBody}" Margin="8,0,0,0" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Small}" Foreground="{StaticResource Text.Disabled}" />
                                     <TextBlock Text="{Binding Summary}" Margin="8,0,0,0" TextTrimming="CharacterEllipsis" MaxWidth="240" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Small}" Foreground="{StaticResource Text.Disabled}" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" Text="{Binding ActivityText}" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Small}" Foreground="{StaticResource Text.Disabled}" />
@@ -68,18 +68,10 @@
                                              Foreground="{Binding StateBrush}" Background="Transparent" BorderThickness="0" Visibility="Collapsed" />
                             </Grid>
 
-                            <!-- body: the last rows of the screen in the tab's colours -->
+                            <!-- body: read-only, aspect-fit preview of the full terminal viewport -->
                             <Border Margin="10,0" CornerRadius="6" Background="{Binding Background}" ClipToBounds="True">
-                                <TextBlock Text="{Binding ScreenText}"
-                                           Margin="10,8"
-                                           VerticalAlignment="Bottom"
-                                           TextWrapping="NoWrap"
-                                           TextTrimming="None"
-                                           FontFamily="{StaticResource Font.Mono}"
-                                           FontSize="11"
-                                           LineHeight="15"
-                                           LineStackingStrategy="BlockLineHeight"
-                                           Foreground="{Binding Foreground}" />
+                                <chrome:TerminalPreviewControl x:Name="PreviewBody" Tab="{Binding}"
+                                    Settings="{Binding PreviewSettings, RelativeSource={RelativeSource AncestorType=chrome:DashboardView}}" />
                             </Border>
                         </DockPanel>
                     </Border>

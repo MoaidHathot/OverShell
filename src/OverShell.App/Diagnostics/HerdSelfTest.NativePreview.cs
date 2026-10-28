@@ -60,7 +60,7 @@ internal static partial class HerdSelfTest
                 Check(after.Columns == frame.Columns && after.Rows == frame.Rows, "the native buffer also retains its original grid after mirroring");
                 preview.Update(new Rect(20, 20, 400, 220), new Rect(20, 20, 400, 220), 6);
 
-                if (OnInputDesktop)
+                if (OnInputDesktop && await BringToFrontAsync(window))
                 {
                     var origin = ((Grid)host.Content).PointToScreen(new Point());
                     var x = (int)origin.X + 220;
@@ -75,7 +75,7 @@ internal static partial class HerdSelfTest
                     Check(Distance(ScreenPixel((int)origin.X + 4, (int)origin.Y + 4), Colors.Black) < 10, "PIXELS: the mirror stays inside its destination clip");
                     SaveScreen(host, "overshell-preview-native.png");
                 }
-                else Log("  SKIP  native pixel comparison requires the input desktop");
+                else Log("  SKIP  native pixel comparison requires an unlocked desktop with the test window in front");
 
                 Check(preview.Update(new Rect(20, 20, 400, 220), new Rect(1000, 1000, 10, 10), 0), "a fully clipped mirror detaches cleanly");
                 preview.Dispose();

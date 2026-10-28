@@ -2,11 +2,13 @@ using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using OverShell.Core.Settings;
 
 namespace OverShell.App.Chrome;
 
 /// <summary>
-/// The Dashboard view: one card per tab, bodies from screen text (DESIGN.md §12.5). A
+/// The Dashboard view: one card per tab, with faithful read-only terminal previews. A
 /// click selects the tab (its card is outlined); the open button, or a double click,
 /// goes to that tab in the terminal view.
 /// </summary>
@@ -15,6 +17,17 @@ public partial class DashboardView : UserControl
     public DashboardView()
     {
         InitializeComponent();
+        Cards.ItemContainerGenerator.ItemsChanged += (_, _) => InvalidatePreviews();
+    }
+
+    public static readonly DependencyProperty PreviewSettingsProperty = DependencyProperty.Register(nameof(PreviewSettings), typeof(DashboardSettings), typeof(DashboardView), new PropertyMetadata(new DashboardSettings()));
+    public DashboardSettings PreviewSettings { get => (DashboardSettings)GetValue(PreviewSettingsProperty); set => SetValue(PreviewSettingsProperty, value); }
+
+    internal void InvalidatePreviews() => InvalidatePreviews(Cards);
+    private static void InvalidatePreviews(DependencyObject root)
+    {
+        if (root is TerminalPreviewControl preview) preview.InvalidatePlacement();
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) InvalidatePreviews(VisualTreeHelper.GetChild(root, i));
     }
 
     public IEnumerable? Tabs

@@ -9,6 +9,17 @@
   // The view shown at start: terminal | herd | dashboard | zen.
   "view": "terminal",
 
+  // Faithful previews: auto shares the live renderer where supported, with styled cell
+  // snapshots as fallback. styled always uses snapshots; text uses the legacy last rows.
+  // Snapshot refresh is change-driven and only runs for visible previews; live mirrors
+  // share already-rendered frames. Hover/keyboard previews keep the terminal's grid size.
+  "dashboard": {
+    "previewMode": "auto",
+    "snapshotIntervalMs": 500,
+    "hoverPreview": true,
+    "hoverDelayMs": 500
+  },
+
   // Windows Terminal configuration: auto tries Stable, Preview, then unpackaged; or select
   // stable | preview | unpackaged explicitly. settingsPath overrides source (environment
   // variables expand; relative to this directory). OVERSHELL_WT_SETTINGS overrides both.

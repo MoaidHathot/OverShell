@@ -228,7 +228,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
 
         // A dashboard or an open switcher wants this tab's screen from the start.
-        tab.ScreenWatched = _settings.ViewFor(_viewId).Content == ViewContent.Dashboard || _palette is not null;
+        tab.ScreenWatched = DashboardNeedsText(tab) || _palette is not null;
 
         Tabs.Add(tab);
         RefreshTabLabels();
