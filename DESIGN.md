@@ -2957,7 +2957,7 @@ token attaches a second DirectComposition visual to the existing renderer surfac
 its aspect-fit transform never changes the terminal grid. The native API tracks the
 renderer's size (a hidden HWND can have different layout bounds), updates mirrors on
 swap-chain replacement, and invalidates their tokens on source teardown. The released
-fork API (`OverShell.Terminal.Wpf 1.26.260930.4`) is described in [DASHBOARD-PREVIEWS.md](docs/DASHBOARD-PREVIEWS.md).
+fork API (`OverShell.Terminal.Wpf 1.26.260930.5`) is described in [DASHBOARD-PREVIEWS.md](docs/DASHBOARD-PREVIEWS.md).
 
 Opaque terminals use a versioned cell snapshot with resolved foreground/background
 colours, text styles and wide-glyph cell widths. The native read is coherent and bounded;

@@ -35,8 +35,8 @@ binaries with Azure Artifact Signing; the Windows Terminal control binaries arri
 same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
-**0.4.0:** [release highlights and upgrade instructions](docs/RELEASE-0.4.0.md),
-including faithful live dashboard previews and hover/keyboard enlargement.
+**0.4.1:** [release highlights and upgrade instructions](docs/RELEASE-0.4.1.md),
+fixing the native Sixel image crash triggered by `dnx MoaidHathot`.
 
 ## Build & run
 
@@ -58,10 +58,11 @@ backdrop). x64 only. The OpenCode bridge tests additionally use Node.js 22.13+ (
 | `OVERSHELL_TRACE_KEYS` | `1` | Trace keyboard chords to `%TEMP%\overshell-keys.log` |
 | `OVERSHELL_TRACE_LINKS` | `1` | Trace link hover/click resolution to `%TEMP%\overshell-links.log` |
 | `OVERSHELL_TRACE_AGENTS` | `1` | Trace agent detection, state changes and their evidence, endpoint traffic and notifications to `%TEMP%\overshell-agents.log` |
-| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused`, `transfers`, `promptattachments`, `labels`, `labels1`/`labels2`, `opencode-labels`, `profiles` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`). `opencode-labels` checks real OpenCode V2 clients; the older run-based OpenCode probes target the legacy integration. `session1`/`session2` and `labels1`/`labels2` check restoration across a restart. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
+| `OVERSHELL_SELFTEST` | `1`, `opencode`, `opencode-resume`, `session1`/`session2`, `sessionend`, `history`, `icons`, `polish`, `cwd`, `resilience`, `ghost`, `workspaces`, `overflow`, `jumplist`, `theme`, `tearoff`, `find`, `inject`, `env`, `herdmode`, `mru`, `summon`, `address`, `keynav`, `inbox`, `triage`, `opencode-reply`, `spawn`, `spawn-opencode`, `mcp`, `herdlog`, `changes`, `transparency`, `settings`, `unfocused`, `transfers`, `promptattachments`, `labels`, `labels1`/`labels2`, `opencode-labels`, `profiles`, `previewbench`, `previewnative`, `previews`, `sixel` | Run the in-process end-to-end self-test (`%TEMP%\overshell-selftest.log`). `opencode-labels` checks real OpenCode V2 clients; the older run-based OpenCode probes target the legacy integration. `session1`/`session2` and `labels1`/`labels2` check restoration across a restart. `tools\Invoke-SelfTest.ps1 -Mode <mode>` runs one on a private desktop, so it never takes your focus (`-Visible` for the pixel checks) |
 | `OVERSHELL_WT_SETTINGS` | a file | Read this Windows Terminal `settings.json` instead of the installed one |
 
-Crashes are always logged to `%TEMP%\overshell-crash.log`.
+Managed exceptions are logged to `%TEMP%\overshell-crash.log`. Native crashes appear
+in the Windows Application event log; Windows Error Reporting may also save a dump.
 
 To exercise the link handling and shortcuts by hand, run `tools\Show-LinkTestCard.ps1`
 inside a tab: it prints every case with what should happen.
@@ -81,6 +82,8 @@ menus, and pinned actions in top, bottom, side-list and rail layouts.
 `previewbench` records repeatable CPU/GPU-counter/memory measurements. See the
 [preview design and evidence](docs/DASHBOARD-PREVIEWS.md) for the native dependency
 and benchmark protocol.
+`-Mode sixel -Visible` checks native images and their pixels through ConPTY;
+the [Sixel crash report](docs/SIXEL-CRASH.md) includes the real DNX application check.
 
 ## Configuration
 
@@ -258,7 +261,7 @@ keyboard focus where it was.
 with styled cell snapshots for opaque terminals. `styled` selects snapshots explicitly;
 `text` selects the legacy last rows. The card footer names the active backend. Visible
 styled consumers share a change-driven drawing; hidden/scrolled-out previews release
-their work. The native preview API ships in **OverShell.Terminal.Wpf 1.26.260930.4**;
+their work. The native preview API ships in **OverShell.Terminal.Wpf 1.26.260930.5**;
 its dependency and validation details are in the [build notes](docs/DASHBOARD-PREVIEWS.md#native-preview-dependency).
 
 A view is a **layout** plus what the middle shows. Layouts are small JSONC files: where

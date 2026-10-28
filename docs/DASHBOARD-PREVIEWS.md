@@ -47,15 +47,15 @@ are a separate, short, isolated input-desktop test.
 
 ## Native preview dependency
 
-Normal OverShell builds restore **OverShell.Terminal.Wpf 1.26.260930.4**, which carries
+Normal OverShell builds restore **OverShell.Terminal.Wpf 1.26.260930.5**, which carries
 the preview ABI in signed x64 and ARM64 native binaries. The implementation originated
 in terminal-fork commit `0f7770824`; its touched source files use LF line endings.
 For a local rebuild with the fork's documented Visual Studio/SDK prerequisites:
 
 ```powershell
-.\build\overshell\Build.ps1 -Platform x64 -Wpf -Version 1.26.260930.4
-.\build\overshell\Pack.ps1 -Version 1.26.260930.4-local.1 -Platforms x64
-dotnet nuget push .\artifacts\packages\OverShell.Terminal.Wpf.1.26.260930.4-local.1.nupkg --source C:\nuget\local-feed
+.\build\overshell\Build.ps1 -Platform x64 -Wpf -Version 1.26.260930.5
+.\build\overshell\Pack.ps1 -Version 1.26.260930.5-local.1 -Platforms x64
+dotnet nuget push .\artifacts\packages\OverShell.Terminal.Wpf.1.26.260930.5-local.1.nupkg --source C:\nuget\local-feed
 ```
 
 Select a local rebuild explicitly in `Directory.Packages.props` when testing it.

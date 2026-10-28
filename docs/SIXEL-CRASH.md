@@ -1,5 +1,7 @@
 # Sixel crash when running `dnx MoaidHathot`
 
+Fixed in **OverShell 0.4.1** with **OverShell.Terminal.Wpf 1.26.260930.5**.
+
 ## Cause
 
 OverShell 0.3.1 and 0.4.0 could terminate when a terminal application displayed
@@ -26,10 +28,11 @@ Palette bounds checking, all 256 colors, native Sixel images, and the rest of
 STL hardening remain enabled. The native regression runs against the actual
 optimized DLL in both opaque and composed hosts, before CI/release packaging.
 
-The local dependency is **OverShell.Terminal.Wpf 1.26.260930.5-preview.1**,
-built from terminal-fork commit `1d38fd8a0` and available in
-`C:\nuget\local-feed`. It is a development package; the public OverShell 0.4.0
-package uses the affected `1.26.260930.4` renderer.
+OverShell 0.4.1 uses the signed **OverShell.Terminal.Wpf 1.26.260930.5** package,
+available on nuget.org and in `C:\nuget\local-feed`. The implementation originated
+in terminal-fork commit `1d38fd8a0` and was first validated with the local
+`1.26.260930.5-preview.1` package. OverShell 0.4.0 uses the affected
+`1.26.260930.4` renderer.
 
 ## Reproduce the checks
 
@@ -38,13 +41,13 @@ From the terminal fork:
 ```powershell
 .\build\overshell\Build.ps1 -Platform x64 -Wpf -SkipRestore -Version 1.26.260930.5
 .\build\overshell\Test-Sixel.ps1
-.\build\overshell\Pack.ps1 -Version 1.26.260930.5-preview.1 -Platforms x64
-dotnet nuget push .\artifacts\packages\OverShell.Terminal.Wpf.1.26.260930.5-preview.1.nupkg --source C:\nuget\local-feed
+.\build\overshell\Pack.ps1 -Version 1.26.260930.5-local.1 -Platforms x64
+dotnet nuget push .\artifacts\packages\OverShell.Terminal.Wpf.1.26.260930.5-local.1.nupkg --source C:\nuget\local-feed
 ```
 
-Use a new preview version when rebuilding modified code; NuGet versions are
-immutable. The consumer's normal restore selects the version in
-`Directory.Packages.props`.
+Use a new local version when rebuilding modified code; NuGet versions are
+immutable. Select a local rebuild explicitly in `Directory.Packages.props`;
+normal builds restore the stable release.
 
 From OverShell:
 
@@ -64,8 +67,8 @@ depend on PowerShell's unsigned-script execution policy.
 
 ## Evidence
 
-- The released native DLL fails the minimal-image probe with `0xC0000409`.
-- The released DLL also terminates an isolated OverShell instance in the new
+- The affected `1.26.260930.4` DLL fails the minimal-image probe with `0xC0000409`.
+- That DLL also terminates an isolated OverShell instance in the new
   real-ConPTY `sixel` regression before the image's completion marker is parsed.
 - The corrected native DLL passes **16** scenarios across opaque/composed hosts:
   colored images, opaque backgrounds, transparency, the full palette,
@@ -81,14 +84,14 @@ depend on PowerShell's unsigned-script execution policy.
   `artifacts/diagnostics/dnx-moaidhathot/`, including `fixed-final-app.log`,
   `fixed-opaque-app.log`, and `fixed-dnx.png`.
 
-## Run the local fixed build
+## Upgrade
 
-The runnable publish output is `artifacts/sixel-fix-package/OverShell.exe`.
-Close the existing OverShell instance, then launch it from the repository:
+Close the existing OverShell instance, then run the fixed release:
 
 ```powershell
-.\artifacts\sixel-fix-package\OverShell.exe
+dnx OverShell@0.4.1
 ```
 
-It uses the same native DLL as the validated local package. Public OverShell
-0.4.0 remains the previously released build; these fixes are committed locally.
+For a globally installed tool, use `dotnet tool update -g OverShell --version 0.4.1`.
+Signed zip downloads and full upgrade instructions are linked from the
+[0.4.1 release notes](RELEASE-0.4.1.md).
