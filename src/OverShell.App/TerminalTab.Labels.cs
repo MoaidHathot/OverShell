@@ -27,6 +27,30 @@ public sealed partial class TerminalTab
 
     public string Label => _labelPrefix + BaseLabel;
 
+    public string? Alias { get; private set; }
+    public string ShortcutHint { get; private set; } = string.Empty;
+    public string DisplayLabel => Alias is not { } alias ? Label : TabSettings.AliasDisplay.ToLowerInvariant() switch
+    {
+        "hidden" => Label,
+        "primary" => alias,
+        _ => $"@{alias} · {Label}",
+    };
+
+    internal void SetAlias(string? alias)
+    {
+        Alias = alias;
+        Raise(nameof(Alias));
+        Raise(nameof(DisplayLabel));
+        Raise(nameof(Tooltip));
+    }
+
+    internal void SetShortcutHint(string hint)
+    {
+        ShortcutHint = hint;
+        Raise(nameof(ShortcutHint));
+        Raise(nameof(Tooltip));
+    }
+
     internal void RefreshLabelInputs()
     {
         var inputs = (BaseLabel, Project, _userLabel is not null);
@@ -34,6 +58,7 @@ public sealed partial class TerminalTab
         _lastLabelInputs = inputs;
         LabelInputsChanged?.Invoke(this);
         Raise(nameof(Label));
+        Raise(nameof(DisplayLabel));
         Raise(nameof(Tooltip));
     }
 
@@ -42,6 +67,7 @@ public sealed partial class TerminalTab
         if (_labelPrefix == prefix) return;
         _labelPrefix = prefix;
         Raise(nameof(Label));
+        Raise(nameof(DisplayLabel));
         Raise(nameof(Tooltip));
     }
 

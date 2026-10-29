@@ -196,7 +196,7 @@ public sealed class KeybindingMap
     /// Builds the effective map: the embedded defaults, then what extensions declared
     /// (<paramref name="extensionDefaults"/>, overridable like any default), then the user file.
     /// </summary>
-    public static KeybindingMap Load(string? userFilePath, IEnumerable<Keybinding>? extensionDefaults = null)
+    public static KeybindingMap Load(string? userFilePath, IEnumerable<Keybinding>? extensionDefaults = null, IEnumerable<Keybinding>? runtime = null)
     {
         var map = new KeybindingMap();
 
@@ -224,6 +224,7 @@ public sealed class KeybindingMap
             map.Apply(ParseBindings(user, map._problems, "keybindings.jsonc"), "keybindings.jsonc");
         }
 
+        if (runtime is not null) map.Apply(runtime, "runtime");
         map.ReportShadowed();
         return map;
     }

@@ -285,10 +285,13 @@ public partial class MainWindow
         }
         else
         {
+            var aliasQuery = query.StateFilter?.StartsWith("alias:", StringComparison.OrdinalIgnoreCase) == true
+                ? query.StateFilter[6..] : query.StateFilter;
+            var aliasTarget = aliasQuery is null ? null : _addresses.Resolve(new Core.Tabs.TabSelector(Alias: aliasQuery)).TabId;
             for (var i = 0; i < Tabs.Count; i++)
             {
                 var tab = Tabs[i];
-                if (query.StateFilter is { } state && !tab.StateText.StartsWith(state, StringComparison.OrdinalIgnoreCase) && !tab.State.ToString().StartsWith(state, StringComparison.OrdinalIgnoreCase))
+                if (aliasTarget is not null ? tab.Id != aliasTarget : query.StateFilter is { } state && !tab.StateText.StartsWith(state, StringComparison.OrdinalIgnoreCase) && !tab.State.ToString().StartsWith(state, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -298,7 +301,7 @@ public partial class MainWindow
                     continue;
                 }
 
-                var score = FuzzyMatcher.Score(query.Text, tab.Label, tab.Title, tab.SessionTitle, tab.Project, tab.WorkingDirectory, tab.Harness, tab.StateText);
+                var score = FuzzyMatcher.Score(query.Text, tab.Alias, tab.Label, tab.Title, tab.SessionTitle, tab.Project, tab.WorkingDirectory, tab.Harness, tab.StateText);
                 if (score is null)
                 {
                     continue;
@@ -306,12 +309,13 @@ public partial class MainWindow
 
                 // Attention first when the query is empty; otherwise the match decides.
                 var boost = query.Text.Length == 0 ? (tab.State is AgentState.Blocked or AgentState.Error ? 200 : tab.State == AgentState.Done && tab.Unread ? 100 : 0) : 0;
+                if (tab.Alias is not null && query.Text.Equals(tab.Alias, StringComparison.OrdinalIgnoreCase)) boost += 1000;
                 var captured = tab;
                 scored.Add((score.Value + boost, order++, new PaletteItem
                 {
-                    Title = tab.Label,
+                    Title = tab.DisplayLabel,
                     Detail = string.IsNullOrEmpty(tab.Detail) ? tab.WorkingDirectory : $"{tab.Detail}  ·  {tab.WorkingDirectory}",
-                    Hint = i < 9 ? $"Alt+{i + 1}" : null,
+                    Hint = tab.ShortcutHint.Length > 0 ? tab.ShortcutHint : i < 9 ? $"Alt+{i + 1}" : null,
                     Dot = tab.StateBrush,
                     Preview = () => captured.ScreenText,
                     Invoke = () => ActiveTab = captured,

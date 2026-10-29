@@ -170,12 +170,12 @@ public partial class MainWindow
     }
 
     /// <summary>The window the command came from, including a detached terminal or its owned palette.</summary>
-    private Window CommandOwner() =>
+    internal Window CommandOwner() =>
         _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, _commandTarget))
         ?? _tearOffs.FirstOrDefault(w => w.IsActive)
         ?? (Window)this;
 
-    private void RefocusOwner(Window owner)
+    internal void RefocusOwner(Window owner)
     {
         Dispatcher.BeginInvoke(() =>
         {

@@ -106,7 +106,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <chrome:HarnessIcon Grid.Column="0" x:Name="TabGlyph" Tab="{Binding}" Size="12" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
-                                <TextBlock x:Name="TabLabel" Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" HorizontalAlignment="Left" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
+                                <TextBlock x:Name="TabLabel" Grid.Column="1" Text="{Binding DisplayLabel}" VerticalAlignment="Center" HorizontalAlignment="Left" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock x:Name="DetachedMark" Text="&#xE8A7;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="In its own window" Visibility="Collapsed" />
                                     <TextBlock x:Name="MutedMark" Text="&#xE74F;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="Muted: no notifications" Visibility="Collapsed" />
@@ -241,7 +241,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <chrome:HarnessIcon Grid.Column="0" x:Name="TabGlyph" Tab="{Binding}" Size="12" Margin="0,0,5,0" VerticalAlignment="Center" Fill="{StaticResource Text.Secondary}" Visibility="Collapsed" />
-                                <TextBlock x:Name="TabLabel" Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" HorizontalAlignment="Left" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
+                                <TextBlock x:Name="TabLabel" Grid.Column="1" Text="{Binding DisplayLabel}" VerticalAlignment="Center" HorizontalAlignment="Left" TextTrimming="CharacterEllipsis" FontFamily="{StaticResource Font.Ui}" FontSize="{StaticResource Font.Size.Body}" Foreground="{StaticResource Text.Secondary}" />
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock x:Name="DetachedMark" Text="&#xE8A7;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="In its own window" Visibility="Collapsed" />
                                     <TextBlock x:Name="MutedMark" Text="&#xE74F;" Margin="6,0,0,0" VerticalAlignment="Center" FontFamily="{StaticResource Font.Icons}" FontSize="9" Foreground="{StaticResource Text.Disabled}" ToolTip="Muted: no notifications" Visibility="Collapsed" />

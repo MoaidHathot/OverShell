@@ -48,7 +48,13 @@ Input-desktop pixel evidence is reported separately if needed.
   Review moved last-tab ownership out of the optional herd extension and made close-driven
   neighbor selection preserve the attention origin. Malformed keybinding fields now
   produce diagnostics rather than exceptions or accidental unbinding.
-- Stage 2: pending.
+- Stage 2: 533 C# tests and 20 private-desktop checks passed (zero skips), covering exact/duplicate
+  addresses, picker discovery, local/global registrations, parameterized configured
+  bindings, reload, HTTP mutation, asynchronous ID retention and close/reopen cleanup.
+  The runtime key layer is applied last; registration rejects existing chord/prefix
+  conflicts. Later configured conflicts are reported by key-map validation. Display
+  preferences use `tabs.aliasDisplay` (badge/primary/hidden). Review fixed the preexisting
+  control screen/wait behavior that re-resolved mutable labels after every await.
 - Stage 3: pending.
 - Stage 4: pending.
 - Final audit: pending.

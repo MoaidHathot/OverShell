@@ -231,7 +231,7 @@ public sealed class IntegrationEndpoint : IDisposable
         var controlRoute = onTabs && (
             (request.HttpMethod == "POST" && segments.Length == 2) ||
             (request.HttpMethod is "GET" or "DELETE" && segments.Length == 3) ||
-            (segments.Length == 4 && leaf is "screen" or "wait" or "input" or "reply"));
+            (segments.Length == 4 && leaf is "screen" or "wait" or "input" or "reply" or "alias"));
         if (controlRoute)
         {
             if (Control is not { } control)
@@ -361,10 +361,16 @@ public sealed class IntegrationEndpoint : IDisposable
             return await WriteAsync(response, 405, new JsonObject { ["error"] = "method not allowed" }).ConfigureAwait(false);
         }
 
-        if (request.HttpMethod == "POST" && leaf is "input" or "reply")
+        if (request.HttpMethod == "POST" && leaf is "input" or "reply" or "alias")
         {
             var body = await ReadBodyAsync(request).ConfigureAwait(false);
             var node = (body is null ? null : Jsonc.Parse(body, out _)) as JsonObject;
+            if (leaf == "alias")
+            {
+                if (node is null || !node.ContainsKey("alias") || node["alias"] is not null && !(node["alias"] is JsonValue value && value.TryGetValue<string>(out _)))
+                    return await WriteResultAsync(response, ControlResult.BadRequest("alias must be text or null")).ConfigureAwait(false);
+                return await WriteResultAsync(response, await control.AliasAsync(tabKey, node["alias"]?.GetValue<string>()).ConfigureAwait(false)).ConfigureAwait(false);
+            }
             if (leaf == "input")
             {
                 var text = ShellControl.Str(node, "text");

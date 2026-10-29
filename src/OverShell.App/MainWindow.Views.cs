@@ -227,12 +227,14 @@ public partial class MainWindow
             menu.Items.Add(item);
         }
 
-        // Commands act on the active tab, so the menu first makes this one active.
-        Add("Rename…", HintFor("tab.rename"), () => { ActiveTab = tab; _commands.TryExecute("tab.rename"); });
+        Add("Set alias…", HintFor("tab.alias"), () => ExecuteForTab("tab.alias", tab));
+        Add("Assign shortcut…", HintFor("tab.shortcut.assign"), () => ExecuteForTab("tab.shortcut.assign", tab));
+        Add("Remove shortcuts", null, () => ExecuteForTab("tab.shortcut.remove", tab), RuntimeShortcuts.Any(i => i.TabId == tab.Id));
+        Add("Rename…", HintFor("tab.rename"), () => ExecuteForTab("tab.rename", tab));
         Add("Duplicate tab", HintFor("tab.duplicate"), () => DuplicateTab(tab));
         Add(tab.IsAgent ? "Treat as a shell" : "Treat as an agent", null, () => { if (tab.IsAgent) tab.MarkAsShell(); else tab.MarkAsAgent(); });
-        Add("Explain state", HintFor("tab.explain"), () => { ActiveTab = tab; _commands.TryExecute("tab.explain"); });
-        Add("Move to group…", HintFor("tab.moveToGroup"), () => { ActiveTab = tab; _commands.TryExecute("tab.moveToGroup"); });
+        Add("Explain state", HintFor("tab.explain"), () => ExecuteForTab("tab.explain", tab));
+        Add("Move to group…", HintFor("tab.moveToGroup"), () => ExecuteForTab("tab.moveToGroup", tab));
         if (tab.Detached)
         {
             Add("Attach to the main window", HintFor("tab.attach"), () => Attach(tab));
@@ -536,6 +538,7 @@ public partial class MainWindow
             foreach (var tab in Tabs)
             {
                 tab.TabSettingsChanged();
+                tab.SetAlias(tab.Alias);
             }
 
             WindowChromeInterop.ConfiguredBackdrop = _settings.Window.Backdrop;

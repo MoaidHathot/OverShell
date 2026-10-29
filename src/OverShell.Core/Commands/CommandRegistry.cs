@@ -40,6 +40,9 @@ public sealed class CommandRegistry
 
     public Func<CommandContext>? CaptureContext { get; set; }
 
+    /// <summary>The host applies a captured target while both eligibility and execution run.</summary>
+    public Func<CommandInvocation, Func<bool>, bool>? Dispatch { get; set; }
+
     public void Register(CommandDescriptor command)
     {
         if (_commands.ContainsKey(command.Id))
@@ -68,9 +71,9 @@ public sealed class CommandRegistry
     public bool TryExecute(string id, JsonObject? arguments = null, CommandContext? context = null)
     {
         var command = Find(id);
-        if (command is null || !command.IsEnabled) return false;
-        return command.Invoke is { } invoke
-            ? invoke(new CommandInvocation(id, arguments?.DeepClone().AsObject() ?? new JsonObject(), context ?? CaptureContext?.Invoke() ?? new CommandContext()))
-            : command.Execute();
+        if (command is null) return false;
+        var invocation = new CommandInvocation(id, arguments?.DeepClone().AsObject() ?? new JsonObject(), context ?? CaptureContext?.Invoke() ?? new CommandContext());
+        bool Run() => command.IsEnabled && (command.Invoke is { } invoke ? invoke(invocation) : command.Execute());
+        return Dispatch is { } dispatch ? dispatch(invocation, Run) : Run();
     }
 }

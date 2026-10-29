@@ -55,6 +55,8 @@ public sealed class HerdModeExtension : IExtension
             new Keybinding($"{leader} n", "tab.new"),
             new Keybinding($"{leader} x", "tab.close"),
             new Keybinding($"{leader} r", "tab.rename"),
+            new Keybinding($"{leader} shift+r", "tab.alias"),
+            new Keybinding($"{leader} shift+u", "tab.shortcut.assign"),
             new Keybinding($"{leader} g", "tab.moveToGroup"),
             new Keybinding($"{leader} e", "tab.explain"),
             new Keybinding($"{leader} p", "prompt.toggle"),

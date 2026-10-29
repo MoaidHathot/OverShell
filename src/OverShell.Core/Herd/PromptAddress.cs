@@ -1,7 +1,7 @@
 namespace OverShell.Core.Herd;
 
 /// <summary>What the parser needs to know about a tab to address it.</summary>
-public sealed record AddressableTab(string Id, int Index, string Label, string? Group, string State, bool IsAgent, bool IsRunning);
+public sealed record AddressableTab(string Id, int Index, string Label, string? Group, string State, bool IsAgent, bool IsRunning, string? Alias = null);
 
 /// <summary>Where a prompt goes: the tabs, and the words that chose them, for the bar to echo.</summary>
 /// <param name="Body">The prompt with the address words removed.</param>
@@ -69,6 +69,8 @@ public static class PromptAddress
     private static IReadOnlyList<AddressableTab> Resolve(string word, IReadOnlyList<AddressableTab> tabs, string? activeId)
     {
         var name = word[1..];
+        if (word[0] == '@' && name.StartsWith("alias:", StringComparison.OrdinalIgnoreCase))
+            return tabs.Where(t => string.Equals(t.Alias, name[6..], StringComparison.OrdinalIgnoreCase)).ToList();
         if (word[0] == '#')
         {
             return tabs.Where(t => t.Group is not null && t.Group.StartsWith(name, StringComparison.OrdinalIgnoreCase)).ToList();
@@ -90,6 +92,9 @@ public static class PromptAddress
             case "blocked" or "working" or "done" or "idle" or "error":
                 return tabs.Where(t => t.IsRunning && string.Equals(t.State, name, StringComparison.OrdinalIgnoreCase)).ToList();
         }
+
+        var alias = tabs.Where(t => string.Equals(t.Alias, name, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (alias.Count > 0) return alias;
 
         // A label: exact first, else a unique prefix, else every prefix match (the user sees the echo).
         var exact = tabs.Where(t => string.Equals(t.Label, name, StringComparison.OrdinalIgnoreCase)).ToList();

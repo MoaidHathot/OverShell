@@ -92,6 +92,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeFind();
         InitializeTearOff();
         InitializeNavigation();
+        InitializeQuickAccess();
         InitializeWorkspaces();
         InitializeSession();
         InitializeExtensions();
@@ -280,6 +281,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _endpoint?.Commands.Forget(tab.Id);
         _shell?.RaiseTabClosed(tab);
         _navigationHistory.Forget(tab.Id);
+        ForgetQuickAccess(tab);
 
         // Dispose first: it suppresses further input, so the focus and key messages
         // generated while the HwndHost is unloaded can't reach a closed pseudoconsole.

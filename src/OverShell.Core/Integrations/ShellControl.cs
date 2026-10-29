@@ -57,10 +57,15 @@ public sealed class ShellControl
             return null;
         }
 
+        if (key.StartsWith("alias:", StringComparison.OrdinalIgnoreCase))
+            return shell.Addresses.Resolve(new Tabs.TabSelector(Alias: key[6..])).TabId is { } aliasId ? shell.Find(aliasId) : null;
+
         if (shell.Find(key) is { } byId)
         {
             return byId;
         }
+
+        if (shell.Addresses.Resolve(new Tabs.TabSelector(Alias: key)).TabId is { } address) return shell.Find(address);
 
         var byLabel = shell.Tabs.Where(t => string.Equals(t.Label, key, StringComparison.OrdinalIgnoreCase)).ToList();
         return byLabel.Count == 1 ? byLabel[0] : null;
@@ -71,6 +76,7 @@ public sealed class ShellControl
     {
         ["id"] = t.Id,
         ["label"] = t.Label,
+        ["alias"] = t.Alias,
         ["title"] = t.Title,
         ["harness"] = t.Harness,
         ["isAgent"] = t.IsAgent,
@@ -114,9 +120,9 @@ public sealed class ShellControl
         {
             var tab = Resolve(_shell, key);
             tab?.RequestScreen();
-            return tab is not null;
+            return tab?.Id;
         }).ConfigureAwait(false);
-        if (!requested)
+        if (requested is null)
         {
             return null;
         }
@@ -124,7 +130,7 @@ public sealed class ShellControl
         await Task.Delay(ScreenSettle).ConfigureAwait(false);
         return await OnUiAsync(() =>
         {
-            if (Resolve(_shell, key) is not { } tab)
+            if (_shell.Find(requested) is not { } tab)
             {
                 return null;
             }
@@ -268,6 +274,7 @@ public sealed class ShellControl
     /// </summary>
     public async Task<JsonObject> WaitAsync(string key, IReadOnlyCollection<AgentState>? states, TimeSpan timeout, CancellationToken cancellation)
     {
+        var resolvedId = await OnUiAsync(() => Resolve(_shell, key)?.Id).ConfigureAwait(false);
         var wanted = states is { Count: > 0 }
             ? new HashSet<AgentState>(states)
             : [AgentState.Idle, AgentState.Done, AgentState.Blocked, AgentState.Error, AgentState.Exited];
@@ -282,7 +289,7 @@ public sealed class ShellControl
         {
             var (found, id, state) = await OnUiAsync(() =>
             {
-                var tab = Resolve(_shell, key);
+                var tab = resolvedId is null ? null : _shell.Find(resolvedId);
                 return tab is null ? (false, (string?)null, AgentState.Unknown) : (true, tab.Id, tab.State);
             }).ConfigureAwait(false);
 
@@ -328,6 +335,13 @@ public sealed class ShellControl
         _shell.Trace($"[{tab.Id}] control: closed");
         _shell.Close(tab);
         return ControlResult.Ok;
+    });
+
+    public Task<ControlResult> AliasAsync(string key, string? alias) => OnUiAsync(() =>
+    {
+        if (Resolve(_shell, key) is not { } tab) return ControlResult.NotFound(key);
+        var result = _shell.Addresses.Assign(tab.Id, alias);
+        return result.Success ? ControlResult.Ok : ControlResult.Refused(result.Error!);
     });
 
     /// <summary>The states a comma-separated list names; unknown names are ignored, so "idle,done,blocked" and "Idle, Done" both work.</summary>

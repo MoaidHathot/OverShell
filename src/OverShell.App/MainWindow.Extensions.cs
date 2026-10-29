@@ -170,7 +170,8 @@ public partial class MainWindow
     /// </summary>
     private void LoadKeybindings()
     {
-        _keybindings = KeybindingMap.Load(File.Exists(AppPaths.KeybindingsFile) ? AppPaths.KeybindingsFile : null, _shell?.ExtensionDefaults);
+        _keybindings = KeybindingMap.Load(File.Exists(AppPaths.KeybindingsFile) ? AppPaths.KeybindingsFile : null, _shell?.ExtensionDefaults,
+            _runtimeShortcuts.Items.Where(i => !i.Global).Select(i => i.Binding));
         _tabStrip?.SetActionHints(HintFor("tab.new"), HintFor("tab.newWithProfile"));
         foreach (var problem in _keybindings.Problems)
         {

@@ -36,6 +36,7 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
     public ITab? TargetTab => _window.TargetTab;
 
     public Core.Tabs.INavigationService Navigation => _window.Navigation;
+    public Core.Tabs.ITabAddressing Addresses => _window.Addresses;
 
     public ITab? Find(string tabId) => _window.Tabs.FirstOrDefault(t => string.Equals(t.Id, tabId, StringComparison.OrdinalIgnoreCase));
 
@@ -154,6 +155,10 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public string? HintFor(string commandId) => _window.HintFor(commandId);
 
+    public IReadOnlyList<RuntimeBinding> Runtime => _window.RuntimeShortcuts;
+    public RuntimeBindingResult Assign(string tabId, Keybinding binding, bool global = false) => _window.AssignRuntimeShortcut(tabId, binding, global);
+    public bool Remove(Guid registrationId) => _window.RemoveRuntimeShortcut(registrationId);
+
     public void AddDefaults(IEnumerable<Keybinding> bindings) => _extensionDefaults.AddRange(bindings);
 
     public KeybindingMap Map => _window.Keybindings;
@@ -216,8 +221,9 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public Task<string?> PromptAsync(string caption, string initial = "")
     {
+        var owner = _window.CommandOwner();
         var completion = new TaskCompletionSource<string?>();
-        var palette = PaletteWindow.Prompt(_window, caption, initial, text =>
+        var palette = PaletteWindow.Prompt(owner, caption, initial, text =>
         {
             completion.TrySetResult(text);
         });
@@ -228,13 +234,14 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
                 completion.TrySetResult(null);
             }
 
-            _window.ActiveTab?.Surface.Focus();
+            _window.RefocusOwner(owner);
         };
         return completion.Task;
     }
 
     public Task<PickItem?> PickAsync(string glyph, string emptyText, IReadOnlyList<PickItem> items)
     {
+        var owner = _window.CommandOwner();
         var completion = new TaskCompletionSource<PickItem?>();
         var rows = items.Select(item => new PaletteItem
         {
@@ -247,24 +254,25 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
             Invoke = () => completion.TrySetResult(item),
         }).ToList();
 
-        var palette = PaletteWindow.Picker(_window, glyph, emptyText, query => Filter(rows, query));
+        var palette = PaletteWindow.Picker(owner, glyph, emptyText, query => Filter(rows, query));
         palette.Closed += (_, _) =>
         {
             if (!palette.Accepted) completion.TrySetResult(null);
-            _window.ActiveTab?.Surface.Focus();
+            _window.RefocusOwner(owner);
         };
         return completion.Task;
     }
 
     public Task<int> AskAsync(string question, IReadOnlyList<string> answers)
     {
+        var owner = _window.CommandOwner();
         var completion = new TaskCompletionSource<int>();
         var rows = answers.Select((answer, index) => new PaletteItem { Title = answer, Invoke = () => completion.TrySetResult(index) }).ToList();
-        var palette = PaletteWindow.Ask(_window, "\uE9CE", question, rows);
+        var palette = PaletteWindow.Ask(owner, "\uE9CE", question, rows);
         palette.Closed += (_, _) =>
         {
             if (!palette.Accepted) completion.TrySetResult(-1);
-            _window.ActiveTab?.Surface.Focus();
+            _window.RefocusOwner(owner);
         };
         return completion.Task;
     }

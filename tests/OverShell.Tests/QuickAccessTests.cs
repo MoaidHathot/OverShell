@@ -9,6 +9,60 @@ namespace OverShell.Tests;
 public class QuickAccessTests
 {
     [Fact]
+    public void Aliases_are_exact_unique_runtime_addresses_independent_of_labels()
+    {
+        var tabs = new List<TabIdentity> { new("a", "same"), new("b", "same") };
+        var addresses = new TabAddressing(() => tabs);
+        Assert.Null(addresses.Resolve(new(Label: "same")).TabId);
+        Assert.True(addresses.Assign("a", "Build").Success);
+        Assert.Equal("a", addresses.Resolve(new(Alias: "BUILD")).TabId);
+        Assert.Null(addresses.Resolve(new(Alias: "bui")).TabId);
+        Assert.False(addresses.Assign("b", "build").Success);
+        tabs[0] = new("a", "changed agent title");
+        Assert.Equal("a", addresses.Resolve(new(Alias: "build")).TabId);
+        Assert.True(addresses.Assign("a", "tests").Success);
+        Assert.True(addresses.Assign("b", "build").Success);
+        addresses.Forget("a");
+        Assert.Null(addresses.AliasFor("a"));
+        Assert.Null(new TabAddressing(() => tabs).AliasFor("b"));
+        tabs.RemoveAt(1);
+        Assert.False(addresses.Assign("b", "gone").Success);
+    }
+
+    [Theory]
+    [InlineData("blocked")]
+    [InlineData("ALL")]
+    [InlineData("2")]
+    [InlineData("two words")]
+    [InlineData("@name")]
+    public void Invalid_and_reserved_aliases_are_rejected(string alias) => Assert.NotNull(TabAddressing.Validate(alias));
+
+    [Fact]
+    public void Runtime_bindings_reject_both_directions_of_prefix_conflicts_and_expire_independently()
+    {
+        var bindings = new RuntimeBindings();
+        var map = new KeybindingMap();
+        map.Apply([new("ctrl+k b", "existing")], "test");
+        Assert.Null(bindings.Add("a", new("ctrl+k", "activate"), map).Registration);
+        Assert.Null(bindings.Add("a", new("ctrl+k b c", "activate"), map).Registration);
+        var first = bindings.Add("a", new("ctrl+k x", "activate"), map).Registration;
+        Assert.NotNull(first);
+        Assert.Null(bindings.Add("b", new("ctrl+k x", "activate"), map).Registration);
+        Assert.True(bindings.Remove(first.Id));
+        Assert.NotNull(bindings.Add("b", new("ctrl+k x", "activate"), map).Registration);
+        Assert.Null(bindings.Add("a", new("ctrl+k z", "activate"), map, global: true).Registration);
+    }
+
+    [Fact]
+    public void Explicit_alias_prompt_address_never_falls_back_to_a_label_prefix()
+    {
+        Core.Herd.AddressableTab[] tabs = [new("a", 0, "build", null, "Idle", false, true), new("b", 1, "other", null, "Idle", false, true, "build")];
+        Assert.Equal("b", Core.Herd.PromptAddress.Parse("@build hello", tabs, "a").Targets.Single().Id);
+        Assert.Empty(Core.Herd.PromptAddress.Parse("@alias:missing hello", tabs, "a").Targets);
+        Assert.Equal("b", Core.Herd.PromptAddress.Parse("@alias:build hello", tabs, "a").Targets.Single().Id);
+    }
+
+    [Fact]
     public void Parameterized_sequences_reach_commands_with_an_isolated_argument_and_context_snapshot()
     {
         var problems = new List<string>();

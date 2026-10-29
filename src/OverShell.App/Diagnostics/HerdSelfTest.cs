@@ -55,6 +55,9 @@ internal static partial class HerdSelfTest
                     case "quicknav":
                         await RunQuickNavigationAsync(window, firstTab);
                         break;
+                    case "aliases":
+                        await RunAliasesAsync(window, firstTab);
+                        break;
                     case "previewbench":
                         await RunPreviewBenchmarkAsync(window, firstTab);
                         break;

@@ -199,6 +199,8 @@
   // Tab items: twoLine shows project and state under the session/task label (strip and list);
   // showHarnessGlyph shows the harness icon (OpenCode, Copilot, ...) on agent tabs.
   "tabs": {
+    // Runtime aliases: badge beside the name | primary name | hidden (still searchable).
+    "aliasDisplay": "badge",
     // Primary label: session/task title (default), project first, or the harness name.
     // Manual tab names override this. Duplicate automatic names get visible qualifiers.
     "labelMode": "session",

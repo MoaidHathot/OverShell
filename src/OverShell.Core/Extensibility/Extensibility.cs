@@ -35,6 +35,8 @@ public interface IShell
 
     INavigationService Navigation { get; }
 
+    ITabAddressing Addresses { get; }
+
     ITab? Find(string tabId);
 
     event Action<ITab>? TabOpened;
@@ -129,6 +131,8 @@ public interface ITab : INotifyPropertyChanged
     /// <summary>The user's name or the configured automatic label, with duplicate qualifiers.</summary>
     string Label { get; }
 
+    string? Alias => null;
+
     string Title { get; }
 
     /// <summary>Rule-set id of the harness (<c>opencode</c>), or null for a plain shell.</summary>
@@ -214,6 +218,10 @@ public interface ITab : INotifyPropertyChanged
 /// <summary>Key bindings as an extension sees them.</summary>
 public interface IKeyBindings
 {
+    IReadOnlyList<RuntimeBinding> Runtime { get; }
+    RuntimeBindingResult Assign(string tabId, Keybinding binding, bool global = false);
+    bool Remove(Guid registrationId);
+
     /// <summary>The keys shown next to a command (menus, palette, hint bars); null when none are bound.</summary>
     string? HintFor(string commandId);
 

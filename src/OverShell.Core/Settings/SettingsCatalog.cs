@@ -197,6 +197,8 @@ public static class SettingsCatalog
                 new("\"zen\"", "zen", "the terminal alone"),
             ]),
         new("tabs.twoLine", "Two-line tabs", "A second line under each tab's label with its state and project.", SettingKind.Toggle, [On, Off]),
+        new("tabs.aliasDisplay", "Tab alias display", "Show the runtime alias beside the label, as the primary name, or only in discovery and tooltips.", SettingKind.Choice,
+            [new("\"badge\"", "badge"), new("\"primary\"", "primary"), new("\"hidden\"", "hidden")]),
         new("tabs.labelMode", "Tab labels", "Automatic tab names. Manual names take priority; duplicate names are qualified. Applies live.", SettingKind.Choice,
         [
             new("\"session\"", "session", "Session/task title first (default)"),

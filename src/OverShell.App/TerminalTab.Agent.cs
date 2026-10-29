@@ -348,6 +348,8 @@ public sealed partial class TerminalTab
         get
         {
             var lines = new List<string> { Label };
+            if (Alias is { } alias) lines.Add($"Alias: @{alias} (this open tab)");
+            if (ShortcutHint.Length > 0) lines.Add($"Shortcuts: {ShortcutHint}");
             if (!string.Equals(Title, Label, StringComparison.Ordinal)) lines.Add(Title);
             if (SessionTitle is { } sessionTitle && !string.Equals(sessionTitle, Label, StringComparison.Ordinal) && !string.Equals(sessionTitle, Title, StringComparison.Ordinal)) lines.Add(sessionTitle);
             if (!string.IsNullOrEmpty(_workingDirectory))

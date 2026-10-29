@@ -80,7 +80,7 @@ public partial class MainWindow
 
     /// <summary>The open tabs as the address parser sees them (§12.16).</summary>
     private IReadOnlyList<AddressableTab> AddressableTabs() =>
-        Tabs.Select((t, i) => new AddressableTab(t.Id, i, t.Label, t.Group, t.State.ToString(), t.IsAgent, t.IsRunning)).ToList();
+        Tabs.Select((t, i) => new AddressableTab(t.Id, i, t.Label, t.Group, t.State.ToString(), t.IsAgent, t.IsRunning, t.Alias)).ToList();
 
     /// <summary>
     /// Types <paramref name="text"/> into every target and presses Enter. Address words at
@@ -219,7 +219,7 @@ public partial class MainWindow
 
     private void MoveActiveTabToGroup()
     {
-        if (ActiveTab is not { } tab)
+        if (TargetTab is not { } tab)
         {
             return;
         }

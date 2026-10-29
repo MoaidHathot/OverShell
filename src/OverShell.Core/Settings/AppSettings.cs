@@ -40,6 +40,7 @@ public sealed class NotificationSettings
 
 public sealed class TabSettings
 {
+    public string AliasDisplay { get; init; } = "badge";
     /// <summary>Automatic primary labels: session (default), project, or harness.</summary>
     public string LabelMode { get; init; } = "session";
 
@@ -339,6 +340,8 @@ public sealed class AppSettings
         settings.HasLoadError = hasLoadError;
         if (!OverShell.Core.Tabs.TabLabels.TryMode(settings.Tabs.LabelMode, out _))
             settings.Problems.Add($"tabs.labelMode: unknown value '{settings.Tabs.LabelMode}'; using session");
+        if (settings.Tabs.AliasDisplay?.ToLowerInvariant() is not ("badge" or "primary" or "hidden"))
+            settings.Problems.Add("tabs.aliasDisplay: expected badge, primary or hidden; using badge");
         if (settings.Dashboard.PreviewMode?.ToLowerInvariant() is not ("auto" or "styled" or "text"))
             settings.Problems.Add($"dashboard.previewMode: unknown value '{settings.Dashboard.PreviewMode}'; using auto");
         return settings;
