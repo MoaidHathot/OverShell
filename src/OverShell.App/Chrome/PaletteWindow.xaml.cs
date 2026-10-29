@@ -35,6 +35,8 @@ public sealed class PaletteItem
 
     public required Action Invoke { get; init; }
 
+    public Action? AlternateInvoke { get; init; }
+
     public Visibility DotVisibility => Dot is null ? Visibility.Collapsed : Visibility.Visible;
 
     public Visibility GlyphVisibility => Dot is null && !string.IsNullOrEmpty(Glyph) ? Visibility.Visible : Visibility.Collapsed;
@@ -70,6 +72,14 @@ public partial class PaletteWindow : Window
 
     /// <summary>Optional live context, recomputed when the source or query refreshes.</summary>
     public Func<string?>? ContextSource { get; set; }
+
+    internal bool CanInvokeAlternate => List.SelectedItem is PaletteItem { AlternateInvoke: not null };
+    internal bool InvokeAlternate()
+    {
+        if (List.SelectedItem is not PaletteItem { AlternateInvoke: { } action }) return false;
+        CloseOnce(action);
+        return true;
+    }
 
     private PaletteWindow(Window owner, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source, Action<string>? accept)
     {

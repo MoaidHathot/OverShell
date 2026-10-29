@@ -153,6 +153,7 @@ public partial class MainWindow
 
     private void ForgetQuickAccess(TerminalTab tab)
     {
+        _floatingPrompts.Remove(tab.Id);
         _addresses.Forget(tab.Id);
         foreach (var item in RuntimeShortcuts.Where(i => i.TabId == tab.Id).ToArray()) RemoveRuntimeShortcut(item.Id);
     }

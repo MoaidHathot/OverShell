@@ -65,6 +65,8 @@
                                 <Button Content="Allow" Margin="0,0,8,0" Style="{StaticResource ChromeAccentButton}" Click="Allow_Click" />
                                 <Button Content="Deny" Style="{StaticResource ChromeTextButton}" Click="Deny_Click" />
                             </StackPanel>
+                            <Button Content="Open floating" Margin="0,4,0,0" HorizontalAlignment="Left"
+                                    Visibility="{Binding FloatVisibility}" Style="{StaticResource ChromeTextButton}" Click="Float_Click" />
                         </StackPanel>
 
                         <Button Grid.Column="2"

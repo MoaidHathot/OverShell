@@ -20,7 +20,7 @@ public partial class MainWindow
     /// The tab a command acts on: the tear-off's tab while a chord arrives from a tear-off
     /// window, else the main window's active tab.
     /// </summary>
-    internal TerminalTab? TargetTab => _commandTarget ?? _tearOffs.FirstOrDefault(w => w.IsActive)?.Tab ?? ActiveTab;
+    internal TerminalTab? TargetTab => _commandTarget ?? (ActiveTerminalWindow() as TearOffWindow)?.Tab ?? ActiveTab;
 
     private void InitializeTearOff()
     {
@@ -32,6 +32,7 @@ public partial class MainWindow
     /// <param name="placement">Where the window goes (a restored session); null for the default offset from the main window.</param>
     internal TearOffWindow? Detach(TerminalTab tab, Core.Settings.SavedWindow? placement = null)
     {
+        ReleaseFloat(tab, returnFocus: false);
         if (tab.Detached || Tabs.Count < 2)
         {
             return null;
@@ -55,6 +56,7 @@ public partial class MainWindow
         tab.View.Visibility = Visibility.Visible;
 
         var window = new TearOffWindow(this, tab);
+        ConfigureTerminalWindow(window);
         if (placement is not null)
         {
             ApplyPlacement(window, placement, $"tear-off [{tab.Id}]");
@@ -80,6 +82,7 @@ public partial class MainWindow
     /// <summary>Brings a tab's surface back into the main host and makes it the active tab.</summary>
     internal void Attach(TerminalTab tab)
     {
+        ReleaseFloat(tab, returnFocus: false);
         var window = _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, tab));
         if (window is null)
         {
@@ -147,7 +150,7 @@ public partial class MainWindow
 
     /// <summary>A tear-off window is where its tab is looked at.</summary>
     private bool IsViewedInTearOff(TerminalTab tab) =>
-        tab.Detached && _tearOffs.Any(w => ReferenceEquals(w.Tab, tab) && w.IsActive);
+        tab.Detached && !tab.Floating && _tearOffs.Any(w => ReferenceEquals(w.Tab, tab) && ReferenceEquals(ActiveTerminalWindow(), w));
 
     private void CloseTearOffs()
     {

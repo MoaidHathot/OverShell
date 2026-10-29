@@ -68,14 +68,14 @@ public class McpServerTests
     }
 
     [Fact]
-    public async Task Tools_list_names_the_seven_tools_with_schemas()
+    public async Task Tools_list_names_the_control_tools_with_schemas()
     {
         var server = new McpServer(new FakeWire().Send, "t");
         var response = await server.HandleAsync(Request(3, "tools/list"), CancellationToken.None);
         var tools = (JsonArray)response!["result"]!["tools"]!;
 
         var names = tools.Select(t => t!["name"]!.GetValue<string>()).ToList();
-        Assert.Equal(["overshell_list_tabs", "overshell_read_screen", "overshell_send", "overshell_reply", "overshell_spawn", "overshell_wait", "overshell_close"], names);
+        Assert.Equal(["overshell_list_tabs", "overshell_read_screen", "overshell_send", "overshell_reply", "overshell_spawn", "overshell_wait", "overshell_close", "overshell_set_alias", "overshell_present", "overshell_shortcut", "overshell_return"], names);
         Assert.All(tools, t => Assert.Equal("object", t!["inputSchema"]!["type"]!.GetValue<string>()));
         Assert.Contains("tab", ((JsonArray)tools[1]!["inputSchema"]!["required"]!).Select(r => r!.GetValue<string>()));
     }

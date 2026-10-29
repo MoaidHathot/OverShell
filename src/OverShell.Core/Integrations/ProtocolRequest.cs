@@ -6,6 +6,8 @@ public enum ProtocolAction
     /// <summary><c>overshell://focus/&lt;tabId&gt;</c> — bring the window up on that tab (a toast was clicked).</summary>
     Focus,
 
+    Float,
+
     /// <summary><c>overshell://view/&lt;terminal|herd|dashboard|zen&gt;</c>.</summary>
     View,
 
@@ -67,6 +69,7 @@ public sealed record ProtocolRequest(ProtocolAction Action, string? Target, IRea
         return host.ToLowerInvariant() switch
         {
             "focus" when target is not null => new ProtocolRequest(ProtocolAction.Focus, target, query),
+            "float" when target is not null => new ProtocolRequest(ProtocolAction.Float, target, query),
             "view" when target is not null => new ProtocolRequest(ProtocolAction.View, target.ToLowerInvariant(), query),
             "new" => new ProtocolRequest(ProtocolAction.New, target, query),
             "workspace" when target is not null => new ProtocolRequest(ProtocolAction.Workspace, target, query),
@@ -78,6 +81,7 @@ public sealed record ProtocolRequest(ProtocolAction Action, string? Target, IRea
     }
 
     public static string FocusUrl(string tabId) => $"{Scheme}://focus/{Uri.EscapeDataString(tabId)}";
+    public static string FloatUrl(string tabId) => $"{Scheme}://float/{Uri.EscapeDataString(tabId)}";
 
     /// <summary>A toast button's answer for a tab, signed with the run's nonce so a stray URL cannot approve anything.</summary>
     public static string ReplyUrl(string tabId, bool approve, string nonce) => $"{Scheme}://reply/{Uri.EscapeDataString(tabId)}?answer={(approve ? "approve" : "deny")}&nonce={Uri.EscapeDataString(nonce)}";

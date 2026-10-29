@@ -29,12 +29,12 @@ public sealed partial class TerminalTab
 
     public string? Alias { get; private set; }
     public string ShortcutHint { get; private set; } = string.Empty;
-    public string DisplayLabel => Alias is not { } alias ? Label : TabSettings.AliasDisplay.ToLowerInvariant() switch
+    public string DisplayLabel => (Floating ? "◇ " : string.Empty) + (Alias is not { } alias ? Label : TabSettings.AliasDisplay?.ToLowerInvariant() switch
     {
         "hidden" => Label,
         "primary" => alias,
         _ => $"@{alias} · {Label}",
-    };
+    });
 
     internal void SetAlias(string? alias)
     {

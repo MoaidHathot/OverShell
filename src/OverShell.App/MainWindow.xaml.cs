@@ -93,6 +93,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeTearOff();
         InitializeNavigation();
         InitializeQuickAccess();
+        InitializeFloating();
         InitializeWorkspaces();
         InitializeSession();
         InitializeExtensions();
@@ -155,8 +156,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         get => _activeTab;
         internal set
         {
+            if (!_movingPresentation && value is not null)
+            {
+                if (value.Floating) ReleaseFloat(value, returnFocus: false);
+                if (!value.Detached)
+                    foreach (var entry in _floats.Where(e => ReferenceEquals(e.Window.Owner, this)).ToArray()) ReleaseFloat(entry.Window.Tab, returnFocus: false);
+            }
             if (ReferenceEquals(_activeTab, value))
             {
+                if (value is not null && IsActive) value.Surface.Focus();
                 return;
             }
 
@@ -262,6 +270,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     internal void CloseTab(TerminalTab tab)
     {
+        var releasedFloat = ReleaseFloat(tab, returnFocus: false);
+        var floatingReturn = releasedFloat?.HadFocus == true ? releasedFloat.Origin : null;
         if (ReferenceEquals(_terminalPreview?.Tab, tab) || ReferenceEquals(_hoverPreviewTab, tab)) CloseTerminalPreview();
         var index = Tabs.IndexOf(tab);
         if (index < 0)
@@ -278,6 +288,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // Remembered while its directory and session id are still readable.
         RememberClosed(tab);
         _findBar.Forget(tab);
+        _terminalSearch.Forget(tab.TerminalHwnd);
         _endpoint?.Commands.Forget(tab.Id);
         _shell?.RaiseTabClosed(tab);
         _navigationHistory.Forget(tab.Id);
@@ -310,6 +321,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         RefreshAttention();
+        if (floatingReturn is not null && Tabs.Count > 0) Navigation.Restore(floatingReturn);
     }
 
     private void ActivateRelative(int delta)
@@ -613,7 +625,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 LinkTrace($"hover {e.ScreenPoint} -> {Describe(result)} in {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
 
                 // The tab may have gone, or its window, while the probe was running.
-                if (!Tabs.Contains(tab) || (!tab.Detached && !ReferenceEquals(tab, ActiveTab)))
+                if (!Tabs.Contains(tab) || (!tab.Detached && !tab.Floating && !ReferenceEquals(tab, ActiveTab)))
                 {
                     break;
                 }
@@ -818,7 +830,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var cell = CellSize(tab, link);
         var underline = tab.Surface.GetUnderline(cell, link.FontFamily);
 
-        (_overlay ??= new OverlayHost(this)).ShowUnderline(rects, brush, underline);
+        var owner = Window.GetWindow(tab.View) ?? this;
+        if (_overlay is null || !ReferenceEquals(_overlay.Owner, owner))
+        {
+            _overlay?.Close();
+            var overlay = new OverlayHost(owner);
+            overlay.Closed += (_, _) => { if (ReferenceEquals(_overlay, overlay)) _overlay = null; };
+            _overlay = overlay;
+        }
+        _overlay.ShowUnderline(rects, brush, underline);
     }
 
     private static Size CellSize(TerminalTab tab, LinkHit link)
@@ -1202,6 +1222,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         // session ids are the real ones; "closed" tells the next start this was a clean end.
         SaveSession(force: true, reason: SessionCloseReason.Closed);
 
+        CloseFloats(returnFocus: false);
         CloseTearOffs();
         _shortcuts.Dispose();
         _palette?.Close();
@@ -1299,7 +1320,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         TerminalBodyTint.Opacity = opacity;
         foreach (var tab in Tabs)
         {
-            if (!tab.Detached)
+            if (!tab.Detached && !tab.Floating)
             {
                 tab.Surface.BackgroundOpacity = opacity;
             }

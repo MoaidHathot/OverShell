@@ -808,7 +808,11 @@ public partial class MainWindow
         {
             case ProtocolAction.Focus when request.Target is { } tabId:
                 FocusTabById(tabId);
-                break;
+                return;
+
+            case ProtocolAction.Float when request.Target is { } floatTab:
+                FloatTabById(floatTab);
+                return;
 
             case ProtocolAction.Reply when request.Target is { } replyTab:
                 // A native toast's Allow / Deny. The nonce is this run's; a URL without it (another

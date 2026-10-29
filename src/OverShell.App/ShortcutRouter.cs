@@ -106,11 +106,14 @@ internal sealed class ShortcutRouter : IDisposable
         }
         else
         {
-            window.SourceInitialized += (_, _) => _windows.Add(new WindowInteropHelper(window).Handle);
+            window.SourceInitialized += (_, _) => { handle = new WindowInteropHelper(window).Handle; _windows.Add(handle); };
         }
 
-        window.Closed += (_, _) => _windows.Remove(new WindowInteropHelper(window).Handle);
+        // WindowInteropHelper may already return zero in Closed; retain the registered handle.
+        window.Closed += (_, _) => _windows.Remove(handle);
     }
+
+    internal int AdditionalWindowCount => _windows.Count;
 
     /// <summary>The root window a message came from; chords are dispatched with it so a tear-off can aim at its own tab.</summary>
     public IntPtr CurrentRoot { get; private set; }

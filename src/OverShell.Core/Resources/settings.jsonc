@@ -93,7 +93,18 @@
 
   // Which waiting tab a jump goes to: "age" (waited longest first) or "strip" (the next in tab order).
   "attention": {
-    "order": "age"
+    "order": "age",
+    // tab switches normally; floating borrows the waiting terminal above your work.
+    "presentation": "tab"
+  },
+
+  "floating": {
+    "widthRatio": 0.8,
+    "heightRatio": 0.75,
+    // center | topRight | bottomRight; clamped to the owner's monitor work area.
+    "position": "center",
+    // Owned pickers count as part of the float. Escape remains terminal input.
+    "hideOnFocusLoss": false
   },
 
   // Key sequences (ctrl+shift+k j): how long the next chord may take, and whether a hint bar
@@ -150,6 +161,8 @@
   "accent": "system",
 
   "notifications": {
+    // Default notification activation: tab | floating | preview.
+    "openMode": "tab",
     // Every enabled sink runs for every event its "when" allows. Kinds: blocked, done,
     // error, exited. Harnesses: opencode, copilot, claude, codex, generic, shell.
     "sinks": {

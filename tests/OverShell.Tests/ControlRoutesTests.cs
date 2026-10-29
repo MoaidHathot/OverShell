@@ -23,7 +23,8 @@ public class ControlRoutesTests
         Assert.Equal(401, (int)unauthorised.StatusCode);
 
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", endpoint.Token);
-        foreach (var (method, path) in new[] { ("GET", "/v1/tabs/t1"), ("GET", "/v1/tabs/t1/screen"), ("GET", "/v1/tabs/t1/wait"), ("POST", "/v1/tabs"), ("POST", "/v1/tabs/t1/input"), ("POST", "/v1/tabs/t1/reply"), ("DELETE", "/v1/tabs/t1") })
+        foreach (var (method, path) in new[] { ("GET", "/v1/tabs/t1"), ("GET", "/v1/tabs/t1/screen"), ("GET", "/v1/tabs/t1/wait"), ("POST", "/v1/tabs"), ("POST", "/v1/tabs/t1/input"), ("POST", "/v1/tabs/t1/reply"), ("DELETE", "/v1/tabs/t1"),
+            ("POST", "/v1/tabs/t1/alias"), ("POST", "/v1/tabs/t1/presentation"), ("POST", "/v1/tabs/t1/shortcut"), ("POST", "/v1/navigation/return") })
         {
             using var request = new HttpRequestMessage(new HttpMethod(method), endpoint.BaseUrl + path);
             if (method == "POST")

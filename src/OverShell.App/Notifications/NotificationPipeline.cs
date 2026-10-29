@@ -35,6 +35,7 @@ internal sealed class NotificationPipeline : IDisposable
 
     /// <summary>Set by the window: answers a blocked tab from a toast button (tab id, approve). Null disables the buttons.</summary>
     public Func<string, bool, bool>? AnswerTab { get; set; }
+    public Action<string>? FloatTab { get; set; }
 
     /// <summary>A gate before the sinks (a muted tab): false drops the event (§12.17).</summary>
     public Func<NotificationEvent, bool>? Filter { get; set; }
@@ -54,7 +55,7 @@ internal sealed class NotificationPipeline : IDisposable
             switch (config.Type.ToLowerInvariant())
             {
                 case "overlay":
-                    _toasts ??= new ToastHost(window, toastAnchor, focusTab) { AnswerTab = (id, approve) => AnswerTab?.Invoke(id, approve) ?? false };
+                    _toasts ??= new ToastHost(window, toastAnchor, focusTab) { AnswerTab = (id, approve) => AnswerTab?.Invoke(id, approve) ?? false, FloatTab = id => FloatTab?.Invoke(id) };
                     _sinks.Add((name, config, e => _toasts.Show(e, AccentFor(e.Kind), config.DurationMs)));
                     break;
 
@@ -106,7 +107,7 @@ internal sealed class NotificationPipeline : IDisposable
     /// </summary>
     public void Announce(string message, int durationMs = 6000)
     {
-        _toasts ??= new ToastHost(_window, _toastAnchor, _focusTab) { AnswerTab = (id, approve) => AnswerTab?.Invoke(id, approve) ?? false };
+        _toasts ??= new ToastHost(_window, _toastAnchor, _focusTab) { AnswerTab = (id, approve) => AnswerTab?.Invoke(id, approve) ?? false, FloatTab = id => FloatTab?.Invoke(id) };
         _toasts.Announce("OverShell", message, (Brush)Application.Current.FindResource("Accent.Base"), durationMs);
     }
     /// <summary>Names of the sinks that are live, for diagnostics.</summary>
@@ -215,8 +216,9 @@ internal sealed class NotificationPipeline : IDisposable
                 ("Allow", Core.Integrations.ProtocolRequest.ReplyUrl(e.TabId, approve: true, ReplyNonce)),
                 ("Deny", Core.Integrations.ProtocolRequest.ReplyUrl(e.TabId, approve: false, ReplyNonce)),
                 ("Open", launch),
+                ("Open floating", Core.Integrations.ProtocolRequest.FloatUrl(e.TabId)),
             ]
-            : null;
+            : [("Open floating", Core.Integrations.ProtocolRequest.FloatUrl(e.TabId))];
         var result = await Task.Run(() => NativeToast.Show(values["title"], e.Message, e.Detail ?? e.WorkingDirectory, launch, "overshell-" + e.TabId, "overshell", silent: true, actions)).ConfigureAwait(false);
         LastToastResult = result ?? string.Empty;
         if (result is null)

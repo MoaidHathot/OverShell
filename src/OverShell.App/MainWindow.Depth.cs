@@ -22,32 +22,45 @@ public partial class MainWindow
     private ExplainWindow? _explain;
 
     internal PromptBar PromptBarView => Prompt;
+    private PromptBar CurrentPrompt => CommandOwner() is TearOffWindow host ? host.PromptBar : Prompt;
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<PromptBar, object> _configuredPrompts = new();
+
+    private void ConfigureTerminalWindow(TearOffWindow host)
+    {
+        var tab = host.Tab;
+        var prompt = host.PromptBar;
+        if (_configuredPrompts.TryGetValue(prompt, out _)) return;
+        _configuredPrompts.Add(prompt, new object());
+        prompt.SendRequested = (draft, target) => ForCommandTarget(tab, () => SendPrompt(draft.Text, target, draft.Files) > 0);
+        prompt.RouteDescriber = text => PromptAddress.Describe(PromptAddress.Parse(text, AddressableTabs(), tab.Id));
+        prompt.HideRequested += () => { prompt.Visibility = Visibility.Collapsed; tab.Surface.Focus(); };
+    }
 
     internal IReadOnlyList<Snippet> LoadedSnippets => _snippets;
 
     private void InitializeDepth()
     {
         Prompt.SendRequested = (draft, target) => SendPrompt(draft.Text, target, draft.Files) > 0;
-        Prompt.RouteDescriber = text => PromptAddress.Describe(PromptAddress.Parse(text, AddressableTabs(), ActiveTab?.Id));
+        Prompt.RouteDescriber = text => PromptAddress.Describe(PromptAddress.Parse(text, AddressableTabs(), TargetTab?.Id));
         Prompt.HideRequested += () => ShowPromptBar(false);
 
         _tabStrip.TabMoveRequested += MoveTab;
 
-        _commands.Register("prompt.toggle", "Prompt bar: show / hide", "Prompt", () => ShowPromptBar(Prompt.Visibility != Visibility.Visible), description: "Type once, send to the active tab or every agent");
+        _commands.Register("prompt.toggle", "Prompt bar: show / hide", "Prompt", () => ShowPromptBar(CurrentPrompt.Visibility != Visibility.Visible), description: "Type once, send to the focused tab or every agent");
         _commands.Register("prompt.broadcast", "Prompt bar: broadcast to all agents", "Prompt", () =>
         {
-            Prompt.SelectedTarget = PromptTarget.Agents;
+            CurrentPrompt.SelectedTarget = PromptTarget.Agents;
             ShowPromptBar(true);
         });
         _commands.Register("prompt.blocked", "Prompt bar: answer the agents needing you", "Prompt", () =>
         {
-            Prompt.SelectedTarget = PromptTarget.Blocked;
+            CurrentPrompt.SelectedTarget = PromptTarget.Blocked;
             ShowPromptBar(true);
         }, () => Tabs.Any(t => t.State is AgentState.Blocked));
 
-        _commands.Register("tab.moveToGroup", "Move tab to group…", "Tabs", MoveActiveTabToGroup, () => ActiveTab is not null, "Empty name removes the tab from its group");
-        _commands.Register("tab.moveLeft", "Move tab left / up", "Tabs", () => { if (ActiveTab is { } t) MoveTab(t, Tabs.IndexOf(t) - 1); }, () => ActiveTab is { } t && Tabs.IndexOf(t) > 0);
-        _commands.Register("tab.moveRight", "Move tab right / down", "Tabs", () => { if (ActiveTab is { } t) MoveTab(t, Tabs.IndexOf(t) + 1); }, () => ActiveTab is { } t && Tabs.IndexOf(t) < Tabs.Count - 1);
+        _commands.Register("tab.moveToGroup", "Move tab to group…", "Tabs", MoveActiveTabToGroup, () => TargetTab is not null, "Empty name removes the tab from its group");
+        _commands.Register("tab.moveLeft", "Move tab left / up", "Tabs", () => { if (TargetTab is { } t) MoveTab(t, Tabs.IndexOf(t) - 1); }, () => TargetTab is { } t && Tabs.IndexOf(t) > 0);
+        _commands.Register("tab.moveRight", "Move tab right / down", "Tabs", () => { if (TargetTab is { } t) MoveTab(t, Tabs.IndexOf(t) + 1); }, () => TargetTab is { } t && Tabs.IndexOf(t) < Tabs.Count - 1);
 
         LoadSnippets();
     }
@@ -56,15 +69,16 @@ public partial class MainWindow
 
     private void ShowPromptBar(bool show)
     {
-        Prompt.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        var prompt = CurrentPrompt;
+        prompt.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         if (show)
         {
-            Prompt.SetSnippets(_snippets);
-            Dispatcher.BeginInvoke(Prompt.FocusInput, DispatcherPriority.Input);
+            prompt.SetSnippets(_snippets);
+            Dispatcher.BeginInvoke(prompt.FocusInput, DispatcherPriority.Input);
         }
         else
         {
-            ActiveTab?.Surface.Focus();
+            TargetTab?.Surface.Focus();
         }
     }
 
@@ -73,9 +87,9 @@ public partial class MainWindow
     {
         PromptTarget.Agents => Tabs.Where(t => t.IsAgent && t.IsRunning).ToList(),
         PromptTarget.Blocked => Tabs.Where(t => t.State is AgentState.Blocked && t.IsRunning).ToList(),
-        PromptTarget.Group => ActiveTab is { Group: { } group } ? Tabs.Where(t => t.IsRunning && string.Equals(t.Group, group, StringComparison.OrdinalIgnoreCase)).ToList() : ActiveTab is { } lone ? [lone] : [],
+        PromptTarget.Group => TargetTab is { Group: { } group } ? Tabs.Where(t => t.IsRunning && string.Equals(t.Group, group, StringComparison.OrdinalIgnoreCase)).ToList() : TargetTab is { } lone ? [lone] : [],
         PromptTarget.All => Tabs.Where(t => t.IsRunning).ToList(),
-        _ => ActiveTab is { } active ? [active] : [],
+        _ => TargetTab is { } active ? [active] : [],
     };
 
     /// <summary>The open tabs as the address parser sees them (§12.16).</summary>
@@ -99,7 +113,7 @@ public partial class MainWindow
             return 0;
         }
 
-        var route = PromptAddress.Parse(text, AddressableTabs(), ActiveTab?.Id);
+        var route = PromptAddress.Parse(text, AddressableTabs(), TargetTab?.Id);
         IReadOnlyList<TerminalTab> targets;
         if (route.Addressed)
         {
@@ -181,6 +195,7 @@ public partial class MainWindow
         }
 
         Prompt.SetSnippets(_snippets);
+        foreach (var host in _tearOffs.Concat(FloatingWindows)) host.PromptBar.SetSnippets(_snippets);
     }
 
     private static string Truncate(string s)
@@ -225,11 +240,12 @@ public partial class MainWindow
         }
 
         _palette?.Close();
-        _palette = PaletteWindow.Prompt(this, "Group name — empty removes the tab from its group", tab.Group ?? string.Empty, name => SetGroup(tab, name));
+        var owner = CommandOwner();
+        _palette = PaletteWindow.Prompt(owner, "Group name — empty removes the tab from its group", tab.Group ?? string.Empty, name => SetGroup(tab, name));
         _palette.Closed += (_, _) =>
         {
             _palette = null;
-            ActiveTab?.Surface.Focus();
+            RefocusOwner(owner);
         };
     }
 
@@ -270,11 +286,12 @@ public partial class MainWindow
             return;
         }
 
-        _explain = new ExplainWindow(this, tab);
+        var owner = CommandOwner();
+        _explain = new ExplainWindow(owner, tab);
         _explain.Closed += (_, _) =>
         {
             _explain = null;
-            ActiveTab?.Surface.Focus();
+            RefocusOwner(owner);
         };
         _explain.Show();
     }

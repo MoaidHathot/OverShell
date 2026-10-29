@@ -228,6 +228,9 @@ public partial class MainWindow
         }
 
         Add("Set alias…", HintFor("tab.alias"), () => ExecuteForTab("tab.alias", tab));
+        Add(tab.Floating ? "Hide floating terminal" : "Show floating", HintFor(tab.Floating ? "tab.float.hide" : "tab.float.show"),
+            () => ShowPresentationResult(tab.Floating ? Presentations.HideFloating(tab.Id) : Presentations.ShowFloating(tab.Id)));
+        if (tab.Floating) Add("Open in regular view", HintFor("tab.present.normal"), () => Presentations.ShowNormally(tab.Id));
         Add("Assign shortcut…", HintFor("tab.shortcut.assign"), () => ExecuteForTab("tab.shortcut.assign", tab));
         Add("Remove shortcuts", null, () => ExecuteForTab("tab.shortcut.remove", tab), RuntimeShortcuts.Any(i => i.TabId == tab.Id));
         Add("Rename…", HintFor("tab.rename"), () => ExecuteForTab("tab.rename", tab));
@@ -530,6 +533,12 @@ public partial class MainWindow
         if (all || settings)
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
+            ApplyEndpointControl();
+            foreach (var floating in FloatingWindows)
+            {
+                FloatingPlacement.Apply(floating, floating.Owner, _settings.Floating);
+                floating.ApplyBodyOpacity();
+            }
             Dashboard.PreviewSettings = _settings.Dashboard;
             PreviewSettingsChanged();
             _agents.Detection = _settings.Detection;
@@ -583,7 +592,7 @@ public partial class MainWindow
                     : "terminalOpacity below 1, but no backdrop shows through (window.backdrop none, or transparency effects off in Windows): the body stays opaque");
             }
             _notifications?.Dispose();
-            _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
+            _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, FloatTab = FloatTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
             _counts = default;
             RefreshAttention();
 
@@ -614,7 +623,7 @@ public partial class MainWindow
             if (IsLoaded)
             {
                 ApplyBackdrop();
-                foreach (var tearOff in _tearOffs)
+                foreach (var tearOff in _tearOffs.Concat(FloatingWindows))
                 {
                     tearOff.ReapplyBackdrop();
                 }

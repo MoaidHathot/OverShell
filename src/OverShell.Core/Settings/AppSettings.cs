@@ -34,6 +34,7 @@ public sealed class DetectionSettings
 
 public sealed class NotificationSettings
 {
+    public string OpenMode { get; init; } = "tab";
     /// <summary>Named sinks, so a user file can flip one setting on one sink and the merge keeps the rest.</summary>
     public Dictionary<string, NotificationSinkConfig> Sinks { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -132,6 +133,7 @@ public sealed class SessionSettings
 /// <summary>How the tabs that need you are walked (§12.16).</summary>
 public sealed class AttentionSettings
 {
+    public string Presentation { get; init; } = "tab";
     /// <summary><c>age</c>: the tab that has waited longest first (default); <c>strip</c>: the next one in tab order.</summary>
     public string Order { get; init; } = "age";
 
@@ -241,6 +243,8 @@ public sealed class AppSettings
 
     public DashboardSettings Dashboard { get; init; } = new();
 
+    public FloatingSettings Floating { get; init; } = new();
+
     public OverShell.Config.ProfileSettings Profiles { get; init; } = new();
 
     public GitSettings Git { get; init; } = new();
@@ -342,6 +346,12 @@ public sealed class AppSettings
             settings.Problems.Add($"tabs.labelMode: unknown value '{settings.Tabs.LabelMode}'; using session");
         if (settings.Tabs.AliasDisplay?.ToLowerInvariant() is not ("badge" or "primary" or "hidden"))
             settings.Problems.Add("tabs.aliasDisplay: expected badge, primary or hidden; using badge");
+        if (settings.Attention.Presentation?.ToLowerInvariant() is not ("tab" or "floating"))
+            settings.Problems.Add("attention.presentation: expected tab or floating; using tab");
+        if (settings.Notifications.OpenMode?.ToLowerInvariant() is not ("tab" or "floating" or "preview"))
+            settings.Problems.Add("notifications.openMode: expected tab, floating or preview; using tab");
+        if (settings.Floating.Position is not ("center" or "topRight" or "bottomRight"))
+            settings.Problems.Add("floating.position: expected center, topRight or bottomRight; using center");
         if (settings.Dashboard.PreviewMode?.ToLowerInvariant() is not ("auto" or "styled" or "text"))
             settings.Problems.Add($"dashboard.previewMode: unknown value '{settings.Dashboard.PreviewMode}'; using auto");
         return settings;

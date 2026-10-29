@@ -37,6 +37,11 @@ public interface IShell
 
     ITabAddressing Addresses { get; }
 
+    ITabPresentations Presentations { get; }
+
+    ITab? FocusedTab { get; }
+    event Action<ITab?>? FocusedTabChanged;
+
     ITab? Find(string tabId);
 
     event Action<ITab>? TabOpened;
@@ -162,9 +167,13 @@ public interface ITab : INotifyPropertyChanged
 
     bool Detached { get; }
 
+    bool Floating => false;
+
     bool IsRunning { get; }
 
     bool IsActive { get; }
+
+    bool IsFocused => false;
 
     /// <summary>The evidence behind the state, one line.</summary>
     string Explain { get; }

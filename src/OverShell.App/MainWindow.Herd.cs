@@ -135,7 +135,7 @@ public partial class MainWindow
     /// <summary>Needs the visual tree: the toast layer anchors to the middle of the window.</summary>
     private void InitializeNotifications()
     {
-        _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
+        _notifications = new NotificationPipeline(this, MainHost, FocusTabById, _settings.Notifications) { AnswerTab = AnswerTabById, FloatTab = FloatTabById, Filter = e => _shell?.NotificationFilter?.Invoke(e) ?? true };
         _trace.Write($"notification sinks: {string.Join(", ", _notifications.ActiveSinks)}");
     }
 
@@ -173,6 +173,9 @@ public partial class MainWindow
 
         c.Register("palette.commands", "Command palette", "Palette", () => OpenPalette(">"));
         c.Register("palette.tabs", "Switch tab…", "Palette", () => OpenPalette(string.Empty));
+        c.Register("palette.floatingTabs", "Show a tab floating…", "Palette", () => OpenPalette(string.Empty, floating: true));
+        c.Register("palette.openFloating", "Show selected tab floating", "Palette", () => _palette?.InvokeAlternate() == true,
+            () => _palette?.CanInvokeAlternate == true, "Alternate action in the tab picker (Shift+Enter by default)");
 
         c.Register("clipboard.copy", "Copy selection", "Clipboard", () => Copy());
         c.Register("clipboard.copyIfSelection", "Copy selection, else send to shell", "Clipboard", Copy);
@@ -218,7 +221,7 @@ public partial class MainWindow
 
     // -------------------------------------------------------------- palette
 
-    private void OpenPalette(string initial)
+    private void OpenPalette(string initial, bool floating = false)
     {
         if (_palette is { IsVisible: true })
         {
@@ -235,7 +238,10 @@ public partial class MainWindow
 
         var owner = CommandOwner();
         var target = owner is TearOffWindow tearOff ? tearOff.Tab : ActiveTab;
-        _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target));
+        var origin = Navigation.Capture();
+        _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target, floating, origin));
+        _shortcuts.AddWindow(_palette);
+        if (initial.Length == 0) _palette.SetContext(floating ? "Enter: show floating" : $"Enter: switch tab · {HintFor("palette.openFloating")}: show floating");
         _palette.Closed += (_, _) =>
         {
             _palette = null;
@@ -252,7 +258,7 @@ public partial class MainWindow
         };
     }
 
-    private IReadOnlyList<PaletteItem> BuildPaletteItems(PaletteQuery query, TerminalTab? target)
+    private IReadOnlyList<PaletteItem> BuildPaletteItems(PaletteQuery query, TerminalTab? target, bool floating = false, Core.Tabs.NavigationPoint? origin = null)
     {
         var scored = new List<(int Score, int Order, PaletteItem Item)>();
         var order = 0;
@@ -318,7 +324,8 @@ public partial class MainWindow
                     Hint = tab.ShortcutHint.Length > 0 ? tab.ShortcutHint : i < 9 ? $"Alt+{i + 1}" : null,
                     Dot = tab.StateBrush,
                     Preview = () => captured.ScreenText,
-                    Invoke = () => ActiveTab = captured,
+                    Invoke = () => { if (floating) ShowPresentationResult(Presentations.ShowFloating(captured.Id, returnTo: origin)); else Presentations.ShowNormally(captured.Id); },
+                    AlternateInvoke = () => ShowPresentationResult(Presentations.ShowFloating(captured.Id, returnTo: origin)),
                 }));
             }
         }
@@ -342,14 +349,15 @@ public partial class MainWindow
         }
 
         _palette?.Close();
-        _palette = PaletteWindow.Prompt(this, "Tab name — empty restores the automatic label", tab.UserLabel ?? string.Empty, text =>
+        var owner = CommandOwner();
+        _palette = PaletteWindow.Prompt(owner, "Tab name — empty restores the automatic label", tab.UserLabel ?? string.Empty, text =>
         {
             RenameTab(tab, text);
         });
         _palette.Closed += (_, _) =>
         {
             _palette = null;
-            ActiveTab?.Surface.Focus();
+            RefocusOwner(owner);
         };
     }
 
@@ -441,8 +449,8 @@ public partial class MainWindow
             message,
             attention.Message is null ? null : attention.Reason,
             attention.At,
-            TabIsActive: ReferenceEquals(tab, ActiveTab),
-            WindowIsFocused: IsActive,
+            TabIsActive: ReferenceEquals(tab, FocusedTerminalTab),
+            WindowIsFocused: ActiveTerminalWindow() is not null,
             CanAnswer: kind == NotificationKind.Blocked && tab.ReplyChannel is Core.Extensibility.ReplyChannel.Integration or Core.Extensibility.ReplyChannel.Keys);
 
         _notifications.Publish(e);
@@ -490,10 +498,10 @@ public partial class MainWindow
     /// longest (<c>attention.order: age</c>), else the next in strip order. Blocked and error
     /// tabs come before unseen-done ones. Returns false when nothing waits.
     /// </summary>
-    internal bool JumpWaiting(int direction, bool blockedOnly, bool doneOnly, string? nothingMessage = null)
+    internal bool JumpWaiting(int direction, bool blockedOnly, bool doneOnly, string? nothingMessage = null, bool? floating = null)
     {
         var waiting = Tabs.Select((t, i) => new HerdOrdering.Waiting(t.Id, t.State, t.Unread, t.Agent.AttentionSince, i)).ToList();
-        var currentIndex = ActiveTab is { } active ? Tabs.IndexOf(active) : -1;
+        var currentIndex = TargetTab is { } active ? Tabs.IndexOf(active) : -1;
         var target = HerdOrdering.NextWaiting(waiting, currentIndex, _settings.Attention.ByAge, direction, blockedOnly, doneOnly);
         if (target is null)
         {
@@ -505,6 +513,11 @@ public partial class MainWindow
             return false;
         }
 
+        if (floating ?? _settings.Attention.Presentation.Equals("floating", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowPresentationResult(Presentations.ShowFloating(Tabs[target.Index].Id));
+            return true;
+        }
         Navigation.BeginAttention();
         _attentionNavigation = true;
         try { ActiveTab = Tabs[target.Index]; }
@@ -528,30 +541,43 @@ public partial class MainWindow
     {
         if (_tabsById.TryGetValue(tabId, out var tab))
         {
+            if (_settings.Notifications.OpenMode.Equals("floating", StringComparison.OrdinalIgnoreCase))
+            {
+                ShowPresentationResult(Presentations.ShowFloating(tab.Id));
+                return;
+            }
+            if (_settings.Notifications.OpenMode.Equals("preview", StringComparison.OrdinalIgnoreCase))
+            {
+                OpenTerminalPreview(tab, keyboard: true);
+                return;
+            }
             Navigation.BeginAttention();
             _attentionNavigation = true;
-            try { ActiveTab = tab; }
+            try { Presentations.ShowNormally(tab.Id); }
             finally { _attentionNavigation = false; }
-            if (WindowState == WindowState.Minimized)
-            {
-                WindowState = WindowState.Normal;
-            }
-
-            Activate();
         }
     }
+
+    private void FloatTabById(string tabId) => ShowPresentationResult(Presentations.ShowFloating(tabId));
 
     /// <summary>Whether the user can see the active tab: it is showing and the window has the foreground.</summary>
     private void UpdateViewed()
     {
+        var focused = FocusedTerminalTab;
         foreach (var tab in Tabs)
         {
-            var viewed = (ReferenceEquals(tab, ActiveTab) && IsActive) || IsViewedInTearOff(tab);
+            var viewed = ReferenceEquals(tab, focused);
             tab.SetViewed(viewed);
             if (viewed)
             {
                 _notifications?.Viewed(tab.Id);
             }
+        }
+
+        if (!ReferenceEquals(focused, _reportedFocusedTab))
+        {
+            _reportedFocusedTab = focused;
+            _shell?.RaiseFocusedTabChanged(focused);
         }
 
         RefreshAttention();

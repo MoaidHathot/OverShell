@@ -206,7 +206,7 @@ public sealed class TriageExtension : IExtension
     /// <summary>Auto-advance: the blocked tab in front moved on -> the next waiting tab.</summary>
     private void OnStateChanged(ITab tab, AgentTransition transition)
     {
-        if (!_settings.AutoAdvance || !ReferenceEquals(tab, _shell.ActiveTab))
+        if (!_settings.AutoAdvance || !ReferenceEquals(tab, _shell.FocusedTab))
         {
             return;
         }
@@ -215,9 +215,9 @@ public sealed class TriageExtension : IExtension
         {
             _shell.Post(() =>
             {
-                if (_shell.Tabs.Any(t => t.State is AgentState.Blocked or AgentState.Error && !ReferenceEquals(t, _shell.ActiveTab)))
+                if (ReferenceEquals(tab, _shell.FocusedTab) && _shell.Tabs.Any(t => t.State is AgentState.Blocked or AgentState.Error && !ReferenceEquals(t, tab)))
                 {
-                    _shell.Commands.TryExecute("tab.nextBlocked");
+                    _shell.Commands.TryExecute(tab.Floating ? "tab.float.attention" : "tab.nextBlocked");
                 }
             });
         }

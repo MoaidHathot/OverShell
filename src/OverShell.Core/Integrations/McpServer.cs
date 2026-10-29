@@ -364,6 +364,15 @@ public sealed class McpServer
             }, "tab"),
         Tool("overshell_close", "Close a tab (never the last one). Use after an agent is done and its output has been read.",
             new JsonObject { ["tab"] = Prop("string", "Tab id or unique label.") }, "tab"),
+        Tool("overshell_set_alias", "Assign a unique runtime alias to a live tab. Empty text clears it; closing or restarting releases it.",
+            new JsonObject { ["tab"] = Prop("string", "Tab ID, alias:name or unique label."), ["alias"] = Prop("string", "Short runtime alias, or empty to clear.") }, "tab", "alias"),
+        Tool("overshell_present", "Show a live tab floating, toggle/hide its float, or open it in its regular host. Hide keeps its process alive and returns to interrupted work.",
+            new JsonObject { ["tab"] = Prop("string", "Tab ID, alias:name or unique label."), ["mode"] = Prop("string", "floating, toggle, hide or regular.") }, "tab", "mode"),
+        Tool("overshell_shortcut", "Assign a runtime shortcut owned by a tab, or remove its shortcuts. Closing the tab releases local and global registrations.",
+            new JsonObject { ["tab"] = Prop("string", "Tab ID, alias:name or unique label."), ["keys"] = Prop("string", "Chord or sequence."),
+                ["action"] = Prop("string", "tab.activate or tab.float.toggle (also show/hide)."), ["global"] = Prop("boolean", "System-wide single chord (default false)."),
+                ["remove"] = Prop("boolean", "Remove this tab's runtime shortcuts instead of assigning.") }, "tab"),
+        Tool("overshell_return", "Return from the current float or attention chain to the original work and view.", new JsonObject()),
     ];
 
     private async Task<JsonObject> CallToolAsync(string name, JsonObject arguments, CancellationToken cancellation)
@@ -372,6 +381,22 @@ public sealed class McpServer
         {
             switch (name)
             {
+                case "overshell_set_alias":
+                case "overshell_present":
+                case "overshell_shortcut":
+                {
+                    var tab = Require(arguments, "tab");
+                    var leaf = name == "overshell_set_alias" ? "alias" : name == "overshell_present" ? "presentation" : "shortcut";
+                    var payload = arguments.DeepClone().AsObject();
+                    payload.Remove("tab");
+                    var (status, body) = await _http("POST", $"/v1/tabs/{Uri.EscapeDataString(tab)}/{leaf}", payload, cancellation).ConfigureAwait(false);
+                    return status == 200 ? Text(Pretty(body)) : Failure(status, body);
+                }
+                case "overshell_return":
+                {
+                    var (status, body) = await _http("POST", "/v1/navigation/return", new JsonObject(), cancellation).ConfigureAwait(false);
+                    return status == 200 ? Text(Pretty(body)) : Failure(status, body);
+                }
                 case "overshell_list_tabs":
                 {
                     var (status, body) = await _http("GET", "/v1/tabs", null, cancellation).ConfigureAwait(false);

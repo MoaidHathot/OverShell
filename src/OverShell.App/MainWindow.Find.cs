@@ -55,9 +55,9 @@ public partial class MainWindow
             return;
         }
 
-        if (tab.Detached)
+        if (tab.Detached || tab.Floating)
         {
-            _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, tab))?.Find.Open(tab);
+            TerminalWindowFor(tab)?.Find.Open(tab);
             return;
         }
 
@@ -74,8 +74,8 @@ public partial class MainWindow
             return null;
         }
 
-        return tab.Detached
-            ? _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, tab))?.Find
+        return tab.Detached || tab.Floating
+            ? TerminalWindowFor(tab)?.Find
             : _findBar;
     }
 }

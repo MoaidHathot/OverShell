@@ -55,6 +55,15 @@ Input-desktop pixel evidence is reported separately if needed.
   conflicts. Later configured conflicts are reported by key-map validation. Display
   preferences use `tabs.aliasDisplay` (badge/primary/hidden). Review fixed the preexisting
   control screen/wait behavior that re-resolved mutable labels after every await.
-- Stage 3: pending.
+- Stage 3: 537 C# tests passed. `floats` passed 45 checks in composed mode and
+  45 in opaque mode, both on the private desktop with zero failures/skips. The checks
+  retain exact HWND/PID and scrollback, exercise only-tab/tear-off/dashboard presentation,
+  native paste/find focus, independent prompt drafts, replacement/return, 20 rehost cycles,
+  picker/protocol/toast/HTTP/MCP entry points, unread acknowledgement, live settings,
+  focus-loss/owned-picker behavior, minimize, owner closure and explicit termination.
+  Review fixed stale shortcut HWND registrations after window closure, isolated body
+  opacity and link overlays to the actual terminal host, and made triage follow focused
+  rather than merely selected tabs. The endpoint control switch now applies live.
+  DELETE on a control subresource now returns 405 instead of accidentally closing a tab.
 - Stage 4: pending.
 - Final audit: pending.

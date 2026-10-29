@@ -256,7 +256,18 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     /// <para>A detached tab has a window of its own and is always shown there.</para>
     /// </summary>
     private void UpdateVisibility() =>
-        View.Visibility = (_isActive || _detached) && _revealed ? Visibility.Visible : Visibility.Hidden;
+        View.Visibility = (_isActive || _detached || Floating) && _revealed ? Visibility.Visible : Visibility.Hidden;
+
+    public bool Floating { get; private set; }
+
+    internal void SetFloating(bool floating)
+    {
+        Floating = floating;
+        UpdateVisibility();
+        Raise(nameof(Floating));
+        Raise(nameof(DisplayLabel));
+        Raise(nameof(Tooltip));
+    }
 
     /// <summary>True while the tab's surface lives in a tear-off window (§12.12) rather than the main host.</summary>
     public bool Detached
@@ -298,7 +309,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
             // Earlier activation callbacks may have run while the native surface was
             // still hidden. Complete that focus handoff once it can receive input, unless
             // a picker, another window/tab, or an editing field now owns the keyboard.
-            if ((IsActive || Detached) && Window.GetWindow(View)?.IsActive == true &&
+            if ((IsActive || Detached || Floating) && Window.GetWindow(View)?.IsActive == true &&
                 System.Windows.Input.Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase)
                 Surface.Focus();
         }, DispatcherPriority.Render);

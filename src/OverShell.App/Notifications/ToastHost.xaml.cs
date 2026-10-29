@@ -28,6 +28,7 @@ public sealed class Toast
     public Visibility DetailVisibility => string.IsNullOrEmpty(Detail) ? Visibility.Collapsed : Visibility.Visible;
 
     public Visibility AnswerVisibility => CanAnswer ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility FloatVisibility => TabId.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
     internal DispatcherTimer? Timer { get; set; }
 }
@@ -96,6 +97,17 @@ public partial class ToastHost : Window
 
     /// <summary>Answers a blocked tab from a toast's button: (tab id, approve) -> taken.</summary>
     public Func<string, bool, bool>? AnswerTab { get; init; }
+    public Action<string>? FloatTab { get; init; }
+
+    private void Float_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: Toast toast })
+        {
+            Remove(toast);
+            FloatTab?.Invoke(toast.TabId);
+            e.Handled = true;
+        }
+    }
 
     private void Allow_Click(object sender, RoutedEventArgs e) => Answer(sender, approve: true, e);
 

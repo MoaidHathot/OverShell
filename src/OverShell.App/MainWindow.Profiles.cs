@@ -171,15 +171,18 @@ public partial class MainWindow
 
     /// <summary>The window the command came from, including a detached terminal or its owned palette.</summary>
     internal Window CommandOwner() =>
-        _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, _commandTarget))
-        ?? _tearOffs.FirstOrDefault(w => w.IsActive)
-        ?? (Window)this;
+        _commandTarget is not null ? TerminalWindowFor(_commandTarget) ?? (Window)this : ActiveTerminalWindow() ?? this;
 
-    internal void RefocusOwner(Window owner)
+    internal void RefocusOwner(Window owner, IInputElement? previousFocus = null)
     {
         Dispatcher.BeginInvoke(() =>
         {
             if (!owner.IsActive) return;
+            if (previousFocus is System.Windows.Controls.Primitives.TextBoxBase { IsVisible: true } text && Window.GetWindow(text) == owner)
+            {
+                text.Focus();
+                return;
+            }
             if (owner is TearOffWindow tearOff && Tabs.Contains(tearOff.Tab)) tearOff.Tab.Surface.Focus();
             else if (_settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
         }, System.Windows.Threading.DispatcherPriority.Input);
@@ -194,6 +197,7 @@ public partial class MainWindow
         palette.Title = "New tab with profile — OverShell";
         palette.ContextSource = () => ProfileSourceDescription;
         _profilePicker = _palette = palette;
+        _shortcuts.AddWindow(palette);
         palette.Closed += (_, _) =>
         {
             if (ReferenceEquals(_palette, palette)) _palette = null;

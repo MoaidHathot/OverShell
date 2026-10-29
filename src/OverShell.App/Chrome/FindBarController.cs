@@ -37,6 +37,8 @@ internal sealed class FindBarController
     }
 
     public bool IsOpen => _bar.Visibility == Visibility.Visible;
+    internal bool InputHasFocus => _bar.IsKeyboardFocusWithin;
+    internal void FocusInput() => _bar.FocusInput();
 
     /// <summary>The live session, for diagnostics and the self-test.</summary>
     internal FindSession? Session => _session;

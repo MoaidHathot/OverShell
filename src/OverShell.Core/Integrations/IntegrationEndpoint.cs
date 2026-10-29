@@ -228,10 +228,10 @@ public sealed class IntegrationEndpoint : IDisposable
         }
 
         // ---- the control API (12.18): everything else under /v1/tabs ----
-        var controlRoute = onTabs && (
+        var controlRoute = path == "/v1/navigation/return" || onTabs && (
             (request.HttpMethod == "POST" && segments.Length == 2) ||
             (request.HttpMethod is "GET" or "DELETE" && segments.Length == 3) ||
-            (segments.Length == 4 && leaf is "screen" or "wait" or "input" or "reply" or "alias"));
+            (segments.Length == 4 && leaf is "screen" or "wait" or "input" or "reply" or "alias" or "presentation" or "shortcut"));
         if (controlRoute)
         {
             if (Control is not { } control)
@@ -304,6 +304,10 @@ public sealed class IntegrationEndpoint : IDisposable
     /// </summary>
     private async Task<int> RouteControlAsync(ShellControl control, HttpListenerRequest request, HttpListenerResponse response, string[] segments, string? tabKey, string? leaf)
     {
+        if (segments.SequenceEqual(new[] { "v1", "navigation", "return" }))
+            return request.HttpMethod == "POST"
+                ? await WriteResultAsync(response, await control.ReturnAsync().ConfigureAwait(false)).ConfigureAwait(false)
+                : await WriteAsync(response, 405, new JsonObject { ["error"] = "method not allowed" }).ConfigureAwait(false);
         if (request.HttpMethod == "POST" && segments.Length == 2)
         {
             var body = await ReadBodyAsync(request).ConfigureAwait(false);
@@ -319,7 +323,7 @@ public sealed class IntegrationEndpoint : IDisposable
             return await WriteAsync(response, 404, new JsonObject { ["error"] = "not found" }).ConfigureAwait(false);
         }
 
-        if (request.HttpMethod == "DELETE")
+        if (request.HttpMethod == "DELETE" && segments.Length == 3)
         {
             return await WriteResultAsync(response, await control.CloseAsync(tabKey).ConfigureAwait(false)).ConfigureAwait(false);
         }
@@ -361,10 +365,18 @@ public sealed class IntegrationEndpoint : IDisposable
             return await WriteAsync(response, 405, new JsonObject { ["error"] = "method not allowed" }).ConfigureAwait(false);
         }
 
-        if (request.HttpMethod == "POST" && leaf is "input" or "reply" or "alias")
+        if (request.HttpMethod == "POST" && leaf is "input" or "reply" or "alias" or "presentation" or "shortcut")
         {
             var body = await ReadBodyAsync(request).ConfigureAwait(false);
             var node = (body is null ? null : Jsonc.Parse(body, out _)) as JsonObject;
+            if (leaf == "presentation")
+                return await WriteResultAsync(response, await control.PresentAsync(tabKey, ShellControl.Str(node, "mode") ?? "").ConfigureAwait(false)).ConfigureAwait(false);
+            if (leaf == "shortcut")
+            {
+                var (binding, outcome) = await control.ShortcutAsync(tabKey, node ?? new JsonObject()).ConfigureAwait(false);
+                return binding is null ? await WriteResultAsync(response, outcome).ConfigureAwait(false)
+                    : await WriteAsync(response, 200, binding).ConfigureAwait(false);
+            }
             if (leaf == "alias")
             {
                 if (node is null || !node.ContainsKey("alias") || node["alias"] is not null && !(node["alias"] is JsonValue value && value.TryGetValue<string>(out _)))

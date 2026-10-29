@@ -348,6 +348,7 @@ public sealed partial class TerminalTab
         get
         {
             var lines = new List<string> { Label };
+            if (Floating) lines.Add("Shown floating — Hide keeps this tab running; Close tab terminates it");
             if (Alias is { } alias) lines.Add($"Alias: @{alias} (this open tab)");
             if (ShortcutHint.Length > 0) lines.Add($"Shortcuts: {ShortcutHint}");
             if (!string.Equals(Title, Label, StringComparison.Ordinal)) lines.Add(Title);
@@ -601,6 +602,8 @@ public sealed partial class TerminalTab
     }
 
     /// <summary>Whether the user can see this tab right now: it is the active tab and the window is in the foreground.</summary>
+    public bool IsFocused => _viewed;
+
     internal void SetViewed(bool viewed)
     {
         if (_viewed == viewed)
@@ -609,6 +612,7 @@ public sealed partial class TerminalTab
         }
 
         _viewed = viewed;
+        Raise(nameof(IsFocused));
         Agent.SetViewed(viewed, DateTimeOffset.Now);
         RaiseAgentProperties();
     }

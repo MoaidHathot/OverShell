@@ -112,6 +112,17 @@ public static class SettingsCatalog
 
     public static IReadOnlyList<SettingKnob> Knobs { get; } =
     [
+        new("floating.widthRatio", "Floating terminal width", "Fraction of the owning window's width, clamped to its monitor. Applies live.", SettingKind.Number,
+            [new("0.6", "60%"), new("0.8", "80%"), new("0.95", "95%")]) { Min = 0.25, Max = 1 },
+        new("floating.heightRatio", "Floating terminal height", "Fraction of the owning window's height, clamped to its monitor. Applies live.", SettingKind.Number,
+            [new("0.5", "50%"), new("0.75", "75%"), new("0.95", "95%")]) { Min = 0.25, Max = 1 },
+        new("floating.position", "Floating terminal position", "Placement relative to its owner; terminals can also be moved and resized interactively.", SettingKind.Choice,
+            [new("\"center\"", "center"), new("\"topRight\"", "top right"), new("\"bottomRight\"", "bottom right")]),
+        new("floating.hideOnFocusLoss", "Hide floats on focus loss", "Dismiss a float when focus leaves it and its owned pickers; the session keeps running.", SettingKind.Toggle, [On, Off]),
+        new("attention.presentation", "Attention jump presentation", "Switch tabs or interact in a floating terminal; Return goes back to the interrupted work.", SettingKind.Choice,
+            [new("\"tab\"", "tab"), new("\"floating\"", "floating")]),
+        new("notifications.openMode", "Open notifications as", "How a notification click presents its tab. Open floating is also an explicit toast action.", SettingKind.Choice,
+            [new("\"tab\"", "tab"), new("\"floating\"", "floating"), new("\"preview\"", "read-only preview")]),
         new("dashboard.previewMode", "Dashboard previews", "Live rendered previews where supported, styled cell snapshots, or the legacy text extract. Applies live.", SettingKind.Choice,
         [new("\"auto\"", "auto", "live renderer with styled fallback (default)"), new("\"styled\"", "styled", "colours and formatting from terminal cells"), new("\"text\"", "text", "legacy last rows")]),
         new("dashboard.snapshotIntervalMs", "Preview snapshot interval", "Minimum interval between changed styled snapshots; live mirrors share renderer frames.", SettingKind.Number,

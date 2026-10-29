@@ -90,6 +90,9 @@ public sealed class ShellControl
         ["group"] = t.Group,
         ["isRunning"] = t.IsRunning,
         ["isActive"] = t.IsActive,
+        ["isFocused"] = t.IsFocused,
+        ["floating"] = t.Floating,
+        ["detached"] = t.Detached,
         ["explain"] = t.Explain,
         ["summary"] = t.Summary,
         ["sessionId"] = t.SessionId,
@@ -342,6 +345,42 @@ public sealed class ShellControl
         if (Resolve(_shell, key) is not { } tab) return ControlResult.NotFound(key);
         var result = _shell.Addresses.Assign(tab.Id, alias);
         return result.Success ? ControlResult.Ok : ControlResult.Refused(result.Error!);
+    });
+
+    public Task<ControlResult> PresentAsync(string key, string mode) => OnUiAsync(() =>
+    {
+        if (Resolve(_shell, key) is not { } tab) return ControlResult.NotFound(key);
+        var result = mode.ToLowerInvariant() switch
+        {
+            "floating" => _shell.Presentations.ShowFloating(tab.Id),
+            "toggle" => _shell.Presentations.ToggleFloating(tab.Id),
+            "hide" => _shell.Presentations.HideFloating(tab.Id),
+            "regular" => _shell.Presentations.ShowNormally(tab.Id),
+            _ => null,
+        };
+        return result is null ? ControlResult.BadRequest("mode is floating, toggle, hide or regular")
+            : result.Success ? ControlResult.Ok : ControlResult.Refused(result.Error!);
+    });
+
+    public Task<ControlResult> ReturnAsync() => OnUiAsync(() =>
+        _shell.Navigation.Return() ? ControlResult.Ok : ControlResult.Refused("No return location"));
+
+    public Task<(JsonObject? Binding, ControlResult Result)> ShortcutAsync(string key, JsonObject body) => OnUiAsync(() =>
+    {
+        if (Resolve(_shell, key) is not { } tab) return ((JsonObject?)null, ControlResult.NotFound(key));
+        if (Bool(body, "remove") == true)
+        {
+            foreach (var binding in _shell.Keys.Runtime.Where(b => b.TabId == tab.Id).ToArray()) _shell.Keys.Remove(binding.Id);
+            return (new JsonObject { ["ok"] = true }, ControlResult.Ok);
+        }
+        var action = Str(body, "action") ?? "tab.activate";
+        if (action is not ("tab.activate" or "tab.float.toggle" or "tab.float.show" or "tab.float.hide" or "tab.present.normal"))
+            return (null, ControlResult.BadRequest("action must be a tab activation or floating command"));
+        if (Str(body, "keys") is not { Length: > 0 } keys) return (null, ControlResult.BadRequest("keys is required"));
+        var result = _shell.Keys.Assign(tab.Id, new Input.Keybinding(keys, action), Bool(body, "global") ?? false);
+        return result.Registration is { } r
+            ? (new JsonObject { ["id"] = r.Id.ToString(), ["tabId"] = r.TabId, ["keys"] = r.Binding.Keys, ["global"] = r.Global }, ControlResult.Ok)
+            : (null, ControlResult.Refused(result.Error ?? "Could not assign shortcut"));
     });
 
     /// <summary>The states a comma-separated list names; unknown names are ignored, so "idle,done,blocked" and "Idle, Done" both work.</summary>

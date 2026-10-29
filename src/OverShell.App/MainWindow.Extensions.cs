@@ -64,9 +64,21 @@ public partial class MainWindow
         _extensions = new ExtensionHost();
         _extensions.Load(_shell, ExtensionHost.BuiltIns);
 
-        // The control API (12.18) is the extensibility surface over HTTP: it goes on only when the
-        // setting says so, and endpoint.json then tells `OverShell mcp` where the window is.
-        if (_settings.Endpoint.Control && _endpoint is { } endpoint)
+        ApplyEndpointControl();
+
+        // Extensions declared their default keys during Initialize; the map is rebuilt with them beneath the user's file.
+        LoadKeybindings();
+        Closed += (_, _) =>
+        {
+            _extensions.Dispose();
+            _shell.DisposeHotKeys();
+        };
+    }
+
+    private void ApplyEndpointControl()
+    {
+        if (_endpoint is not { } endpoint || (endpoint.Control is not null) == _settings.Endpoint.Control) return;
+        if (_settings.Endpoint.Control)
         {
             endpoint.Control = new OverShell.Core.Integrations.ShellControl(_shell);
             try
@@ -79,18 +91,12 @@ public partial class MainWindow
                 _trace.Write($"endpoint: control API on, but endpoint.json could not be written: {e.Message}");
             }
         }
-        else if (_endpoint is not null)
+        else
         {
+            endpoint.Control = null;
+            ForgetEndpointFile();
             _trace.Write("endpoint: control API off (endpoint.control)");
         }
-
-        // Extensions declared their default keys during Initialize; the map is rebuilt with them beneath the user's file.
-        LoadKeybindings();
-        Closed += (_, _) =>
-        {
-            _extensions.Dispose();
-            _shell.DisposeHotKeys();
-        };
     }
 
     /// <summary>Removes endpoint.json at exit - only when it is this run's, so a second window's file is left alone.</summary>
@@ -271,11 +277,11 @@ public partial class MainWindow
         // still run normally while a text box has focus.
         if (TextInputHasFocus())
         {
-            if (Prompt.TryClipboardCommand(command) || RouteTextClipboard(command, Keyboard.FocusedElement)) return true;
+            if (CurrentPrompt.TryClipboardCommand(command) || RouteTextClipboard(command, Keyboard.FocusedElement)) return true;
         }
 
         // A chord from a tear-off aims at that window's tab.
-        _commandTarget = TearOffForRoot(_shortcuts.CurrentRoot)?.Tab;
+        _commandTarget = TerminalWindowForRoot(_shortcuts.CurrentRoot)?.Tab;
         try
         {
             if (command.StartsWith("tab.newProfile.", StringComparison.OrdinalIgnoreCase) && _commands.Find(command) is null)

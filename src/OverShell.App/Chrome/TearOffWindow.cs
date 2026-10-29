@@ -31,16 +31,20 @@ public sealed class TearOffWindow : Window
     private readonly Button _maximize;
     private bool _reattachOnClose = true;
 
-    public TearOffWindow(Window owner, TerminalTab tab)
+    public TearOffWindow(Window owner, TerminalTab tab) : this(owner, tab, false) { }
+
+    internal TearOffWindow(Window owner, TerminalTab tab, bool floating, Terminal.Search.TerminalSearch? search = null, PromptBar? prompt = null)
     {
         Tab = tab;
-        Title = $"{tab.Label} — OverShell";
+        IsFloating = floating;
+        if (floating) Owner = owner;
+        SetBinding(TitleProperty, new Binding(nameof(TerminalTab.DisplayLabel)) { Source = tab, StringFormat = floating ? "{0} — Floating — OverShell" : "{0} — OverShell" });
         Width = Math.Max(600, owner.ActualWidth * 0.7);
         Height = Math.Max(400, owner.ActualHeight * 0.7);
         Left = owner.Left + 60;
         Top = owner.Top + 60;
         Background = Brushes.Transparent;
-        ShowInTaskbar = true;
+        ShowInTaskbar = !floating;
         MinWidth = 400;
         MinHeight = 240;
         UseLayoutRounding = true;
@@ -67,7 +71,11 @@ public sealed class TearOffWindow : Window
 
         // The same find bar as the main window's, below the terminal (12.14).
         var findBar = new FindBar { Visibility = Visibility.Collapsed };
-        Find = new FindBarController(findBar, this, (owner as MainWindow)?.Search ?? new Terminal.Search.TerminalSearch());
+        Find = new FindBarController(findBar, this, search ?? (owner as MainWindow)?.Search ?? new Terminal.Search.TerminalSearch());
+        Bars = new StackPanel();
+        Bars.Children.Add(findBar);
+        PromptBar = prompt ?? new PromptBar { Visibility = Visibility.Collapsed };
+        Bars.Children.Add(PromptBar);
 
         var layout = new Grid();
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -75,10 +83,10 @@ public sealed class TearOffWindow : Window
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         Grid.SetRow(_caption, 0);
         Grid.SetRow(_host, 1);
-        Grid.SetRow(findBar, 2);
+        Grid.SetRow(Bars, 2);
         layout.Children.Add(_caption);
         layout.Children.Add(_host);
-        layout.Children.Add(findBar);
+        layout.Children.Add(Bars);
 
         _root = new Border
         {
@@ -88,14 +96,6 @@ public sealed class TearOffWindow : Window
         };
         _root.SetResourceReference(Border.BorderBrushProperty, "Surface.Border");
         Content = _root;
-
-        tab.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is nameof(TerminalTab.Label) or nameof(TerminalTab.Title))
-            {
-                Title = $"{tab.Label} — OverShell";
-            }
-        };
 
         // The body's opacity follows this window's activation (12.24), as the main window's does its own.
         Activated += (_, _) => { Tab.Surface.Focus(); ApplyBodyOpacity(); };
@@ -107,9 +107,16 @@ public sealed class TearOffWindow : Window
 
     public TerminalTab Tab { get; }
 
+    public bool IsFloating { get; }
+    internal StackPanel Bars { get; }
+    internal PromptBar PromptBar { get; }
+    public event Action<TerminalTab>? OpenNormallyRequested;
+    public event Action<TerminalTab>? TerminateRequested;
+
     /// <summary>The tab's surface and the margin ring at the opacity this window's activation calls for.</summary>
     internal void ApplyBodyOpacity()
     {
+        if (Tab.Floating && !IsFloating) return;
         if (!Terminal.TerminalFactory.Composition.Enabled)
         {
             return;
@@ -130,7 +137,7 @@ public sealed class TearOffWindow : Window
     public void Host()
     {
         _host.Children.Add(Tab.View);
-        Tab.Detached = true;
+        if (IsFloating) Tab.SetFloating(true); else Tab.Detached = true;
     }
 
     /// <summary>Takes the view out again for the main window; closing afterwards does not re-attach twice.</summary>
@@ -139,7 +146,8 @@ public sealed class TearOffWindow : Window
         _reattachOnClose = false;
         Find.Forget(Tab);
         _host.Children.Remove(Tab.View);
-        Tab.Detached = false;
+        if (IsFloating) Bars.Children.Remove(PromptBar);
+        if (IsFloating) Tab.SetFloating(false); else Tab.Detached = false;
         return Tab.View;
     }
 
@@ -180,7 +188,7 @@ public sealed class TearOffWindow : Window
         icon.SetResourceReference(HarnessIcon.FillProperty, "Text.Secondary");
         icon.SetBinding(VisibilityProperty, new Binding(nameof(TerminalTab.ShowsHarnessIcon)) { Source = tab, Converter = new BooleanToVisibilityConverter() });
         var label = new TextBlock { VerticalAlignment = VerticalAlignment.Center, FontWeight = FontWeights.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis };
-        label.SetBinding(TextBlock.TextProperty, new Binding(nameof(TerminalTab.Label)) { Source = tab });
+        label.SetBinding(TextBlock.TextProperty, new Binding(nameof(TerminalTab.DisplayLabel)) { Source = tab });
         label.SetResourceReference(TextBlock.ForegroundProperty, "Text.Primary");
         label.SetResourceReference(TextBlock.FontFamilyProperty, "Font.Ui");
         label.SetResourceReference(TextBlock.FontSizeProperty, "Font.Size.Body");
@@ -195,9 +203,14 @@ public sealed class TearOffWindow : Window
         Grid.SetColumn(text, 1);
 
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
-        buttons.Children.Add(CaptionButton("\uE921", "Minimize", (_, _) => WindowState = WindowState.Minimized));
+        if (IsFloating)
+        {
+            buttons.Children.Add(CaptionButton("\uE8A7", "Open in regular view", (_, _) => OpenNormallyRequested?.Invoke(Tab)));
+            buttons.Children.Add(CaptionButton("\uE74D", "Terminate tab and session", (_, _) => TerminateRequested?.Invoke(Tab)));
+        }
+        else buttons.Children.Add(CaptionButton("\uE921", "Minimize", (_, _) => WindowState = WindowState.Minimized));
         buttons.Children.Add(_maximize);
-        var close = CaptionButton("\uE8BB", "Back to the main window  (Ctrl+Shift+A)", (_, _) => Close());
+        var close = CaptionButton("\uE8BB", IsFloating ? "Hide floating terminal (session keeps running)" : "Back to the main window  (Ctrl+Shift+A)", (_, _) => Close());
         close.SetResourceReference(StyleProperty, "CloseCaptionButton");
         buttons.Children.Add(close);
         Grid.SetColumn(buttons, 2);

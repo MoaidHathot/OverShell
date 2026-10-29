@@ -58,6 +58,9 @@ internal static partial class HerdSelfTest
                     case "aliases":
                         await RunAliasesAsync(window, firstTab);
                         break;
+                    case "floats":
+                        await RunFloatingAsync(window, firstTab);
+                        break;
                     case "previewbench":
                         await RunPreviewBenchmarkAsync(window, firstTab);
                         break;
@@ -881,7 +884,7 @@ internal static partial class HerdSelfTest
                 Check(init?["result"]?["serverInfo"]?["name"]?.GetValue<string>() == "overshell" && init["result"]?["protocolVersion"]?.GetValue<string>() == "2025-06-18", "OverShell mcp answers initialize as 'overshell'");
                 await child.StandardInput.WriteLineAsync("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
                 var tools = await AskAsync("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}");
-                Check((tools?["result"]?["tools"] as System.Text.Json.Nodes.JsonArray)?.Count == 7, "tools/list names the seven tools");
+                Check((tools?["result"]?["tools"] as System.Text.Json.Nodes.JsonArray)?.Count == 11, "tools/list names the eleven control tools");
                 var list = await AskAsync("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"overshell_list_tabs\",\"arguments\":{}}}");
                 var listText = list?["result"]?["content"]?[0]?["text"]?.GetValue<string>() ?? string.Empty;
                 Check(list?["result"]?["isError"] is null && listText.Contains("\"label\": \"shell\"", StringComparison.Ordinal), "tools/call overshell_list_tabs reaches this window through endpoint.json and sees the tabs");
