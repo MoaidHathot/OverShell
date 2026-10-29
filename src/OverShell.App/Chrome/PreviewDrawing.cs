@@ -11,6 +11,9 @@ internal static class PreviewDrawing
     public static DrawingImage Build(TerminalPreviewFrame frame, string fontFace, double fontPixels, CancellationToken cancellation)
     {
         var drawing = new DrawingGroup();
+        // Adjacent cell backgrounds must meet at fractional preview scales. Antialiasing
+        // each rectangle independently leaves dim seams; text keeps its own antialiasing.
+        RenderOptions.SetEdgeMode(drawing, EdgeMode.Aliased);
         var brushes = new Dictionary<uint, SolidColorBrush>();
         var typefaces = new Dictionary<PreviewTextStyle, Typeface>();
         var cellWidth = (double)frame.PixelWidth / frame.Columns;

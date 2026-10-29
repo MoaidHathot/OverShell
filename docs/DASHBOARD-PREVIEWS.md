@@ -206,3 +206,23 @@ Evidence: `final-visible.log`, `final-opaque.log`, `regression-1-final.log`, the
 `artifacts/selftest/dashboard-previews/`. Visual evidence is in
 `overshell-dashboard-previews.png` and `overshell-enlarged-preview.png`. The runnable
 publish output is `artifacts/dashboard-preview-package/OverShell.exe`.
+
+### Interaction and scaling follow-up (2026-10-29)
+
+A single dashboard-card click now opens that terminal through the same path as an
+enlarged preview: pending hover timers stop, the preview closes, the keyboard cursor
+clears, and native terminal input receives focus. Clicking the enlarged hover body
+also opens the terminal. The regression uses WPF's bubbling `MouseDown` route so a
+click inside the preview body actually reaches its containing card.
+
+On-screen opaque-mode verification exposed dim seams between styled background
+rectangles at fractional scales. The drawing group now uses aliased non-text edges,
+while text retains its antialiasing. Pixel regressions at 0.37, 0.77 and 1.25 scales
+failed with the old drawing and pass with continuous, fully colored backgrounds.
+
+The new-tab controls follow the last tab in the horizontal strip; the tab viewport
+is capped to reserve the controls when scrolling is needed. Verification passed
+**521 C# tests**, **34 overflow checks**, **48 composed preview checks**, and
+**47 opaque preview checks**, with zero skips in the final UI runs. Evidence is in
+`artifacts/selftest/ux-tabstrip/`, `ux-final-composed/`, and `ux-final-opaque/`.
+The runnable development output is `artifacts/ux-package/OverShell.exe`.
