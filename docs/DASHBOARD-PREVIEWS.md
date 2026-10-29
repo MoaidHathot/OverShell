@@ -209,6 +209,8 @@ publish output is `artifacts/dashboard-preview-package/OverShell.exe`.
 
 ### Interaction and scaling follow-up (2026-10-29)
 
+Included in **OverShell 0.4.2**.
+
 A single dashboard-card click now opens that terminal through the same path as an
 enlarged preview: pending hover timers stop, the preview closes, the keyboard cursor
 clears, and native terminal input receives focus. Clicking the enlarged hover body

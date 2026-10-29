@@ -35,8 +35,8 @@ binaries with Azure Artifact Signing; the Windows Terminal control binaries arri
 same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
-**0.4.1:** [release highlights and upgrade instructions](docs/RELEASE-0.4.1.md),
-fixing the native Sixel image crash triggered by `dnx MoaidHathot`.
+**0.4.2:** [release highlights and upgrade instructions](docs/RELEASE-0.4.2.md),
+with trailing new-tab controls, single-click dashboard opening, and seamless styled previews.
 
 ## Build & run
 
