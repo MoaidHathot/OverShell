@@ -17,8 +17,10 @@ internal static partial class HerdSelfTest
     private static void PreviewMouse(FrameworkElement element, RoutedEvent routed) => element.RaiseEvent(new MouseEventArgs(
         Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = routed });
 
+    // MouseLeftButtonDown is direct. The underlying MouseDown route lets WPF raise
+    // the button-specific event on the body and its containing dashboard card.
     private static void PreviewClick(FrameworkElement element) => element.RaiseEvent(new MouseButtonEventArgs(
-        Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent });
+        Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = Mouse.MouseDownEvent });
 
     private static async Task CheckEnlargedPreviewsAsync(MainWindow window, IReadOnlyList<TerminalTab> tabs, Action<bool, string> check)
     {

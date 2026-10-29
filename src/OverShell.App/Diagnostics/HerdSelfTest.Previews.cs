@@ -88,12 +88,18 @@ internal static partial class HerdSelfTest
                     var enlarged = window.TerminalPreview!;
                     Point EnlargedCentre() => enlarged.Preview.PointToScreen(new Point(enlarged.Preview.ActualWidth / 2, enlarged.Preview.ActualHeight / 2));
                     changed.SendText(PreviewFillCommand(0, 0, 255));
-                    Check(await TransferUntilAsync(() =>
+                    var enlargedUpdated = await TransferUntilAsync(() =>
                     {
                         var p = EnlargedCentre();
                         var c = ScreenPixel((int)p.X, (int)p.Y);
                         return PreviewOwnsPixel(enlarged, p) && c.B > 220 && c.R < 40 && c.G < 40;
-                    }), "PIXELS: enlarged preview tracks the same source's live rendered pixels");
+                    });
+                    if (!enlargedUpdated)
+                    {
+                        var p = EnlargedCentre();
+                        Log($"  enlarged pixel: owns={PreviewOwnsPixel(enlarged, p)} screen={ScreenPixel((int)p.X, (int)p.Y)} drawing={PreviewVisualPixel(enlarged.Preview)} backend={enlarged.Preview.Backend} demand={enlarged.Preview.HasDemand} visible={enlarged.IsVisible} topmost={enlarged.Topmost}");
+                    }
+                    Check(enlargedUpdated, "PIXELS: enlarged preview tracks the same source's live rendered pixels");
                     changed.SendText("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); [Console]::Write(([string][char]27)+'[0m')\r");
                     changed.SendText(PreviewFixtureCommand(1));
                     await TransferUntilAsync(() => NativeTerminalPreview.Capture(changed.TerminalHwnd)?.Runs.Any(r => r.Text.Contains("中文", StringComparison.Ordinal)) == true);

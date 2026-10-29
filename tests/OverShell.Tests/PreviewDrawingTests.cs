@@ -41,6 +41,37 @@ public class PreviewDrawingTests
         Assert.Equal(24, image.Height);
     }
 
+    [Theory]
+    [InlineData(0.37)]
+    [InlineData(0.77)]
+    [InlineData(1.25)]
+    public async Task Scaled_styled_backgrounds_have_no_seams_between_rows_or_runs(double scale)
+    {
+        var runs = Enumerable.Range(0, 4).SelectMany(row => Enumerable.Range(0, 4)
+            .Select(column => new TerminalPreviewRun(column, row, 1, 0xffffff, 0xff0000, PreviewTextStyle.Normal, " "))).ToArray();
+        var frame = new TerminalPreviewFrame(4, 4, 40, 80, runs);
+        var image = await Task.Run(() => PreviewDrawing.Build(frame, "Consolas", 16, CancellationToken.None));
+        Assert.True(image.IsFrozen);
+        Sta.Run(() =>
+        {
+            var width = (int)Math.Ceiling(frame.PixelWidth * scale);
+            var height = (int)Math.Ceiling(frame.PixelHeight * scale);
+            var visual = new DrawingVisual();
+            using (var context = visual.RenderOpen())
+            {
+                context.DrawRectangle(Brushes.Black, null, new Rect(0, 0, width, height));
+                context.DrawImage(image, new Rect(0, 0, frame.PixelWidth * scale, frame.PixelHeight * scale));
+            }
+            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            var pixels = new byte[width * height * 4];
+            bitmap.CopyPixels(pixels, width * 4, 0);
+            for (var y = 1; y < height - 1; y++)
+                for (var x = 1; x < width - 1; x++)
+                    Assert.Equal(new byte[] { 255, 0, 0, 255 }, pixels.AsSpan((y * width + x) * 4, 4).ToArray());
+        });
+    }
+
     [Fact]
     public void Abandoned_drawings_are_cancellable()
     {
