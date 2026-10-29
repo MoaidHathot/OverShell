@@ -283,7 +283,8 @@ if (Test-Path -LiteralPath $crashLog) {
     Get-Content -LiteralPath $crashLog | Select-Object -First 20 | ForEach-Object { Write-Output ('  ' + (Ascii $_)) }
 }
 if ($End -ne 'leave') {
-    $leftovers = @(Get-CimInstance Win32_Process -Filter "name='OverShell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CreationDate -gt $started })
+    # Other isolated self-tests may run concurrently; their creation time does not make them ours.
+    $leftovers = @(Get-CimInstance Win32_Process -Filter "name='OverShell.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.CreationDate -gt $started -and ($_.ProcessId -eq $childPid -or $_.ParentProcessId -eq $childPid) })
     if ($leftovers.Count -gt 0) { Write-Output "  WARN: $($leftovers.Count) OverShell process(es) started by this run still alive: $($leftovers.ProcessId -join ', ')" }
 }
 

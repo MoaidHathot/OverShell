@@ -176,6 +176,10 @@ internal static partial class HerdSelfTest
             closingHome.Close();
             Check(!second.Floating && !second.Detached && Window.GetWindow(second.View) == window && second.IsRunning, "closing a borrowed tab's home returns the surface safely to the main host");
             window.ActiveTab = first;
+            window.Presentations.ShowFloating(second.Id);
+            window.Commands.TryExecute("tab.next");
+            Check(window.ActiveTab == third && !second.Floating, "relative tab navigation starts from the focused floating tab");
+            window.ActiveTab = first;
             window.Presentations.ShowFloating(third.Id);
             window.Commands.TryExecute("tab.close");
             Check(!window.Tabs.Contains(third) && window.Tabs.Contains(first) && window.FloatingWindows.Count == 0, "Close tab terminates the focused floating tab, not the underlying work");

@@ -228,6 +228,8 @@ public partial class MainWindow
         }
 
         Add("Set alias…", HintFor("tab.alias"), () => ExecuteForTab("tab.alias", tab));
+        if (tab.IsScratch || tab.Lifetime != Core.Tabs.TabLifetime.Standard)
+            Add("Keep this tab", HintFor("tab.keep"), () => ExecuteForTab("tab.keep", tab));
         Add(tab.Floating ? "Hide floating terminal" : "Show floating", HintFor(tab.Floating ? "tab.float.hide" : "tab.float.show"),
             () => ShowPresentationResult(tab.Floating ? Presentations.HideFloating(tab.Id) : Presentations.ShowFloating(tab.Id)));
         if (tab.Floating) Add("Open in regular view", HintFor("tab.present.normal"), () => Presentations.ShowNormally(tab.Id));

@@ -7,7 +7,7 @@ public sealed record PresentationChange(string TabId, string Mode);
 public interface ITabPresentations
 {
     IReadOnlyList<FloatingPresentation> Floating { get; }
-    TabActionResult ShowFloating(string tabId, string? ownerTabId = null, NavigationPoint? returnTo = null);
+    TabActionResult ShowFloating(string tabId, string? ownerTabId = null, NavigationPoint? returnTo = null, bool activate = true);
     TabActionResult ToggleFloating(string tabId);
     TabActionResult HideFloating(string tabId, bool returnFocus = true);
     TabActionResult ShowNormally(string tabId);

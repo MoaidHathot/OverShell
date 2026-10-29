@@ -113,6 +113,8 @@ public interface IShell
 
     void Close(ITab tab);
 
+    TabActionResult SetLifetime(string tabId, TabLifetime lifetime);
+
     /// <summary>The agents trace (<c>OVERSHELL_TRACE_AGENTS=1</c>).</summary>
     void Trace(string message);
 
@@ -170,6 +172,10 @@ public interface ITab : INotifyPropertyChanged
     bool Floating => false;
 
     bool IsRunning { get; }
+
+    TabLifetime Lifetime => TabLifetime.Standard;
+    bool IsOneShot => false;
+    int? ExitCode => null;
 
     bool IsActive { get; }
 
@@ -296,7 +302,14 @@ public sealed record TabRequest(
     string? Group = null,
     string? Command = null,
     bool Activate = true,
-    string? Prompt = null);
+    string? Prompt = null,
+    string? Alias = null,
+    bool Floating = false,
+    bool Scratch = false,
+    ProcessLaunch? Process = null,
+    TabExitBehavior? OnExit = null,
+    bool? Restore = null,
+    bool? History = null);
 
 /// <summary>A row in a picker.</summary>
 public sealed record PickItem(

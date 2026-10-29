@@ -77,7 +77,11 @@ internal static partial class HerdSelfTest
             Check(saved?.Tabs.All(t => t.Extra is null || t.Extra.Keys.All(k => !k.Contains("alias", StringComparison.OrdinalIgnoreCase))) == true,
                 "runtime aliases and shortcuts are excluded from serialized extension state");
             var oldId = second.Id;
+            var closingWait = control.WaitAsync("alias:compiler", [AgentState.Idle], TimeSpan.FromSeconds(3), CancellationToken.None);
+            await Task.Delay(80);
             window.CloseTab(second);
+            var closedResult = await closingWait;
+            Check(closedResult["closed"]?.GetValue<bool>() == true && closedResult["id"]?.GetValue<string>() == oldId, "a wait reports its resolved runtime ID when the target closes");
             Check(window.Shell.Keys.Runtime.Count == 0 && window.Addresses.Resolve(new TabSelector(Alias: "compiler")).TabId is null, "closing a tab releases its alias and all local/global bindings");
             Check(window.DispatchChord(Key.F10, ModifierKeys.Control | ModifierKeys.Alt) && window.ActiveTab == first, "a missing configured alias is handled without leaking its chord to the terminal");
             window.Commands.TryExecute("tab.reopenClosed");

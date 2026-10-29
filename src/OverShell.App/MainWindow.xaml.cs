@@ -94,6 +94,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeNavigation();
         InitializeQuickAccess();
         InitializeFloating();
+        InitializeTabCreation();
         InitializeWorkspaces();
         InitializeSession();
         InitializeExtensions();
@@ -207,10 +208,15 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     // ------------------------------------------------------------ tab model
 
-    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null, string? namingId = null, string? userLabel = null, ColorScheme? scheme = null)
+    internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null, string? namingId = null, string? userLabel = null, ColorScheme? scheme = null,
+        Core.Tabs.TabLifetime? lifetime = null, bool oneShot = false, Action<TerminalTab>? initialize = null)
     {
         if (Tabs.Any(t => string.Equals(t.NamingId, namingId, StringComparison.OrdinalIgnoreCase))) namingId = null;
-        var tab = new TerminalTab(profile, scheme ?? _catalog.SchemeFor(profile), Dispatcher, _agents, userLabel, preamble, namingId);
+        var tab = new TerminalTab(profile, scheme ?? _catalog.SchemeFor(profile), Dispatcher, _agents, userLabel, preamble, namingId, lifetime, oneShot);
+        tab.Exited += (_, _) =>
+        {
+            if (Tabs.Contains(tab) && tab.Lifetime.ShouldClose(tab.ExitCode)) CloseTab(tab);
+        };
         tab.LabelInputsChanged += _ => RefreshTabLabels();
 
         // Extension state restored with the tab, before any extension hears of it.
@@ -245,6 +251,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Tabs.Add(tab);
         RefreshTabLabels();
         _tabsById[tab.Id] = tab;
+        initialize?.Invoke(tab);
         TerminalHost.Children.Add(tab.View);
         // The surface was created at the configured opacity; the window it lands in may be inactive.
         tab.Surface.BackgroundOpacity = TerminalFactory.BodyOpacityFor(IsActive);
@@ -326,14 +333,14 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void ActivateRelative(int delta)
     {
-        if (ActiveTab is null || Tabs.Count < 2)
+        if (TargetTab is not { } current || Tabs.Count < 2)
         {
             return;
         }
 
         // The order the strip shows, so "next" is the tab to the right of this one.
         var order = DisplayOrder;
-        var index = (order.IndexOf(ActiveTab) + delta + order.Count) % order.Count;
+        var index = (order.IndexOf(current) + delta + order.Count) % order.Count;
         ActiveTab = order[index];
     }
 

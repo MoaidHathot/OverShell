@@ -127,13 +127,12 @@ public partial class MainWindow
         public IReadOnlyList<FloatingPresentation> Floating => window._floats.Select(e =>
             new FloatingPresentation(e.Id, e.Window.Tab.Id, (e.Window.Owner as TearOffWindow)?.Tab.Id, ReferenceEquals(window.ActiveTerminalWindow(), e.Window))).ToArray();
 
-        public TabActionResult ShowFloating(string tabId, string? ownerTabId = null, NavigationPoint? returnTo = null)
+        public TabActionResult ShowFloating(string tabId, string? ownerTabId = null, NavigationPoint? returnTo = null, bool activate = true)
         {
             if (!window._tabsById.TryGetValue(tabId, out var tab)) return TabActionResult.Fail("The tab has closed");
             if (window._floats.FirstOrDefault(e => e.Window.Tab == tab) is { } existing)
             {
-                existing.Window.Activate();
-                tab.Surface.Focus();
+                if (activate) { existing.Window.Activate(); tab.Surface.Focus(); }
                 return TabActionResult.Ok;
             }
             Window owner = window.CommandOwner();
@@ -146,7 +145,7 @@ public partial class MainWindow
             // An explicit target is the tab to borrow, not the window that invoked the action.
             if (ownerTabId is null) owner = window.ActiveTerminalWindow() ?? window;
             if (owner is TearOffWindow { IsFloating: true } activeFloat) owner = activeFloat.Owner;
-            if (owner.WindowState == WindowState.Minimized) owner.WindowState = WindowState.Normal;
+            if (activate && owner.WindowState == WindowState.Minimized) owner.WindowState = WindowState.Normal;
             var previous = window._floats.FirstOrDefault(e => ReferenceEquals(e.Window.Owner, owner));
             var origin = previous?.Origin ?? returnTo ?? window.Navigation.Capture();
             if (previous is not null) window.ReleaseFloat(previous.Window.Tab, returnFocus: false);
@@ -157,6 +156,7 @@ public partial class MainWindow
             if (!window._floatingPrompts.TryGetValue(tab.Id, out var prompt))
                 window._floatingPrompts[tab.Id] = prompt = new PromptBar { Visibility = Visibility.Collapsed };
             var host = new TearOffWindow(owner, tab, floating: true, window.Search, prompt);
+            host.ShowActivated = activate;
             window.ConfigureTerminalWindow(host);
             var entry = new FloatEntry(host, home, homeWindow, origin);
             entry.Closing = _ => window.ReleaseFloat(tab, returnFocus: true, closeWindow: false);
@@ -189,9 +189,12 @@ public partial class MainWindow
                 window._shortcuts.AddWindow(host);
                 host.Show();
                 FloatingPlacement.Apply(host, owner, window._settings.Floating);
-                host.Activate();
-                _ = SetForegroundWindow(new WindowInteropHelper(host).Handle);
-                if (prompt.Visibility == Visibility.Visible) prompt.FocusInput(); else tab.Surface.Focus();
+                if (activate)
+                {
+                    host.Activate();
+                    _ = SetForegroundWindow(new WindowInteropHelper(host).Handle);
+                    if (prompt.Visibility == Visibility.Visible) prompt.FocusInput(); else tab.Surface.Focus();
+                }
             }
             catch (InvalidOperationException error)
             {

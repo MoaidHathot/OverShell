@@ -38,6 +38,7 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
     public Core.Tabs.INavigationService Navigation => _window.Navigation;
     public Core.Tabs.ITabAddressing Addresses => _window.Addresses;
     public Core.Tabs.ITabPresentations Presentations => _window.Presentations;
+    public Core.Tabs.TabActionResult SetLifetime(string tabId, Core.Tabs.TabLifetime lifetime) => _window.SetTabLifetime(tabId, lifetime);
     public ITab? FocusedTab => _window.FocusedTerminalTab;
     public event Action<ITab?>? FocusedTabChanged;
     internal void RaiseFocusedTabChanged(ITab? tab) => FocusedTabChanged?.Invoke(tab);

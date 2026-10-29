@@ -231,7 +231,7 @@ public sealed class IntegrationEndpoint : IDisposable
         var controlRoute = path == "/v1/navigation/return" || onTabs && (
             (request.HttpMethod == "POST" && segments.Length == 2) ||
             (request.HttpMethod is "GET" or "DELETE" && segments.Length == 3) ||
-            (segments.Length == 4 && leaf is "screen" or "wait" or "input" or "reply" or "alias" or "presentation" or "shortcut"));
+            (segments.Length == 4 && leaf is "screen" or "wait" or "input" or "reply" or "alias" or "presentation" or "shortcut" or "lifetime"));
         if (controlRoute)
         {
             if (Control is not { } control)
@@ -365,10 +365,12 @@ public sealed class IntegrationEndpoint : IDisposable
             return await WriteAsync(response, 405, new JsonObject { ["error"] = "method not allowed" }).ConfigureAwait(false);
         }
 
-        if (request.HttpMethod == "POST" && leaf is "input" or "reply" or "alias" or "presentation" or "shortcut")
+        if (request.HttpMethod == "POST" && leaf is "input" or "reply" or "alias" or "presentation" or "shortcut" or "lifetime")
         {
             var body = await ReadBodyAsync(request).ConfigureAwait(false);
             var node = (body is null ? null : Jsonc.Parse(body, out _)) as JsonObject;
+            if (leaf == "lifetime")
+                return await WriteResultAsync(response, await control.LifetimeAsync(tabKey, node ?? new JsonObject()).ConfigureAwait(false)).ConfigureAwait(false);
             if (leaf == "presentation")
                 return await WriteResultAsync(response, await control.PresentAsync(tabKey, ShellControl.Str(node, "mode") ?? "").ConfigureAwait(false)).ConfigureAwait(false);
             if (leaf == "shortcut")

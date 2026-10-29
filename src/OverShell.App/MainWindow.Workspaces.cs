@@ -172,14 +172,14 @@ public partial class MainWindow
         {
             Name = name,
             View = _viewId,
-            Tabs = Tabs.Where(t => t.IsRunning || !t.HasStarted).Select(t => new WorkspaceTab
+            Tabs = Tabs.Where(t => t.Lifetime.Restore && (t.IsRunning || !t.HasStarted || t.IsOneShot)).Select(t => new WorkspaceTab
             {
                 Profile = _catalog.ResolveProfile(t.Profile.Name, out _)?.Id == t.Profile.Id ? t.Profile.Name : t.Profile.Id,
                 Cwd = t.WorkingDirectory,
                 Label = t.UserLabel,
                 Group = t.Group,
                 // A running agent is started again by its program name; a plain shell gets no command.
-                Command = t.IsAgent && t.Harness is { } harness ? _agents.Rules.Find(harness)?.Detect.Process.FirstOrDefault() ?? harness : null,
+                Command = !t.IsOneShot && t.IsAgent && t.Harness is { } harness ? _agents.Rules.Find(harness)?.Detect.Process.FirstOrDefault() ?? harness : null,
                 Detached = t.Detached,
             }).ToList(),
         };

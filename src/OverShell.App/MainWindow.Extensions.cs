@@ -118,9 +118,9 @@ public partial class MainWindow
     /// <summary>Opens a tab the way an extension asks for one: profile by name, directory, label, group, a command typed at the prompt.</summary>
     internal TerminalTab? OpenTabFor(TabRequest request) => OpenTabFor(request, out _);
 
-    internal TerminalTab? OpenTabFor(TabRequest request, out string? error)
+    internal TerminalTab? OpenTabFor(TabRequest request, out string? error, Core.Tabs.NavigationPoint? returnTo = null)
     {
-        var profile = _catalog.ResolveProfile(request.Profile, out error);
+        var profile = _catalog.ResolveProfile(request.Profile ?? (request.Scratch ? _settings.Scratch.Profile : null), out error);
         if (profile is null)
         {
             error ??= "No launchable profile";
@@ -129,7 +129,21 @@ public partial class MainWindow
             return null;
         }
 
-        if (request.WorkingDirectory is { } cwd)
+        var aliasError = Core.Tabs.TabAddressing.Validate(request.Alias);
+        if (aliasError is not null || !string.IsNullOrWhiteSpace(request.Alias) && _addresses.Resolve(new Core.Tabs.TabSelector(Alias: request.Alias.Trim())).TabId is not null)
+        {
+            error = aliasError ?? $"Alias '{request.Alias}' already belongs to an open tab";
+            ShowStatusMessage(error);
+            return null;
+        }
+        if (request.Process is { } process && (process.Validate() is not null || !string.IsNullOrWhiteSpace(request.Command)))
+        {
+            error = process.Validate() ?? "Specify either a process or a typed shell command";
+            ShowStatusMessage(error);
+            return null;
+        }
+        var startingDirectory = request.WorkingDirectory ?? (request.Scratch && _settings.Scratch.InheritDirectory ? TargetTab?.WorkingDirectory : null);
+        if (startingDirectory is { } cwd)
         {
             cwd = Environment.ExpandEnvironmentVariables(cwd);
             if (Directory.Exists(cwd))
@@ -138,32 +152,44 @@ public partial class MainWindow
             }
             else
             {
-                _trace.Write($"open tab: directory '{cwd}' is not there; the profile's own is used");
+                error = $"Directory '{cwd}' does not exist";
+                ShowStatusMessage(error);
+                return null;
             }
         }
-
-        var tab = AddTab(profile, request.Activate);
-        if (!string.IsNullOrWhiteSpace(request.Label))
+        if (request.Process is { } raw)
         {
-            tab.UserLabel = request.Label;
+            profile = profile with { CommandLine = (raw with { Executable = Environment.ExpandEnvironmentVariables(raw.Executable) }).CommandLine };
         }
-
-        if (!string.IsNullOrWhiteSpace(request.Group))
+        var lifetime = new Core.Tabs.TabLifetime(request.Scratch,
+            request.Restore ?? (!request.Scratch || _settings.Scratch.Restore), request.History ?? (!request.Scratch || _settings.Scratch.History),
+            request.OnExit ?? (request.Scratch ? _settings.Scratch.EffectiveExit : Core.Tabs.TabExitBehavior.Keep));
+        if (!Enum.IsDefined(lifetime.OnExit))
         {
-            tab.Group = request.Group;
+            error = "Unknown exit policy";
+            return null;
         }
-
-        if (!string.IsNullOrWhiteSpace(request.Command))
+        var origin = returnTo ?? Navigation.Capture();
+        var tab = AddTab(profile, request.Activate && !request.Floating, userLabel: request.Label, lifetime: lifetime, oneShot: request.Process is not null, initialize: created =>
         {
-            tab.ScheduleResume(request.Command.Trim());
-        }
-
-        if (!string.IsNullOrWhiteSpace(request.Prompt))
+            if (!string.IsNullOrWhiteSpace(request.Group)) created.Group = request.Group;
+            if (!string.IsNullOrWhiteSpace(request.Alias)) _addresses.Assign(created.Id, request.Alias);
+            if (!string.IsNullOrWhiteSpace(request.Command)) created.ScheduleResume(request.Command.Trim());
+            if (!string.IsNullOrWhiteSpace(request.Prompt)) created.ScheduleFirstPrompt(request.Prompt.Trim());
+        });
+        if (request.Floating)
         {
-            tab.ScheduleFirstPrompt(request.Prompt.Trim());
+            var shown = Presentations.ShowFloating(tab.Id, returnTo: origin, activate: request.Activate);
+            if (!shown.Success)
+            {
+                error = shown.Error;
+                // Failed creation must not leave an orphaned process or a misleading history entry.
+                tab.SetLifetime(lifetime with { History = false });
+                CloseTab(tab);
+                return null;
+            }
         }
-
-        if (request.Activate) PresentNewTab(tab);
+        else if (request.Activate) PresentNewTab(tab);
         return tab;
     }
 

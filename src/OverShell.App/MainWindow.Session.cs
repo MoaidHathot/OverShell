@@ -339,7 +339,7 @@ public partial class MainWindow
             profile = profile with { CommandLine = plan.Command };
         }
 
-        var tab = AddTab(profile, activate, PreambleFor(savedTab), savedTab.Extra, savedTab.NamingId ?? savedTab.Id, savedTab.Label);
+        var tab = AddTab(profile, activate, PreambleFor(savedTab), savedTab.Extra, savedTab.NamingId ?? savedTab.Id, savedTab.Label, lifetime: savedTab.Lifetime);
 
         tab.Group = savedTab.Group;
         tab.SeedResume(savedTab.SessionId, savedTab.ResumeCommand ?? (plan.Mode == ResumeMode.Typed ? plan.Command : null), savedTab.SessionTitle);
@@ -381,13 +381,14 @@ public partial class MainWindow
         Project = t.Project,
         Group = t.Group,
         Harness = t.Harness,
-        AgentRunning = t.IsAgent && t.State is not (Core.Agents.AgentState.Exited or Core.Agents.AgentState.Unknown),
+        AgentRunning = !t.IsOneShot && t.IsAgent && t.State is not (Core.Agents.AgentState.Exited or Core.Agents.AgentState.Unknown),
         SessionId = t.Agent.SessionId,
         ResumeCommand = t.ResumeCommand,
         Detached = t.Detached,
         Window = t.Detached ? CaptureWindow(_tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, t)), WindowState.Normal) : null,
         ClosedAt = closedAt,
         Extra = t.Properties.Count > 0 ? new Dictionary<string, string>(t.Properties, StringComparer.OrdinalIgnoreCase) : null,
+        Lifetime = t.Lifetime == Core.Tabs.TabLifetime.Standard ? null : t.Lifetime,
     };
 
     /// <summary>A window's placement in DIPs, or null before it has been laid out.</summary>
@@ -410,18 +411,29 @@ public partial class MainWindow
         return new SavedWindow { Left = bounds.X, Top = bounds.Y, Width = bounds.Width, Height = bounds.Height, Maximized = maximized };
     }
 
-    private SessionSnapshot BuildSessionSnapshot(SessionCloseReason? reason) => new()
+    private SessionSnapshot BuildSessionSnapshot(SessionCloseReason? reason)
     {
-        SavedAt = DateTimeOffset.Now,
-        StartedAt = _startedAt,
-        CloseReason = reason,
-        View = _viewId,
-        ActiveIndex = Math.Max(0, Tabs.IndexOf(FocusedTab() ?? ActiveTab!)),
-        Window = CaptureWindow(this, _lastVisibleState),
-        Tabs = Tabs.Where(t => t.IsRunning || !t.HasStarted).Select(t => CaptureTab(t)).ToList(),
-        LayoutOverrides = new Dictionary<string, string>(_layoutOverrides, StringComparer.OrdinalIgnoreCase),
-        RecentlyClosed = _recentlyClosed.TakeLast(SessionSnapshot.RecentlyClosedLimit).ToList(),
-    };
+        var retained = Tabs.Where(t => t.Lifetime.Restore && (t.IsRunning || !t.HasStarted || t.IsOneShot)).ToList();
+        var selected = FocusedTab() ?? ActiveTab;
+        var index = selected is null ? -1 : retained.IndexOf(selected);
+        if (index < 0)
+        {
+            var fallback = _navigationHistory.Last(null, id => retained.Any(t => t.Id == id));
+            index = retained.FindIndex(t => t.Id == fallback);
+        }
+        return new SessionSnapshot
+        {
+            SavedAt = DateTimeOffset.Now,
+            StartedAt = _startedAt,
+            CloseReason = reason,
+            View = _viewId,
+            ActiveIndex = Math.Max(0, index),
+            Window = CaptureWindow(this, _lastVisibleState),
+            Tabs = retained.Select(t => CaptureTab(t)).ToList(),
+            LayoutOverrides = new Dictionary<string, string>(_layoutOverrides, StringComparer.OrdinalIgnoreCase),
+            RecentlyClosed = _recentlyClosed.TakeLast(SessionSnapshot.RecentlyClosedLimit).ToList(),
+        };
+    }
 
     /// <summary>
     /// The tab the user was last looking at: the tear-off's tab when a tear-off was the
@@ -507,7 +519,7 @@ public partial class MainWindow
             foreach (var tab in Tabs.ToArray())
             {
                 var version = tab.OutputVersion;
-                if (!tab.IsRunning || (_screens.TryGetValue(tab.Id, out var known) && known.Version == version))
+                if (!tab.Lifetime.Restore || (!tab.IsRunning && !tab.IsOneShot) || (_screens.TryGetValue(tab.Id, out var known) && known.Version == version))
                 {
                     continue;
                 }
@@ -527,7 +539,7 @@ public partial class MainWindow
                 changed = true;
             }
 
-            foreach (var gone in _screens.Keys.Where(id => !_tabsById.ContainsKey(id)).ToArray())
+            foreach (var gone in _screens.Keys.Where(id => !_tabsById.TryGetValue(id, out var tab) || !tab.Lifetime.Restore).ToArray())
             {
                 _screens.Remove(gone);
                 changed = true;
@@ -643,7 +655,7 @@ public partial class MainWindow
     {
         // A shell that already exited has nothing to bring back but its directory - still
         // worth a line; a tab that never started (bad command line) has not even that.
-        if (!tab.HasStarted)
+        if (!tab.HasStarted || !tab.Lifetime.History)
         {
             return;
         }

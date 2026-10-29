@@ -112,6 +112,15 @@ public static class SettingsCatalog
 
     public static IReadOnlyList<SettingKnob> Knobs { get; } =
     [
+        new("scratch.profile", "Scratch terminal profile", "Profile name or ID; empty follows OverShell's default. Applies to new scratch tabs.", SettingKind.Text,
+            [new("null", "default profile")]) { Validate = JsoncEdit.ToJson },
+        new("scratch.inheritDirectory", "Scratch inherits directory", "Start scratch terminals in the invoking tab's working directory.", SettingKind.Toggle, [On, Off]),
+        new("scratch.restore", "Restore scratch terminals", "Include new scratch tabs in session restoration; runtime aliases and shortcuts still expire.", SettingKind.Toggle, [On, Off]),
+        new("scratch.history", "Remember closed scratch terminals", "Include new scratch tabs in closed-tab history. Off by default.", SettingKind.Toggle, [On, Off]),
+        new("scratch.onExit", "Scratch process exit behavior", "Keep output, close only on success, or close on every root-process exit. Applies to new tabs.", SettingKind.Choice,
+            [new("\"keep\"", "keep output"), new("\"closeOnSuccess\"", "close on success"), new("\"closeAlways\"", "always close")]),
+        new("scratch.commandShell", "Scratch command shell", "Executable for the one-shot command picker; scratch.commandArguments configures its prefix arguments.", SettingKind.Text,
+            [new("\"powershell.exe\"", "Windows PowerShell"), new("\"pwsh.exe\"", "PowerShell Core")]) { Validate = JsoncEdit.ToJson },
         new("floating.widthRatio", "Floating terminal width", "Fraction of the owning window's width, clamped to its monitor. Applies live.", SettingKind.Number,
             [new("0.6", "60%"), new("0.8", "80%"), new("0.95", "95%")]) { Min = 0.25, Max = 1 },
         new("floating.heightRatio", "Floating terminal height", "Fraction of the owning window's height, clamped to its monitor. Applies live.", SettingKind.Number,

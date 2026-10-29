@@ -66,6 +66,8 @@ public sealed class SavedTab
 
     /// <summary>Extension state the tab carried (<c>ITab.Properties</c>, §12.16): a mute, a watch pattern. Null when empty.</summary>
     public Dictionary<string, string>? Extra { get; init; }
+
+    public Tabs.TabLifetime? Lifetime { get; init; }
 }
 
 /// <summary>How the run that wrote the file ended. Absent while running — and so, when read at the next start, absent means it never ended properly.</summary>

@@ -59,6 +59,8 @@ public sealed class HerdModeExtension : IExtension
             new Keybinding($"{leader} shift+u", "tab.shortcut.assign"),
             new Keybinding($"{leader} o", "tab.float.toggle"),
             new Keybinding($"{leader} shift+o", "tab.float.attention"),
+            new Keybinding($"{leader} shift+t", "tab.scratch.new"),
+            new Keybinding($"{leader} shift+f", "tab.newFloating"),
             new Keybinding($"{leader} g", "tab.moveToGroup"),
             new Keybinding($"{leader} e", "tab.explain"),
             new Keybinding($"{leader} p", "prompt.toggle"),

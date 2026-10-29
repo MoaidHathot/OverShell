@@ -93,6 +93,12 @@ public sealed class ShellControl
         ["isFocused"] = t.IsFocused,
         ["floating"] = t.Floating,
         ["detached"] = t.Detached,
+        ["scratch"] = t.Lifetime.Scratch,
+        ["restore"] = t.Lifetime.Restore,
+        ["history"] = t.Lifetime.History,
+        ["onExit"] = t.Lifetime.OnExit.ToString(),
+        ["isOneShot"] = t.IsOneShot,
+        ["exitCode"] = t.ExitCode,
         ["explain"] = t.Explain,
         ["summary"] = t.Summary,
         ["sessionId"] = t.SessionId,
@@ -234,6 +240,8 @@ public sealed class ShellControl
     /// </summary>
     public Task<(JsonObject? Tab, ControlResult Result)> OpenAsync(JsonObject body) => OnUiAsync(() =>
     {
+        var request = Tabs.TabRequestParser.Parse(body, out var parseError);
+        if (request is null) return ((JsonObject?)null, ControlResult.BadRequest(parseError!));
         var command = Str(body, "command");
         if (Str(body, "harness") is { Length: > 0 } harness)
         {
@@ -251,14 +259,7 @@ public sealed class ShellControl
             command = string.IsNullOrWhiteSpace(command) ? rules.Launch : $"{rules.Launch} {command}";
         }
 
-        var request = new TabRequest(
-            Profile: Str(body, "profile"),
-            WorkingDirectory: Str(body, "cwd"),
-            Label: Str(body, "label"),
-            Group: Str(body, "group"),
-            Command: command,
-            Activate: Bool(body, "activate") ?? false,
-            Prompt: Str(body, "prompt"));
+        request = request with { Command = command };
         var tab = _shell.OpenTab(request, out var error);
         if (tab is null)
         {
@@ -298,7 +299,7 @@ public sealed class ShellControl
 
             if (!found)
             {
-                return new JsonObject { ["id"] = id ?? key, ["state"] = "Closed", ["closed"] = true, ["timedOut"] = false, ["waitedMs"] = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds };
+                return new JsonObject { ["id"] = id ?? resolvedId ?? key, ["state"] = "Closed", ["closed"] = true, ["timedOut"] = false, ["waitedMs"] = (long)(DateTimeOffset.UtcNow - started).TotalMilliseconds };
             }
 
             if (wanted.Contains(state))
@@ -364,6 +365,22 @@ public sealed class ShellControl
 
     public Task<ControlResult> ReturnAsync() => OnUiAsync(() =>
         _shell.Navigation.Return() ? ControlResult.Ok : ControlResult.Refused("No return location"));
+
+    public Task<ControlResult> LifetimeAsync(string key, JsonObject body) => OnUiAsync(() =>
+    {
+        if (Resolve(_shell, key) is not { } tab) return ControlResult.NotFound(key);
+        var parsed = Tabs.TabRequestParser.Parse(body, out var error);
+        if (parsed is null) return ControlResult.BadRequest(error!);
+        var lifetime = tab.Lifetime with
+        {
+            Scratch = Bool(body, "scratch") ?? tab.Lifetime.Scratch,
+            Restore = parsed.Restore ?? tab.Lifetime.Restore,
+            History = parsed.History ?? tab.Lifetime.History,
+            OnExit = parsed.OnExit ?? tab.Lifetime.OnExit,
+        };
+        var result = _shell.SetLifetime(tab.Id, lifetime);
+        return result.Success ? ControlResult.Ok : ControlResult.Refused(result.Error!);
+    });
 
     public Task<(JsonObject? Binding, ControlResult Result)> ShortcutAsync(string key, JsonObject body) => OnUiAsync(() =>
     {

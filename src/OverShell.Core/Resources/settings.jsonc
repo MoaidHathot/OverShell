@@ -107,6 +107,19 @@
     "hideOnFocusLoss": false
   },
 
+  "scratch": {
+    "profile": null,
+    "inheritDirectory": true,
+    "restore": false,
+    "history": false,
+    // keep | closeOnSuccess | closeAlways. Applies to real root-process exit.
+    "onExit": "keep",
+    // The Run command picker appends your command as one argument to this invocation.
+    // A parameterized process request can launch any executable with exact arguments.
+    "commandShell": "powershell.exe",
+    "commandArguments": ["-NoLogo", "-NoProfile", "-Command"]
+  },
+
   // Key sequences (ctrl+shift+k j): how long the next chord may take, and whether a hint bar
   // lists the possible continuations while a sequence is pending.
   "keys": {

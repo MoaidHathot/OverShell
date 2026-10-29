@@ -44,8 +44,10 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     private bool _disposed;
     private DispatcherTimer? _revealTimeout;
 
-    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null, string? preamble = null, string? namingId = null)
+    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null, string? preamble = null, string? namingId = null, Core.Tabs.TabLifetime? lifetime = null, bool oneShot = false)
     {
+        Lifetime = lifetime ?? Core.Tabs.TabLifetime.Standard;
+        IsOneShot = oneShot;
         Profile = profile;
         Scheme = scheme;
         _dispatcher = dispatcher;
@@ -61,11 +63,11 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         // Seed the directory so the status bar is useful before the shell emits OSC 7/9;9.
         _workingDirectory = startingDirectory;
 
-        var commandLine = Expand(profile.CommandLine) ?? "powershell.exe";
+        var commandLine = (oneShot ? profile.CommandLine : Expand(profile.CommandLine)) ?? "powershell.exe";
 
         // A plain PowerShell launch takes the shell integration along (12.15); the detector
         // keeps looking at the profile's own command line, not at what was added to it.
-        ShellIntegration = agents.Detection.InjectShellIntegration
+        ShellIntegration = oneShot ? new ShellLaunchPlan(commandLine, false, "explicit process launch") : agents.Detection.InjectShellIntegration
             ? InjectedScript.Value is { } script
                 ? ShellLaunch.Inject(commandLine, script)
                 : new ShellLaunchPlan(commandLine, false, "the integration script could not be written")
@@ -202,6 +204,20 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     /// must check <see cref="HasStarted"/> before treating this as "the shell died".
     /// </summary>
     public bool IsRunning => Session.IsRunning;
+
+    public int? ExitCode => Session.ExitCode;
+    public bool IsOneShot { get; }
+    public Core.Tabs.TabLifetime Lifetime { get; private set; }
+    public bool IsScratch => Lifetime.Scratch;
+
+    internal void SetLifetime(Core.Tabs.TabLifetime lifetime)
+    {
+        Lifetime = lifetime;
+        Raise(nameof(Lifetime));
+        Raise(nameof(IsScratch));
+        Raise(nameof(DisplayLabel));
+        Raise(nameof(Tooltip));
+    }
 
     private bool _isCursor;
 
@@ -546,6 +562,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         Agent.OnExit(Session.ExitCode, DateTimeOffset.Now);
 
         Raise(nameof(IsRunning));
+        Raise(nameof(ExitCode));
         Raise(nameof(Title));
         RaiseAgentProperties();
         Exited?.Invoke(this, EventArgs.Empty);

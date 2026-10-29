@@ -354,6 +354,16 @@ public sealed class McpServer
                 ["profile"] = Prop("string", "Shell profile name (default: the default profile)."),
                 ["group"] = Prop("string", "Tab group."),
                 ["activate"] = Prop("boolean", "Bring the new tab to the front (default false - the user's view is not stolen)."),
+                ["alias"] = Prop("string", "Unique runtime alias; expires when the tab closes."),
+                ["presentation"] = Prop("string", "tab or floating. activate:false shows a float without taking focus."),
+                ["scratch"] = Prop("boolean", "Temporary tab using scratch retention/profile defaults."),
+                ["restore"] = Prop("boolean", "Include this tab in session restoration."),
+                ["history"] = Prop("boolean", "Include this tab in closed-tab history."),
+                ["onExit"] = Prop("string", "keep, closeOnSuccess or closeAlways; follows root-process exit."),
+                ["process"] = new JsonObject { ["type"] = "object", ["description"] = "A real one-shot process, instead of command/harness.",
+                    ["properties"] = new JsonObject { ["executable"] = Prop("string", "Executable name or path."),
+                        ["arguments"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } } },
+                    ["required"] = new JsonArray("executable") },
             }),
         Tool("overshell_wait", "Block until a tab reaches one of the given states, closes, or the timeout passes (max 120 s; call again for longer). Default states: Idle, Done, Blocked, Error, Exited - i.e. the agent stopped for some reason.",
             new JsonObject
@@ -373,6 +383,8 @@ public sealed class McpServer
                 ["action"] = Prop("string", "tab.activate or tab.float.toggle (also show/hide)."), ["global"] = Prop("boolean", "System-wide single chord (default false)."),
                 ["remove"] = Prop("boolean", "Remove this tab's runtime shortcuts instead of assigning.") }, "tab"),
         Tool("overshell_return", "Return from the current float or attention chain to the original work and view.", new JsonObject()),
+        Tool("overshell_keep", "Keep a scratch tab as an ordinary restorable tab, enable history and retain its output on exit. One-shot commands are not replayed on restoration.",
+            new JsonObject { ["tab"] = Prop("string", "Tab ID, alias:name or unique label.") }, "tab"),
     ];
 
     private async Task<JsonObject> CallToolAsync(string name, JsonObject arguments, CancellationToken cancellation)
@@ -395,6 +407,13 @@ public sealed class McpServer
                 case "overshell_return":
                 {
                     var (status, body) = await _http("POST", "/v1/navigation/return", new JsonObject(), cancellation).ConfigureAwait(false);
+                    return status == 200 ? Text(Pretty(body)) : Failure(status, body);
+                }
+                case "overshell_keep":
+                {
+                    var tab = Require(arguments, "tab");
+                    var payload = new JsonObject { ["scratch"] = false, ["restore"] = true, ["history"] = true, ["onExit"] = "keep" };
+                    var (status, body) = await _http("POST", $"/v1/tabs/{Uri.EscapeDataString(tab)}/lifetime", payload, cancellation).ConfigureAwait(false);
                     return status == 200 ? Text(Pretty(body)) : Failure(status, body);
                 }
                 case "overshell_list_tabs":
@@ -451,7 +470,7 @@ public sealed class McpServer
                 case "overshell_spawn":
                 {
                     var payload = new JsonObject();
-                    foreach (var key in new[] { "harness", "command", "cwd", "label", "prompt", "profile", "group" })
+                    foreach (var key in new[] { "harness", "command", "cwd", "label", "prompt", "profile", "group", "alias", "presentation", "onExit" })
                     {
                         if (ShellControl.Str(arguments, key) is { Length: > 0 } value)
                         {
@@ -459,10 +478,11 @@ public sealed class McpServer
                         }
                     }
 
-                    if (ShellControl.Bool(arguments, "activate") is { } activate)
+                    foreach (var key in new[] { "activate", "scratch", "restore", "history" })
                     {
-                        payload["activate"] = activate;
+                        if (ShellControl.Bool(arguments, key) is { } value) payload[key] = value;
                     }
+                    if (arguments["process"] is { } process) payload["process"] = process.DeepClone();
 
                     var (status, body) = await _http("POST", "/v1/tabs", payload, cancellation).ConfigureAwait(false);
                     return status == 201 ? Text(Pretty(body)) : Failure(status, body);

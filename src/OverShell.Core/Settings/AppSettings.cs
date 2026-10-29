@@ -245,6 +245,8 @@ public sealed class AppSettings
 
     public FloatingSettings Floating { get; init; } = new();
 
+    public ScratchSettings Scratch { get; init; } = new();
+
     public OverShell.Config.ProfileSettings Profiles { get; init; } = new();
 
     public GitSettings Git { get; init; } = new();
@@ -352,6 +354,8 @@ public sealed class AppSettings
             settings.Problems.Add("notifications.openMode: expected tab, floating or preview; using tab");
         if (settings.Floating.Position is not ("center" or "topRight" or "bottomRight"))
             settings.Problems.Add("floating.position: expected center, topRight or bottomRight; using center");
+        if (!Enum.TryParse<OverShell.Core.Tabs.TabExitBehavior>(settings.Scratch.OnExit, true, out var exitBehavior) || !Enum.IsDefined(exitBehavior))
+            settings.Problems.Add("scratch.onExit: expected keep, closeOnSuccess or closeAlways; using keep");
         if (settings.Dashboard.PreviewMode?.ToLowerInvariant() is not ("auto" or "styled" or "text"))
             settings.Problems.Add($"dashboard.previewMode: unknown value '{settings.Dashboard.PreviewMode}'; using auto");
         return settings;

@@ -348,6 +348,8 @@ public sealed partial class TerminalTab
         get
         {
             var lines = new List<string> { Label };
+            if (IsScratch) lines.Add($"Scratch terminal · restore: {Lifetime.Restore} · history: {Lifetime.History} · on exit: {Lifetime.OnExit}");
+            if (IsOneShot) lines.Add(IsRunning ? "One-shot process" : $"One-shot process exited: {ExitCode?.ToString() ?? "launch failed"}");
             if (Floating) lines.Add("Shown floating — Hide keeps this tab running; Close tab terminates it");
             if (Alias is { } alias) lines.Add($"Alias: @{alias} (this open tab)");
             if (ShortcutHint.Length > 0) lines.Add($"Shortcuts: {ShortcutHint}");

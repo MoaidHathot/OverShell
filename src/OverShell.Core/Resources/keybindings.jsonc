@@ -16,6 +16,7 @@
   { "keys": "ctrl+shift+o",        "command": "tab.preview" },
   { "keys": "ctrl+shift+y",        "command": "tab.float.toggle" },
   { "keys": "ctrl+shift+i",        "command": "tab.float.attention" },
+  { "keys": "ctrl+alt+shift+t",    "command": "tab.scratch.new" },
   { "keys": "shift+enter",         "command": "palette.openFloating" },
   { "keys": "ctrl+shift+w",        "command": "tab.close" },
   { "keys": "ctrl+shift+d",        "command": "tab.duplicate" },
