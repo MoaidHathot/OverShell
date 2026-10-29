@@ -17,6 +17,9 @@ internal static partial class HerdSelfTest
     private static void PreviewMouse(FrameworkElement element, RoutedEvent routed) => element.RaiseEvent(new MouseEventArgs(
         Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = routed });
 
+    private static void PreviewClick(FrameworkElement element) => element.RaiseEvent(new MouseButtonEventArgs(
+        Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent });
+
     private static async Task CheckEnlargedPreviewsAsync(MainWindow window, IReadOnlyList<TerminalTab> tabs, Action<bool, string> check)
     {
         var grid = tabs.Select(t => t.Grid).ToArray();
@@ -61,6 +64,45 @@ internal static partial class HerdSelfTest
         check(ReferenceEquals(window.TerminalPreview, preview), "moving from the card into its preview keeps it open");
         PreviewMouse(preview, Mouse.MouseLeaveEvent);
         check(await TransferUntilAsync(() => window.TerminalPreview is null), "leaving both card and preview dismisses the hover window");
+
+        // Exercise the card's routed click, including a pending hover and a visible
+        // enlarged window. The completion state must be the live terminal in each case.
+        var body = FindAll<TerminalPreviewControl>(card).Single();
+        window.ActiveTab = tabs[1];
+        PreviewMouse(card, Mouse.MouseEnterEvent);
+        PreviewClick(body);
+        await Task.Delay(window.CurrentSettings.Dashboard.EffectiveHoverDelay + 150);
+        check(window.ViewId == "terminal" && ReferenceEquals(window.ActiveTab, tabs[0]) && window.TerminalPreview is null,
+            "a single card-body click opens its terminal and cancels a pending hover preview");
+
+        window.ShowViewById("dashboard");
+        window.Activate();
+        window.DashboardView.EnsureVisible(tabs[0]);
+        await Task.Delay(150);
+        window.Commands.TryExecute("dashboard.focus");
+        window.DispatchChord(Key.Down, ModifierKeys.None);
+        PreviewMouse(card, Mouse.MouseEnterEvent);
+        await TransferUntilAsync(() => window.TerminalPreview is { KeyboardPreview: false, IsVisible: true });
+        PreviewClick(body);
+        check(await TransferUntilAsync(() => window.ViewId == "terminal" && ReferenceEquals(window.ActiveTab, tabs[0]) && window.TerminalPreview is null && ShortcutRouter.FocusedWindow() == tabs[0].TerminalHwnd),
+            "clicking a card with an enlarged preview closes it and focuses that terminal");
+        check(window.Shell.Cursor is null, "a card click clears the dashboard keyboard cursor");
+        check(await TransferUntilAsync(() => NativeTerminalPreview.ActiveLeases == 0 && StyledPreviewSource.ActiveSources == 0),
+            "opening a dashboard card releases its preview consumers");
+        window.Commands.TryExecute("nav.leave");
+        window.ShowViewById("terminal");
+
+        window.ShowViewById("dashboard");
+        window.Activate();
+        window.DashboardView.EnsureVisible(tabs[0]);
+        await Task.Delay(150);
+        PreviewMouse(card, Mouse.MouseEnterEvent);
+        await TransferUntilAsync(() => window.TerminalPreview is { KeyboardPreview: false, IsVisible: true });
+        PreviewClick(window.TerminalPreview!.Preview);
+        check(await TransferUntilAsync(() => window.ViewId == "terminal" && ReferenceEquals(window.ActiveTab, tabs[0]) && window.TerminalPreview is null && ShortcutRouter.FocusedWindow() == tabs[0].TerminalHwnd),
+            "a single click on the enlarged hover preview also opens its terminal");
+        window.ShowViewById("dashboard");
+        await Task.Delay(150);
 
         window.ApplySetting(SettingsCatalog.Find("dashboard.hoverPreview")!, "false");
         await TransferUntilAsync(() => !window.CurrentSettings.Dashboard.HoverPreview);
