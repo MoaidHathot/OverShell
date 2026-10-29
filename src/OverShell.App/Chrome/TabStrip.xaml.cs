@@ -59,6 +59,7 @@ public partial class TabStrip : UserControl
         PreviewMouseLeftButtonUp += OnPreviewMouseLeftButtonUp;
         LostMouseCapture += (_, _) => EndDrag();
         Items.SizeChanged += (_, _) => UpdateOverflow();
+        ActionBar.SizeChanged += (_, _) => UpdateOverflow();
         SizeChanged += (_, _) => UpdateOverflow();
     }
 
@@ -143,16 +144,20 @@ public partial class TabStrip : UserControl
     {
         if (_mode != TabsStyle.Strip || _view is null)
         {
+            Scroller.MaxWidth = double.PositiveInfinity;
             TabMinWidth = RelaxedMinWidth;
             TabMaxWidth = RelaxedMaxWidth;
             SetOverflowChrome(false, false, false);
             return;
         }
 
-        // The scroller fills the space left by the pinned action bar, including its
-        // overflow button when shown. Action buttons never contribute to the scroll extent.
+        // Size tabs against the whole available strip, not the scroller's current
+        // content width: otherwise an auto-sized scroller would keep shrinking its tabs.
+        // Its cap reserves the action bar while letting the buttons follow short strips.
+        var available = Math.Max(0, ActualWidth - ActionBar.ActualWidth);
+        Scroller.MaxWidth = available;
         var count = _view.Count;
-        var room = Scroller.ActualWidth - GroupHeaderWidth(Items) - 6;
+        var room = available - GroupHeaderWidth(Items) - 6;
         if (count > 0)
         {
             // Cap long labels even while the 150 px minimum fits; otherwise their

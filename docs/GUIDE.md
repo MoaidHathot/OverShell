@@ -516,7 +516,8 @@ application/profile titles, with the same duplicate handling.
   was.
 - **Many tabs**: the strip keeps every tab at least readable, scrolls with the wheel,
   fades at the edges where more are hiding, and the `…` menu offers switching and
-  profile creation. The `+` and profile arrow stay pinned beside the scrolling tabs.
+  profile creation. The `+` and profile arrow follow the last tab and stay pinned at
+  the right edge when the tabs need to scroll.
 - **Explain** (`Ctrl+Shift+E`): state, why, who decided (detector or which integration),
   harness, session id, resume command, processes below the shell, the last transitions.
 

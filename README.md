@@ -126,8 +126,9 @@ reload automatically. `OVERSHELL_WT_SETTINGS` has priority over these source set
 | Choose a profile | `Ctrl+Shift+N` | **⌄** for the profile list, or **… → New tab with profile…** for the searchable picker |
 | Switch to an open tab | `Ctrl+Shift+Space` | **… → Switch tab…** |
 
-When tabs overflow, **+** and **⌄** stay pinned beside the scrolling tabs, including at
-minimum window size. In side-list and rail layouts they stay below the scrolling list.
+**+** and **⌄** follow the last tab. When tabs overflow, they stay pinned at the right
+of the scrolling tabs, including at minimum window size. In side-list and rail layouts
+they stay below the scrolling list.
 The **…** menu includes both tab switching and profile creation. Shortcut hints follow
 your keybindings. See the [guide](docs/GUIDE.md#32-open-a-specific-profile-with-the-keyboard)
 for direct per-profile shortcuts and the [tutorial](docs/TUTORIAL.md#2-tabs-that-remember-who-they-are)
