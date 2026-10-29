@@ -9,8 +9,7 @@ namespace OverShell.App.Chrome;
 
 /// <summary>
 /// The Dashboard view: one card per tab, with faithful read-only terminal previews. A
-/// click selects the tab (its card is outlined); the open button, or a double click,
-/// goes to that tab in the terminal view.
+/// single click on a card or its open button goes to that tab in the terminal view.
 /// </summary>
 public partial class DashboardView : UserControl
 {
@@ -35,9 +34,6 @@ public partial class DashboardView : UserControl
         get => Cards.ItemsSource;
         set => Cards.ItemsSource = value;
     }
-
-    /// <summary>A card was clicked: make the tab active, stay on the dashboard.</summary>
-    public event Action<TerminalTab>? TabSelected;
 
     /// <summary>The user wants to work in this tab: switch to the terminal view on it.</summary>
     public event Action<TerminalTab>? OpenRequested;
@@ -70,16 +66,8 @@ public partial class DashboardView : UserControl
             return;
         }
 
-        if (e.ClickCount == 2)
-        {
-            OpenRequested?.Invoke(tab);
-        }
-        else
-        {
-            TabSelected?.Invoke(tab);
-        }
-
         e.Handled = true;
+        OpenRequested?.Invoke(tab);
     }
 
     private void Open_Click(object sender, RoutedEventArgs e)

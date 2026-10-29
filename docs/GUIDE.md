@@ -530,7 +530,7 @@ the tabs needing you:
 |---|---|---|
 | **Terminal** `Ctrl+Shift+1` | the live tab | tab strip in the caption bar |
 | **Herd** `Ctrl+Shift+2` | the live tab | plus a sidebar: every tab grouped by project, the ones needing you first, with activity age |
-| **Dashboard** `Ctrl+Shift+3` | one **card per tab** | header (state, label, project · branch), body = a faithful read-only terminal preview, footer (state, preview backend, summary, activity). Click selects, double-click or the button opens it in Terminal |
+| **Dashboard** `Ctrl+Shift+3` | one **card per tab** | header (state, label, project · branch), body = a faithful read-only terminal preview, footer (state, preview backend, summary, activity). A single click on a card or its open button opens the terminal and dismisses its enlarged preview |
 | **Zen** `Ctrl+Shift+4` | the live tab | no tabs, no status bar, slim caption |
 
 ### Faithful and enlarged previews
@@ -553,7 +553,8 @@ offscreen cards and hidden/minimized preview windows release their preview work.
 
 Hover over a card for `hoverDelayMs` (default 500) to open an enlarged preview without
 taking keyboard focus. Move into that window to keep it open; leave both it and the
-card to dismiss it. Click its body or open button to work in the terminal.
+card to dismiss it. A single click on the card, the enlarged preview's body or its
+open button closes the preview and opens that terminal.
 
 For keyboard use, press **Ctrl+Shift+3** again, choose a card with arrows and press
 **Space**. **Ctrl+Shift+O** (`tab.preview`) or **Preview terminal…** in the palette also

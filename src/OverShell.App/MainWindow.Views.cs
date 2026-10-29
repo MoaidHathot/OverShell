@@ -106,12 +106,7 @@ public partial class MainWindow
         Dashboard.Tabs = Tabs;
         Dashboard.PreviewSettings = _settings.Dashboard;
         InitializePreviewActions();
-        Dashboard.TabSelected += tab => ActiveTab = tab;
-        Dashboard.OpenRequested += tab =>
-        {
-            ActiveTab = tab;
-            ApplyView("terminal");
-        };
+        Dashboard.OpenRequested += OpenPreviewedTerminal;
 
         ViewSwitch.ViewRequested += ApplyView;
 

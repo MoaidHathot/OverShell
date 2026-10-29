@@ -94,19 +94,7 @@ public partial class MainWindow
         _pointerOverCard = anchor is not null;
         preview.MouseEnter += (_, _) => { _pointerOverPreview = true; _previewCloseTimer?.Stop(); };
         preview.MouseLeave += (_, _) => { _pointerOverPreview = false; SchedulePreviewClose(); };
-        preview.OpenRequested += selected => Dispatcher.BeginInvoke(() =>
-        {
-            if (!Tabs.Contains(selected)) return;
-            _commands.TryExecute("nav.leave");
-            _shell.SetCursor(null);
-            ActiveTab = selected;
-            if (!selected.Detached)
-            {
-                ApplyView("terminal");
-                BringToFront();
-            }
-            selected.Surface.Focus();
-        }, DispatcherPriority.Input);
+        preview.OpenRequested += selected => Dispatcher.BeginInvoke(() => OpenPreviewedTerminal(selected), DispatcherPriority.Input);
         preview.NavigateRequested += direction =>
         {
             var index = Tabs.IndexOf(preview.Tab);
@@ -135,6 +123,21 @@ public partial class MainWindow
         };
         preview.Show();
         preview.Place(anchor);
+    }
+
+    private void OpenPreviewedTerminal(TerminalTab tab)
+    {
+        if (!Tabs.Contains(tab)) return;
+        CloseTerminalPreview();
+        _commands.TryExecute("nav.leave");
+        _shell.SetCursor(null);
+        ActiveTab = tab;
+        if (!tab.Detached)
+        {
+            ApplyView("terminal");
+            BringToFront();
+        }
+        tab.Surface.Focus();
     }
 
     private void CloseTerminalPreview()

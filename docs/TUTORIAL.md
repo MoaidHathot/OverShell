@@ -205,7 +205,7 @@ SUCCEEDED` in a plain shell is the classic.
 - **Dashboard** - one card per tab: state, label, project and branch, with a live rendered
   preview or a styled full-viewport snapshot. Colours and formatting are preserved, and
   the terminal keeps its original dimensions. The footer identifies the preview backend.
-  Double-click a card to open it.
+  Click a card once to open its terminal and dismiss any enlarged hover preview.
 - **Zen** - the terminal alone.
 - **Terminal** - back to the strip in the caption bar. `` Ctrl+Shift+` `` bounces between the
   last two views.
