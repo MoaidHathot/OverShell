@@ -88,6 +88,28 @@ cycle, and so do `Ctrl+Tab` / `Ctrl+Shift+Tab` - right and left as the strip sho
 wrapping at the ends, like Windows Terminal (`switcherMode: "mru"` makes `Ctrl+Tab` a
 most-recently-used switcher instead: hold Ctrl, tap Tab, release to land).
 
+### A temporary address and a quick detour
+
+**Do:** right-click a tab, choose **Set alias…**, and call it `build`. Switch to another
+tab, open `Ctrl+Shift+Space`, type `@build`, then press **Shift+Enter**.
+
+**You see:** the build terminal is interactive in a floating window. The main tab remains
+selected underneath. Type or inspect what you need, then click the float's **X** or press
+**Ctrl+Shift+H**. The float hides, the process keeps running, and input returns to your work.
+**Ctrl+Shift+W** would terminate the floating tab instead. Escape belongs to the terminal.
+
+**Do:** use **Assign shortcut…** on that tab and choose **Toggle floating**. Your chosen
+chord now opens/hides that same live tab even if you rename its alias. Closing the tab
+releases both its alias and assigned shortcut; they do not return after a restart.
+
+**Do:** press **Ctrl+Alt+Shift+T** for a scratch terminal. Use **Run a command in a scratch
+float…** from the palette to run a one-shot command, or **Keep this tab** to preserve a
+useful scratch shell in your session. The [guide](GUIDE.md#52-scratch-and-one-shot-terminals)
+describes retention, exit policies, and configured shortcuts.
+
+After several **Ctrl+Shift+J** attention jumps, **Ctrl+Shift+H** returns to the original
+work. **Ctrl+Shift+K, L** remains the simpler last-tab switch.
+
 ## 3. Make it look like yours
 
 **Do:** `Ctrl+Shift+P`, type `opacity`, choose **Setting: Terminal body opacity**.

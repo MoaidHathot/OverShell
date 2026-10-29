@@ -3,10 +3,15 @@
 > **OverShell** = *Overseer Shell*. A Windows terminal **shell** (chrome, tabs, layout)
 > wrapped around the real Windows Terminal rendering engine.
 
-Last updated: 2026-10-03
+Last updated: 2026-10-30
 
 How to *use* it - configuration, keys, views, agents, integrations, notifications - is
 in [docs/GUIDE.md](docs/GUIDE.md). This document is about why it is built the way it is.
+
+The runtime alias, interactive floating, interruption-return and scratch-terminal APIs
+and their verification are recorded in [docs/TAB-QUICK-ACCESS.md](docs/TAB-QUICK-ACCESS.md).
+They extend the existing engine/extension boundary with typed addressing, presentation,
+navigation and retention rather than giving UI features independent tab registries.
 
 ---
 

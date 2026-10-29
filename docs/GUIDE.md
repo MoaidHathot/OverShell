@@ -292,6 +292,11 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+T` | `tab.new` | New tab, default profile (`Ctrl+T` stays with the shell — PSReadLine uses it) |
 | `Ctrl+Shift+N` | `tab.newWithProfile` | Search profiles, then open the selected one with Enter |
 | `Ctrl+Shift+O` | `tab.preview` | Read-only enlarged preview of the current terminal |
+| `Ctrl+Shift+Y` | `tab.float.toggle` | Show/hide the current tab's interactive float |
+| `Ctrl+Alt+Shift+J` | `tab.float.attention` | Interact with a waiting tab in a float |
+| `Ctrl+Shift+H` | `navigation.return` | Return from a float or attention chain to the original work |
+| `Ctrl+Alt+Shift+T` | `tab.scratch.new` | New scratch floating terminal |
+| `Shift+Enter` in the tab picker | `palette.openFloating` | Float the selected tab; elsewhere the chord reaches the application |
 | `Ctrl+Shift+W` | `tab.close` | Close tab |
 | `Ctrl+Shift+D` | `tab.duplicate` | Another tab like this one: same profile, directory and group, next to it |
 | `Ctrl+Shift+Z` | `tab.reopenClosed` | Reopen the most recently closed tab, agent session included ([11](#11-sessions-restore-resume-and-history)) |
@@ -349,7 +354,7 @@ HTML file export extracts the document or fragment from the clipboard envelope a
 preserves its UTF-8 encoding, so clipboard headers do not appear in the saved document.
 
 **Drag-and-drop.** Drop files, folders, text or clipboard-style media onto a terminal,
-including a detached tab. Files use the same quoted-path delivery as paste; bitmap and
+including a detached or floating tab. Files use the same quoted-path delivery as paste; bitmap and
 raw-media drops are saved as files, and text is pasted as text. Dropping creates
 references to the originals and does not move or delete them.
 
@@ -521,6 +526,140 @@ application/profile titles, with the same duplicate handling.
 - **Explain** (`Ctrl+Shift+E`): state, why, who decided (detector or which integration),
   harness, session id, resume command, processes below the shell, the last transitions.
 
+### 5.1 Aliases, floating terminals, and returning
+
+**Set tab alias…** (`tab.alias`, herd mode **Shift+R**) gives the current tab a short
+runtime address such as `build`. Right-click any tab for **Set alias…**, **Assign
+shortcut…**, **Show floating**, and **Keep this tab** when its retention is temporary.
+Aliases use 1–64 letters/digits/dots/underscores/hyphens, starting with a letter. They are
+case-insensitive and unique across the instance, including detached windows. Built-in
+selectors such as `blocked`, `active`, `agents`, and `all` are reserved.
+
+The tab picker searches aliases and prioritizes an exact match. `@build` selects the
+alias; `@alias:build` explicitly requires an alias. The prompt bar accepts the same
+addresses: `@alias:build explain the failure`. `tabs.aliasDisplay` chooses `badge`
+(default), `primary`, or `hidden`; aliases remain addressable in every display mode.
+Custom display names from **Rename tab** are independent and still restore normally.
+
+| Event | Runtime alias and assigned shortcuts |
+|---|---|
+| Hide/show, regroup, reorder, detach/attach, title/session changes, configuration reload | Retained |
+| Process exits while its tab remains open | Retained for inspecting output |
+| Tab closes | Released, including global hotkeys |
+| Duplicate, reopen, or application restart | New runtime identity, no inherited alias or temporary shortcut |
+
+**Assign shortcut…** chooses Activate or Toggle floating, then an OverShell-only chord/
+sequence or a global hotkey. Conflicting chords and sequence prefixes are reported.
+These registrations target the tab's ID, so changing its alias does not break them.
+They form a runtime layer above the file bindings. **Remove tab shortcuts** releases
+them and reveals the configured bindings underneath.
+
+A permanent binding can instead target whichever open tab currently owns an alias:
+
+```jsonc
+[
+  { "keys": "ctrl+alt+b", "command": {
+      "action": "tab.activate", "target": { "alias": "build" }
+  } },
+  { "keys": "ctrl+alt+shift+b", "command": {
+      "action": "tab.float.toggle", "target": { "alias": "build" }
+  } }
+]
+```
+
+An absent alias produces a status message. It never implicitly creates or substitutes
+another tab. Parameterized commands also accept `target: { "id": "..." }` or a unique
+`target: { "label": "..." }`.
+
+**Interactive floats.** `Ctrl+Shift+Y` toggles the current terminal; `Shift+Enter` in
+the tab picker floats its selected tab. **Show a tab floating…** opens a picker whose
+Enter action floats. `Ctrl+Alt+Shift+J` floats a tab needing attention. Every tab can
+float, including the only tab and a detached terminal. A `◇` marks the floating tab.
+One quick float is visible per owning window; switching its target retains the original
+return context. The same terminal, process and scrollback move. Its grid may resize,
+so terminal applications can reflow normally.
+
+- **X / Hide floating terminal:** dismiss the presentation and return to the original
+  work; the process continues and the tab remains listed.
+- **Open in regular view:** put the terminal in its regular host for continued work.
+- **Terminate tab / Ctrl+Shift+W:** close the terminal session and remove its tab.
+- **Escape:** reaches the terminal application unless you explicitly bind it.
+
+Floating terminals have their own find and prompt bars. Unsent floating prompt drafts
+survive hide/show; the underlying view's draft is independent. A focused interactive
+float acknowledges unread completion. Read-only hover previews do not acknowledge the
+previewed tab. Native and in-window notifications offer **Open floating**.
+
+**Return to interrupted work.** `Ctrl+Shift+H` (`navigation.return`) dismisses a current
+float, or returns to the tab/view/input context before an attention chain. For
+`A → attention B → attention C`, Return goes to A. `Ctrl+Shift+K, L` (`tab.last`) goes
+to the last-used tab instead. Ordinary tab navigation ends an attention chain. A closed
+origin falls back to an available tab.
+
+```jsonc
+{
+  "floating": { "widthRatio": 0.8, "heightRatio": 0.75,
+                "position": "center", "hideOnFocusLoss": false },
+  "attention": { "presentation": "tab" },
+  "notifications": { "openMode": "floating" }
+}
+```
+
+Position is `center`, `topRight`, or `bottomRight`, clamped to the owner's monitor.
+Focus-loss dismissal treats owned pickers as part of the float. Attention presentation
+is `tab` or `floating`; notification activation is `tab`, `floating`, or `preview`.
+These settings apply live and are available in **Change a setting…**.
+
+### 5.2 Scratch and one-shot terminals
+
+**New floating tab** (`tab.newFloating`, herd mode **Shift+F**) creates a normal,
+restorable tab. **New scratch floating terminal** (`tab.scratch.new`,
+`Ctrl+Alt+Shift+T`, herd mode **Shift+T**) uses temporary retention and the invoking
+directory. `[scratch]` identifies it in the tab list.
+
+```jsonc
+{
+  "scratch": {
+    "profile": null,
+    "inheritDirectory": true,
+    "restore": false,
+    "history": false,
+    "onExit": "keep",
+    "commandShell": "powershell.exe",
+    "commandArguments": ["-NoLogo", "-NoProfile", "-Command"]
+  }
+}
+```
+
+Hide and Terminate have the same meanings for scratch and normal floats. **Keep this
+tab** enables restoration/history and retains output on exit, while preserving its
+runtime ID, alias and presentation. Retention preferences apply to newly created tabs;
+the lifetime API can change an existing tab explicitly.
+
+**Run a command in a scratch float…** (`tab.scratch.command`) appends the entered command
+as one argument to the configured command-shell invocation. Its root process runs once.
+Exit policies are `keep`, `closeOnSuccess` (exit code 0 only), or `closeAlways`.
+`keep` is the default; errors and failed launches remain inspectable with
+`closeOnSuccess`. Restoring or duplicating a kept one-shot tab opens its profile rather
+than replaying the command.
+
+For a precise executable/argument list, use a parameterized binding or the control API:
+
+```jsonc
+{ "keys": "ctrl+alt+f9", "command": {
+    "action": "tab.scratch.new",
+    "profile": "PowerShell",
+    "alias": "build",
+    "process": { "executable": "dotnet.exe", "arguments": ["build"] },
+    "onExit": "closeOnSuccess"
+} }
+```
+
+`process` launches an actual root process; `command` types into a continuing shell.
+Choose one. Exit policy follows the root process, not silence or completion inferred
+from terminal text. Explicit directories must exist. See the
+[architecture and verification record](TAB-QUICK-ACCESS.md) for API contracts and tests.
+
 ## 6. Views and layouts
 
 Four views, one key each, and a switch at the right of the tab strip whose badge counts
@@ -691,7 +830,7 @@ up after 90 s and the status bar says so.
 Everything above is also available *to a program*, on the same loopback endpoint the
 integrations use (`OVERSHELL_ENDPOINT`, bearer `OVERSHELL_TOKEN`, both in every tab's
 environment; also in `%LOCALAPPDATA%\OverShell\endpoint.json` while the window runs). A tab
-is its id or a unique label:
+is its runtime id, an exact alias (`alias:build` is explicit), or a unique label:
 
 | Call | Does |
 |---|---|
@@ -703,9 +842,21 @@ is its id or a unique label:
 | `POST /v1/tabs/{tab}/input` `{ "text", "enter": true }` | types into the tab |
 | `POST /v1/tabs/{tab}/reply` `{ "answer": "approve" }` or `{ "text": "..." }` | answers the open request the way the inbox does (409 when the tab has no such channel) |
 | `DELETE /v1/tabs/{tab}` | closes the tab (never the last one) |
+| `POST /v1/tabs/{tab}/alias` `{ "alias": "build" }` | assigns an alias; null/empty clears it |
+| `POST /v1/tabs/{tab}/presentation` `{ "mode": "floating" }` | `floating`, `toggle`, `hide`, or `regular`; Hide keeps the process alive |
+| `POST /v1/tabs/{tab}/shortcut` `{ "keys": "ctrl+alt+b", "action": "tab.float.toggle" }` | temporary binding; optional `global: true`; `remove: true` removes this tab's registrations |
+| `POST /v1/tabs/{tab}/lifetime` `{ "scratch": false, "restore": true, "history": true, "onExit": "keep" }` | changes retention/exit policy; omitted fields retain their values |
+| `POST /v1/navigation/return` `{}` | returns from the current float or attention chain |
+
+Creation also accepts `alias`, `presentation: "floating"`, `scratch`, `restore`,
+`history`, `onExit`, and `process: { "executable", "arguments": [...] }`. `activate`
+defaults to false in the control API. A non-activating float cannot replace a currently
+focused float; that request is refused before launching a process. Descriptions include
+`alias`, `floating`, `detached`, `isFocused`, retention flags, `isOneShot`, and `exitCode`.
+Screen reads and waits retain their resolved runtime ID across asynchronous work.
 
 `"endpoint": { "control": false }` turns the control routes off (the integrations keep
-working) and stops `endpoint.json` being written.
+working) and removes this run's `endpoint.json`. The switch applies live.
 
 **`OverShell mcp`** is the same surface as a [Model Context Protocol](https://modelcontextprotocol.io)
 server over stdio, for an agent that should oversee the herd itself - from one of the tabs,
@@ -719,7 +870,9 @@ or from outside. Add it to the host's MCP servers:
 (`overshell mcp` through the .NET tool shim, or the full path to `OverShell.exe` from a
 zip.) The tools: `overshell_list_tabs`, `overshell_read_screen`, `overshell_send`,
 `overshell_reply`, `overshell_spawn` (harness, cwd, label, prompt), `overshell_wait`,
-`overshell_close`. The window must be running; a tool called while it is not says so
+`overshell_close`, `overshell_set_alias`, `overshell_present`, `overshell_shortcut`,
+`overshell_return`, and `overshell_keep`. `overshell_spawn` accepts the creation fields
+above, including one-shot processes and scratch retention. The window must be running; a tool called while it is not says so
 instead of failing the host. Run `OverShell mcp` from a console by hand and it explains
 itself.
 
@@ -975,6 +1128,7 @@ to the first and exits. So:
 
 - `overshell://focus/<tabId>` brings the running window up on that tab — this is what the
   Palantir recipe's `--launch` and the native `toast` sink put on their toasts;
+- `overshell://float/<tabId>` opens that tab interactively floating;
 - `overshell://view/<terminal|herd|dashboard|zen>` switches views;
 - `overshell://new?profile=<id or name>&cwd=<path>` opens a tab;
 - `overshell://workspace/<name>` opens a workspace, `overshell://reopen` the last closed tab,

@@ -39,6 +39,44 @@ Each implementation stage is reviewed and committed before the next. UI evidence
 `tools/Invoke-SelfTest.ps1` on a private Win32 desktop, with isolated config/state/TEMP.
 Input-desktop pixel evidence is reported separately if needed.
 
+## Extensibility surface
+
+The UI-thread contracts live in `OverShell.Core`, with WPF/native hosting in
+`OverShell.App`. `IShell.Addresses` assigns/resolves runtime aliases; `IShell.Presentations`
+shows/hides/toggles regular and floating presentations; `IShell.Navigation` captures
+and restores return contexts. `IShell.Keys.Assign/Remove` manages tab-owned runtime
+registrations, including native global hotkeys. `IShell.OpenTab(TabRequest)` and
+`IShell.SetLifetime` control creation and retention. First-party commands, pickers,
+notifications and `ShellControl` consume those services.
+
+`CommandRegistry` carries cloned arguments and a captured `CommandContext`; the host
+applies its target during eligibility and execution, including legacy command handlers.
+Typed selectors require one ID, alias or unique label. HTTP/MCP adapters marshal work
+onto the UI thread; asynchronous operations retain the resolved runtime ID.
+`ActiveTab` is the main selection; `FocusedTab`/`FocusedTabChanged` describe the viewed
+interactive terminal. Presentation and alias changes have their own events.
+
+The terminal's original profile remains separate from its one-shot process command line.
+Aliases, runtime shortcuts, return contexts, float hosts and prompt drafts are runtime
+state. Retention policy can be saved with a restorable tab. One-shot commands are not
+replayed by duplication/restoration. A later scripting adapter can expose these same
+contracts without owning native controls or inventing another tab registry.
+
+## Reproducing verification
+
+```powershell
+dotnet test OverShell.slnx -c Debug -p:Platform=x64
+node --experimental-vm-modules --test tests/OverShell.Tests/OpenCodeV2Bridge.test.mjs
+tools\Invoke-QuickAccessTests.ps1
+tools\Invoke-QuickAccessTests.ps1 -Tag regressions -Output artifacts\selftest\quick-access\regressions `
+  -Modes herdmode,mru,tearoff,triage,profiles,settings,history,previews,transfers,promptattachments,mcp,1
+```
+
+The matrix runner isolates each mode's TEMP/config/state and records logs plus
+`summary.json`. `quickrestore1` and `quickrestore2` share only their restart fixture.
+It uses private Win32 desktops and never switches the user's input desktop.
+Set `-Env @{ OVERSHELL_PREVIEW_OPAQUE = '1' }` for opaque quick-access fixtures.
+
 ## Evidence
 
 - Baseline: 521 C# tests passed, zero failures/skips (Debug x64).
@@ -78,4 +116,70 @@ Input-desktop pixel evidence is reported separately if needed.
   Follow-up review passed 21 alias checks and 46 floating checks in parallel on separate
   private desktops/TEMP roots. The runner's leftover diagnostic now scopes to the tested
   process family instead of incorrectly reporting another concurrent test instance.
-- Final audit: pending.
+- Final audit: 556 C# tests and 11 bridge tests passed. A warnings-as-errors Release
+  publish passed. The final, applicable passing UI results total 557 checks with zero
+  failures; one existing dashboard input-desktop pixel comparison was skipped to keep
+  the user's desktop undisturbed. Earlier failures and their diagnostic logs are retained
+  beside the passing reruns under `artifacts/selftest/quick-access/`.
+
+| Final UI coverage | Passed | Evidence directory under `artifacts/selftest/quick-access/` |
+|---|---:|---|
+| Navigation, aliases, scratch, two-process restart | 77 | `release-features`, `final-attention`, `focus-final` |
+| Interactive floats, composed | 51 | `float-acceptance` |
+| Interactive floats, opaque | 51 | `float-acceptance-opaque` |
+| Full application harness, triage, herd mode | 137 | `final-verdict` |
+| MCP, previous screen, profiles, MRU, tear-off, history, settings | 157 | `release-core` |
+| Opaque previews, transfers, prompt attachments | 84 | `release-opaque` (one foreground pixel check skipped) |
+
+The runnable package is `artifacts/quick-access-package/OverShell.exe`. The matrix's
+TEMP roots contain only test-owned files. Default summon hotkeys are disabled in its
+fixtures; runtime global-hotkey registration is tested explicitly and released. Native
+thread-local activation is used when a private-desktop foreground request is refused.
+Readiness and scrollback checks wait for observed shell output rather than fixed sleeps.
+
+## Final requirements review
+
+| Requirement | Implementation and evidence |
+|---|---|
+| Temporary addresses and shortcuts | `TabAddressing`, runtime key registrations; assignment, collision, reload, close/reopen and cross-process restart checks |
+| Stable targeting for control operations | Typed selectors and captured command context; asynchronous screen/wait checks retain the original runtime ID |
+| Any tab can float while remaining listed | Same-surface hosting; native HWND/PID/scrollback checks for active, background, only and detached tabs |
+| Return to interrupted work | Scoped floating origins and attention history; chained returns, prompt focus, dashboard state and closed-origin recovery |
+| Hide versus termination | Distinct presentation and tab-close APIs; X/Return preserve the process, Close/exit policy removes it |
+| Scratch and one-shot creation | Tab lifetime policy and exact process argv; real exit codes, launch failures, retained output, Keep, history and restoration checks |
+| Configuration | Embedded JSONC defaults, key bindings and setting catalog; live geometry/dismissal/alias/control tests, plus existing settings regressions |
+| Extensibility baseline | UI-free Core contracts; first-party controllers, HTTP and twelve MCP tools use the same services |
+| Testing without disrupting work | Private desktop matrix, isolated TEMP/config/state, default summon disabled in fixtures, process-family cleanup |
+
+The final review added guards against stale focus-loss callbacks closing a replacement
+float and background creation replacing the user's focused float. It restored the last
+remaining detached tab to the main host when its last main-host neighbor closes, and
+kept one-shot command lines separate from reusable profiles. Floating attention uses
+Ctrl+Alt+Shift+J so the inbox retains Ctrl+Shift+I.
+
+Focus-loss dismissal is evaluated after activation settles across the whole owned-window
+family. A regression exposed why listening only to the float's Deactivated event was
+insufficient: while an owned picker has focus, the float is already inactive, so leaving
+that picker for the main window produces no second float-deactivation event. The check
+now follows picker closure/deactivation and host activation too, considers only current
+presentations, and leaves never-focused background floats alone.
+
+### Startup cursor regression found during the audit
+
+The MCP regression returned actual rows such as `mcp-typedift+P`: command output had
+overwritten part of the first-run welcome text. The renderer had consumed a preamble
+while ConPTY still believed its cursor was at the viewport origin. Preamble sessions
+now request `PSEUDOCONSOLE_INHERIT_CURSOR`; the existing asynchronous output/input
+connection answers the cursor query. The original exact-row MCP assertion then passed
+(21 checks), as did the restored-screen/ghost regression (7 checks), including text
+above the new prompt. No assertion was weakened to accept the corrupted output.
+
+### Completion signal precedence regression
+
+With the welcome preamble now preserved, the full harness exposed an older detector
+precedence bug: a lingering screen match for `working` overrode OSC progress state 4
+(explicit completion). A new focused unit test first failed with Expected Done / Actual
+Working. Title/progress busy and completion signals now precede the lower-confidence
+screen working/done fallback; blocked/error evidence still has priority. The regression
+also checks that a subsequent explicit busy signal resumes Working and that a permission
+prompt still wins over completion.

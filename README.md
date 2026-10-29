@@ -82,6 +82,10 @@ menus, and pinned actions in top, bottom, side-list and rail layouts.
 `previewbench` records repeatable CPU/GPU-counter/memory measurements. See the
 [preview design and evidence](docs/DASHBOARD-PREVIEWS.md) for the native dependency
 and benchmark protocol.
+`tools\Invoke-QuickAccessTests.ps1` runs aliases, floating terminals, scratch processes,
+navigation and a real restart pair on private desktops, retaining logs and a summary.
+Individual modes are `quicknav`, `aliases`, `floats`, `scratch`, `quickrestore1` and
+`quickrestore2`; see the [verification record](docs/TAB-QUICK-ACCESS.md).
 `-Mode sixel -Visible` checks native images and their pixels through ConPTY;
 the [Sixel crash report](docs/SIXEL-CRASH.md) includes the real DNX application check.
 
@@ -189,8 +193,9 @@ in a directory with a **first prompt**, delivered once the agent shows its compo
 agents share one repository without touching each other's files. The same is available to
 programs: a **control API** on the loopback endpoint (`GET /v1/tabs`, `.../screen`,
 `.../wait`, `POST /v1/tabs` to spawn, `.../input`, `.../reply`, `DELETE`) and **`OverShell
-mcp`**, an MCP server over stdio with seven tools (`overshell_list_tabs`, `read_screen`,
-`send`, `reply`, `spawn`, `wait`, `close`) - so an agent can oversee the herd itself.
+mcp`**, an MCP server over stdio with twelve tools for listing, reading, sending,
+replying, spawning, waiting, closing, aliases, presentation, shortcuts, returning and
+keeping scratch tabs - so an agent can oversee the herd itself.
 `"endpoint": { "control": false }` turns both off.
 
 **Coming back.** The **herd log** (herd mode `L`) lists everything that happened this run - every
@@ -200,6 +205,29 @@ says *2 changed*: `tab.changes` (`D`) lists the files it changed in its reposito
 looked, with their status; Enter opens one.
 
 ## Prompt bar, sessions, groups
+
+### Quick-access aliases and floating terminals
+
+Give any open tab a temporary address with **Set tab alias…** (herd mode **Shift+R**),
+then find it by `@alias` in the tab picker or assign it a shortcut from its context menu.
+Aliases and on-the-fly shortcuts belong to that live tab and expire when it closes.
+Custom display names (`Ctrl+Shift+R`) retain their existing restoration behavior.
+
+**Ctrl+Shift+Y** toggles the current terminal floating; **Ctrl+Alt+Shift+J** floats a
+tab needing attention. In the tab picker, **Shift+Enter** floats the selected tab.
+The same terminal, process and scrollback move into an owned window while the tab stays
+listed. **X hides** the float; **Ctrl+Shift+W terminates** its tab. **Ctrl+Shift+H** returns
+to the interrupted work, including after several attention jumps. **Ctrl+Shift+K, L**
+still switches to the last-used tab.
+
+**Ctrl+Alt+Shift+T** opens a scratch float in the invoking directory. Scratch tabs default
+to no restoration/history; **Keep this tab** promotes one. **Run a command in a scratch
+float…** runs a real one-shot process with configurable keep/close-on-success/close-always
+behavior. Escape remains terminal input. Settings cover geometry, dismissal, alias display,
+notification activation and scratch defaults. See the [quick-access guide](docs/GUIDE.md#51-aliases-floating-terminals-and-returning)
+and [API/design evidence](docs/TAB-QUICK-ACCESS.md).
+
+### Prompt bar and restoration
 
 `Ctrl+Shift+Enter` opens a prompt bar under the terminal: type once and send to the
 active tab, to every agent, to the agents that need you, or to every tab (`Ctrl+Shift+B`
@@ -298,6 +326,10 @@ close.
 
 Everything is a command bound in `keybindings.jsonc` (Windows
 Terminal's shape; `"command": "unbound"` removes a default).
+
+`Ctrl+Shift+Y` interactive float · `Ctrl+Alt+Shift+J` float attention · `Ctrl+Shift+H`
+return to interrupted work · `Ctrl+Alt+Shift+T` scratch float. These are distinct from
+the read-only preview (`Ctrl+Shift+O`) and inbox (`Ctrl+Shift+I`).
 
 ## Notifications
 
