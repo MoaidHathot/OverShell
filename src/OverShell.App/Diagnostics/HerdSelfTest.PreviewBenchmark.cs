@@ -26,6 +26,7 @@ internal static partial class HerdSelfTest
             protocol = new { register = false },
             session = new { restore = false, confirmCloseWithAgents = false },
             detection = new { injectShellIntegration = false, cwdFromProcess = false },
+            extensions = new Dictionary<string, object> { ["summon"] = new { enabled = false } },
             window = new { terminalOpacity = Environment.GetEnvironmentVariable("OVERSHELL_PREVIEW_OPAQUE") == "1" ? 1.0 : 0.85 },
             dashboard = new { previewMode = Environment.GetEnvironmentVariable("OVERSHELL_PREVIEW_MODE") ?? "auto", hoverPreview = Mode != "previewbench" },
         }));

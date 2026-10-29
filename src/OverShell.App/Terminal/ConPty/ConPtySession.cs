@@ -226,7 +226,10 @@ public sealed unsafe class ConPtySession : ITerminalSession
         }
 
         var size = new ConPtyNative.Coord { X = (short)Math.Min(columns, short.MaxValue), Y = (short)Math.Min(rows, short.MaxValue) };
-        var hr = ConPtyNative.CreatePseudoConsole(size, inputRead, outputWrite, 0, out var hpc);
+        // A renderer-only welcome/restored-screen preamble has already advanced the cursor.
+        // ConPTY must query that position or absolute cursor updates overwrite the preamble.
+        var flags = string.IsNullOrEmpty(Descriptor.Preamble) ? 0u : ConPtyNative.PseudoConsoleInheritCursor;
+        var hr = ConPtyNative.CreatePseudoConsole(size, inputRead, outputWrite, flags, out var hpc);
         if (hr < 0)
         {
             throw Marshal.GetExceptionForHR(hr) ?? new Win32Exception(hr, "CreatePseudoConsole");

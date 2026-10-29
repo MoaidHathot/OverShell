@@ -173,7 +173,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             if (value is { Detached: true } detached)
             {
                 VisitTab(detached);
-                _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, detached))?.Activate();
+                if (_tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, detached)) is { } host)
+                {
+                    if (host.WindowState == WindowState.Minimized) host.WindowState = WindowState.Normal;
+                    host.Activate();
+                }
                 return;
             }
 
@@ -209,10 +213,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     // ------------------------------------------------------------ tab model
 
     internal TerminalTab AddTab(TerminalProfile profile, bool activate, string? preamble = null, IReadOnlyDictionary<string, string>? extra = null, string? namingId = null, string? userLabel = null, ColorScheme? scheme = null,
-        Core.Tabs.TabLifetime? lifetime = null, bool oneShot = false, Action<TerminalTab>? initialize = null)
+        Core.Tabs.TabLifetime? lifetime = null, bool oneShot = false, Action<TerminalTab>? initialize = null, string? processCommandLine = null)
     {
         if (Tabs.Any(t => string.Equals(t.NamingId, namingId, StringComparison.OrdinalIgnoreCase))) namingId = null;
-        var tab = new TerminalTab(profile, scheme ?? _catalog.SchemeFor(profile), Dispatcher, _agents, userLabel, preamble, namingId, lifetime, oneShot);
+        var tab = new TerminalTab(profile, scheme ?? _catalog.SchemeFor(profile), Dispatcher, _agents, userLabel, preamble, namingId, lifetime, oneShot, processCommandLine);
         tab.Exited += (_, _) =>
         {
             if (Tabs.Contains(tab) && tab.Lifetime.ShouldClose(tab.ExitCode)) CloseTab(tab);
@@ -323,7 +327,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var next = Tabs.Where(t => !t.Detached).OrderBy(t => Math.Abs(Tabs.IndexOf(t) - index)).FirstOrDefault() ?? Tabs[Math.Min(index, Tabs.Count - 1)];
             var previousNavigation = _attentionNavigation;
             _attentionNavigation = true;
-            try { ActiveTab = next; }
+            try { if (next.Detached) Attach(next); else ActiveTab = next; }
             finally { _attentionNavigation = previousNavigation; }
         }
 

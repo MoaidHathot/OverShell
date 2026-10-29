@@ -35,7 +35,7 @@ internal static partial class HerdSelfTest
 
     public static void Schedule(MainWindow window, TerminalTab firstTab)
     {
-        if (!Enabled && Mode is not ("quicknav" or "aliases" or "floats" or "scratch"))
+        if (!Enabled && !QuickAccessMode)
         {
             return;
         }
@@ -63,6 +63,10 @@ internal static partial class HerdSelfTest
                         break;
                     case "scratch":
                         await RunScratchAsync(window, firstTab);
+                        break;
+                    case "quickrestore1":
+                    case "quickrestore2":
+                        await RunQuickRestoreAsync(window, firstTab);
                         break;
                     case "previewbench":
                         await RunPreviewBenchmarkAsync(window, firstTab);
@@ -227,7 +231,7 @@ internal static partial class HerdSelfTest
     /// </summary>
     public static void SeedState()
     {
-        if (!Enabled && Mode is not ("quicknav" or "aliases" or "floats" or "scratch"))
+        if (!Enabled && !QuickAccessMode)
         {
             return;
         }
@@ -237,6 +241,10 @@ internal static partial class HerdSelfTest
             var now = DateTimeOffset.Now;
             switch (Mode)
             {
+                case "quickrestore1":
+                case "quickrestore2":
+                    SeedQuickRestore();
+                    break;
                 case "quicknav":
                 case "aliases":
                 case "floats":
@@ -811,6 +819,7 @@ internal static partial class HerdSelfTest
         }
 
         Check(seen, "GET .../screen reads the rows back, the typed command's output among them");
+        if (!seen) Log($"  screen evidence: grid={first.Grid} body={body?.ToJsonString()} command={first.Session.Descriptor.CommandLine}");
 
         // ---- replies need an agent ----
         (status, body) = await CallAsync("POST", "/v1/tabs/shell/reply", new System.Text.Json.Nodes.JsonObject { ["answer"] = "approve" });

@@ -281,7 +281,7 @@ public sealed class McpServer
                         ["serverInfo"] = new JsonObject { ["name"] = "overshell", ["version"] = _version },
                         ["instructions"] = "OverShell is a Windows terminal that hosts AI coding agents in tabs and watches their state (Working, Idle, Blocked on a permission or question, Done, Error). " +
                                            "Use overshell_list_tabs to see the herd, overshell_read_screen to look at a tab, overshell_send to type into it, overshell_reply to approve/deny or answer the open request, " +
-                                           "overshell_spawn to start an agent in a new tab with a first prompt, and overshell_wait to block until a tab settles. A tab is named by its id or a unique label.",
+                                           "overshell_spawn to start an agent or one-shot process, overshell_wait to block until a tab settles, and overshell_present/overshell_return for quick floating interactions. A tab is named by its id, exact alias (alias:name), or a unique label.",
                     });
                 }
 

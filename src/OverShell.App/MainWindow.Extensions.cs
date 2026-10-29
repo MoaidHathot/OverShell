@@ -120,6 +120,11 @@ public partial class MainWindow
 
     internal TerminalTab? OpenTabFor(TabRequest request, out string? error, Core.Tabs.NavigationPoint? returnTo = null)
     {
+        if (request.Floating && !request.Activate && ActiveTerminalWindow() is Chrome.TearOffWindow { IsFloating: true })
+        {
+            error = "A floating terminal has focus; activate the replacement or hide the current float first";
+            return null;
+        }
         var profile = _catalog.ResolveProfile(request.Profile ?? (request.Scratch ? _settings.Scratch.Profile : null), out error);
         if (profile is null)
         {
@@ -157,10 +162,8 @@ public partial class MainWindow
                 return null;
             }
         }
-        if (request.Process is { } raw)
-        {
-            profile = profile with { CommandLine = (raw with { Executable = Environment.ExpandEnvironmentVariables(raw.Executable) }).CommandLine };
-        }
+        var processCommandLine = request.Process is { } raw
+            ? (raw with { Executable = Environment.ExpandEnvironmentVariables(raw.Executable) }).CommandLine : null;
         var lifetime = new Core.Tabs.TabLifetime(request.Scratch,
             request.Restore ?? (!request.Scratch || _settings.Scratch.Restore), request.History ?? (!request.Scratch || _settings.Scratch.History),
             request.OnExit ?? (request.Scratch ? _settings.Scratch.EffectiveExit : Core.Tabs.TabExitBehavior.Keep));
@@ -170,7 +173,7 @@ public partial class MainWindow
             return null;
         }
         var origin = returnTo ?? Navigation.Capture();
-        var tab = AddTab(profile, request.Activate && !request.Floating, userLabel: request.Label, lifetime: lifetime, oneShot: request.Process is not null, initialize: created =>
+        var tab = AddTab(profile, request.Activate && !request.Floating, userLabel: request.Label, lifetime: lifetime, oneShot: request.Process is not null, processCommandLine: processCommandLine, initialize: created =>
         {
             if (!string.IsNullOrWhiteSpace(request.Group)) created.Group = request.Group;
             if (!string.IsNullOrWhiteSpace(request.Alias)) _addresses.Assign(created.Id, request.Alias);

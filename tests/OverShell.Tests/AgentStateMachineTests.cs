@@ -5,6 +5,27 @@ namespace OverShell.Tests;
 
 public class AgentStateMachineTests
 {
+    [Fact]
+    public void Explicit_completion_overrides_stale_working_screen_text_but_busy_and_blocked_signals_still_win()
+    {
+        var machine = new AgentStateMachine(AgentRules.LoadDefaults().Find("opencode")!, isAgent: true);
+        var now = DateTimeOffset.UtcNow;
+        machine.SetViewed(false, now);
+        machine.OnScreen(["agents working in them"], now);
+        machine.OnProgress(3, 0, now.AddSeconds(1));
+        machine.OnProgress(4, 100, now.AddSeconds(2));
+        Assert.Equal(AgentState.Done, machine.State);
+        Assert.Equal("progress state 4", machine.Explain);
+        Assert.True(machine.Unread);
+        machine.OnScreen(["agents working in them"], now.AddSeconds(3));
+        Assert.Equal(AgentState.Done, machine.State);
+        machine.OnProgress(3, 0, now.AddSeconds(4));
+        Assert.Equal(AgentState.Working, machine.State);
+        machine.OnScreen(["Permission required"], now.AddSeconds(5));
+        machine.OnProgress(4, 100, now.AddSeconds(6));
+        Assert.Equal(AgentState.Blocked, machine.State);
+    }
+
     private static readonly AgentRules Rules = AgentRules.LoadDefaults();
     private static readonly DateTimeOffset T0 = new(2026, 9, 13, 12, 0, 0, TimeSpan.Zero);
 

@@ -715,7 +715,7 @@ public sealed class AgentStateMachine
             }
         }
 
-        foreach (var source in new[] { _fromTitle, _fromProgress, _fromScreen })
+        foreach (var source in new[] { _fromTitle, _fromProgress })
         {
             if (source is { State: AgentState.Working } w)
             {
@@ -723,13 +723,19 @@ public sealed class AgentStateMachine
             }
         }
 
-        foreach (var source in new[] { _fromTitle, _fromProgress, _fromScreen })
+        foreach (var source in new[] { _fromTitle, _fromProgress })
         {
             if (source is { State: AgentState.Done } d)
             {
                 return (AgentState.Done, d.Why);
             }
         }
+
+        // A live title/progress completion is stronger than a lingering "working" word
+        // in the viewport (including welcome text). Explicit busy and blocked/error
+        // evidence above still wins; screen-only evidence remains the fallback.
+        if (_fromScreen is { State: AgentState.Working or AgentState.Done } screen)
+            return (screen.State, screen.Why);
 
         foreach (var source in new[] { _fromTitle, _fromScreen, _fromProgress })
         {

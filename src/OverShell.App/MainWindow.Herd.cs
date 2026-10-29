@@ -240,7 +240,7 @@ public partial class MainWindow
         var target = owner is TearOffWindow tearOff ? tearOff.Tab : ActiveTab;
         var origin = Navigation.Capture();
         _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target, floating, origin));
-        _shortcuts.AddWindow(_palette);
+        TrackInputWindow(_palette);
         if (initial.Length == 0) _palette.SetContext(floating ? "Enter: show floating" : $"Enter: switch tab · {HintFor("palette.openFloating")}: show floating");
         _palette.Closed += (_, _) =>
         {
@@ -563,6 +563,7 @@ public partial class MainWindow
     /// <summary>Whether the user can see the active tab: it is showing and the window has the foreground.</summary>
     private void UpdateViewed()
     {
+        ScheduleFloatFocusCheck();
         var focused = FocusedTerminalTab;
         foreach (var tab in Tabs)
         {

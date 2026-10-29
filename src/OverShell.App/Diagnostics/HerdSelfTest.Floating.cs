@@ -19,6 +19,10 @@ internal static partial class HerdSelfTest
         Log("=== selftest (floats) start ===");
         var pass = true;
         void Check(bool ok, string what) { pass &= ok; Log($"  {(ok ? "PASS" : "FAIL")}  {what}"); }
+        Core.Input.KeyChord.TryParse("ctrl+alt+shift+j", out var attentionKey);
+        Core.Input.KeyChord.TryParse("ctrl+shift+i", out var inboxKey);
+        Check(window.Keybindings.TryResolve(attentionKey, out var attentionCommand) && attentionCommand == "tab.float.attention"
+            && window.Keybindings.TryResolve(inboxKey, out var inboxCommand) && inboxCommand == "inbox.open", "floating attention and the existing inbox have distinct effective default shortcuts");
         var firstHwnd = first.TerminalHwnd;
         Check(window.Presentations.ShowFloating(first.Id).Success && first.Floating && window.Tabs.Count == 1, "the only tab can float while remaining in the tab collection");
         Check(await TransferUntilAsync(() => ShortcutRouter.FocusedWindow() == firstHwnd), "the floated only tab receives native input focus");
@@ -37,9 +41,10 @@ internal static partial class HerdSelfTest
         try
         {
             Check(await TransferUntilAsync(() => second.IsRunning && third.IsRunning), "background sessions have started");
-            await Task.Delay(500);
-            second.SendText("Write-Host FLOAT_HISTORY_SENTINEL; 1..120 | ForEach-Object { Write-Host ('history line ' + $_) }\r");
-            await Task.Delay(1000);
+            await WaitForPromptAsync(second);
+            second.SendText("Write-Host FLOAT_HISTORY_SENTINEL; 1..120 | ForEach-Object { Write-Host ('history line ' + $_) }; Write-Host FLOAT_HISTORY_READY\r");
+            Check(await TransferUntilAsync(() => { second.RequestScreen(); return second.ScreenRows.Any(r => r.Trim() == "FLOAT_HISTORY_READY"); }),
+                "the scrollback fixture completed in the real shell before rehosting");
             var before = await window.Search.FindAsync(second.TerminalHwnd, "FLOAT_HISTORY_SENTINEL", true, null);
             Check(before is { AboveViewport: > 0 }, "the fixture places a known marker in scrollback before floating");
             var hwnd = second.TerminalHwnd;
@@ -155,17 +160,31 @@ internal static partial class HerdSelfTest
             Check((int)denied.StatusCode == 403 && !second.Floating, "disabling endpoint.control live disables the new control operations");
             window.Presentations.ShowFloating(second.Id);
             Check(window.FloatingWindows.Single().Width < window.Width * 0.75, "configured floating geometry applies to the live native host");
+            var replacedHost = window.FloatingWindows.Single();
+            window.Presentations.HideFloating(second.Id);
+            window.Presentations.ShowFloating(second.Id);
+            await Task.Delay(100);
+            Check(second.Floating && window.FloatingWindows.Single() != replacedHost, "a delayed focus-loss callback cannot dismiss a replacement host for the same tab");
             window.ExecuteForTab("tab.alias", second);
             await Task.Delay(150);
             var ownedPicker = Application.Current.Windows.OfType<Chrome.PaletteWindow>().Single(w => w.IsActive);
             Check(second.Floating && ownedPicker.Owner == window.FloatingWindows.Single(), "hide-on-focus-loss retains a float while its owned picker has focus");
-            ProfileKey(ownedPicker, Key.Escape);
-            await Task.Delay(100);
+            // Leave through the owned picker, when the float itself is already inactive.
             window.Activate();
-            Check(await TransferUntilAsync(() => !second.Floating), "hide-on-focus-loss dismisses the float when focus returns to the main window");
+            // SetForegroundWindow (used by Window.Activate) can be refused on a non-input
+            // desktop. SetActiveWindow changes only this test thread's active window.
+            if (!OnInputDesktop) _ = SetTestActiveWindow(new System.Windows.Interop.WindowInteropHelper(window).Handle);
+            Check(await TransferUntilAsync(() => !ownedPicker.IsActive), "the owned picker loses input focus on the test desktop");
+            var hiddenAfterPicker = await TransferUntilAsync(() => !second.Floating);
+            Check(hiddenAfterPicker, "hide-on-focus-loss follows focus leaving an owned picker for the main window");
+            if (!hiddenAfterPicker) Log($"  focus evidence: main={window.IsActive} active={window.ActiveTerminalWindow()?.Title} float={window.FloatingWindows.FirstOrDefault()?.IsActive} hideOnLoss={window.CurrentSettings.Floating.HideOnFocusLoss}");
             File.WriteAllText(AppPaths.SettingsFile, originalSettings);
             window.ReloadConfiguration(all: false, settings: true);
             window.Presentations.ShowFloating(second.Id);
+            var countBeforeBackground = window.Tabs.Count;
+            var backgroundRefused = window.OpenTabFor(new Core.Extensibility.TabRequest(Floating: true, Scratch: true, Activate: false), out var refusedReason);
+            Check(backgroundRefused is null && refusedReason is not null && window.Tabs.Count == countBeforeBackground && second.Floating,
+                "non-activating creation cannot replace the user's focused float or launch an orphaned process");
             window.WindowState = WindowState.Minimized;
             Check(await TransferUntilAsync(() => !second.Floating) && second.IsRunning, "minimizing the owner releases the presentation without ending the session");
             window.WindowState = WindowState.Normal;
@@ -196,4 +215,7 @@ internal static partial class HerdSelfTest
         Log($"=== selftest (floats) result: {(pass ? "ALL PASS" : "FAILED")} ===");
         static StringContent Body(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetActiveWindow")]
+    private static extern nint SetTestActiveWindow(nint window);
 }

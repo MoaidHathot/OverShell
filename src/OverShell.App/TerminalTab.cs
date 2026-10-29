@@ -44,7 +44,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     private bool _disposed;
     private DispatcherTimer? _revealTimeout;
 
-    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null, string? preamble = null, string? namingId = null, Core.Tabs.TabLifetime? lifetime = null, bool oneShot = false)
+    internal TerminalTab(TerminalProfile profile, ColorScheme scheme, Dispatcher dispatcher, AgentServices agents, string? userLabel = null, string? preamble = null, string? namingId = null, Core.Tabs.TabLifetime? lifetime = null, bool oneShot = false, string? processCommandLine = null)
     {
         Lifetime = lifetime ?? Core.Tabs.TabLifetime.Standard;
         IsOneShot = oneShot;
@@ -63,7 +63,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         // Seed the directory so the status bar is useful before the shell emits OSC 7/9;9.
         _workingDirectory = startingDirectory;
 
-        var commandLine = (oneShot ? profile.CommandLine : Expand(profile.CommandLine)) ?? "powershell.exe";
+        var commandLine = processCommandLine ?? Expand(profile.CommandLine) ?? "powershell.exe";
 
         // A plain PowerShell launch takes the shell integration along (12.15); the detector
         // keeps looking at the profile's own command line, not at what was added to it.

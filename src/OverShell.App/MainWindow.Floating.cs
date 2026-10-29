@@ -12,11 +12,33 @@ public partial class MainWindow
     private readonly List<FloatEntry> _floats = [];
     private readonly Dictionary<string, PromptBar> _floatingPrompts = [];
     private bool _movingPresentation;
+    private bool _floatFocusCheckPending;
     private TerminalTab? _reportedFocusedTab;
     internal ITabPresentations Presentations { get; private set; } = null!;
     internal IReadOnlyList<TearOffWindow> FloatingWindows => _floats.Select(e => e.Window).ToArray();
     internal int RoutedWindowCount => _shortcuts.AdditionalWindowCount;
-    internal void TrackInputWindow(Window window) => _shortcuts.AddWindow(window);
+    internal void TrackInputWindow(Window window)
+    {
+        _shortcuts.AddWindow(window);
+        window.Deactivated += (_, _) => ScheduleFloatFocusCheck();
+        window.Closed += (_, _) => ScheduleFloatFocusCheck();
+    }
+
+    private void ScheduleFloatFocusCheck()
+    {
+        if (_floatFocusCheckPending || !_settings.Floating.HideOnFocusLoss || _floats.Count == 0) return;
+        _floatFocusCheckPending = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _floatFocusCheckPending = false;
+            if (_movingPresentation || !_settings.Floating.HideOnFocusLoss) return;
+            var active = ActiveTerminalWindow();
+            // Focus can leave through an owned picker: the float was already inactive
+            // while the picker had focus, so its own Deactivated event cannot tell us.
+            foreach (var entry in _floats.Where(e => e.WasFocused && !ReferenceEquals(e.Window, active)).ToArray())
+                ReleaseFloat(entry.Window.Tab, returnFocus: false);
+        }, DispatcherPriority.Background);
+    }
 
     private sealed class FloatEntry(TearOffWindow window, Panel home, Window homeWindow, NavigationPoint origin)
     {
@@ -29,6 +51,7 @@ public partial class MainWindow
         public EventHandler? OwnerState;
         public System.ComponentModel.CancelEventHandler? HomeClosing;
         public bool HadFocus;
+        public bool WasFocused;
     }
 
     private void InitializeFloating()
@@ -132,21 +155,25 @@ public partial class MainWindow
             if (!window._tabsById.TryGetValue(tabId, out var tab)) return TabActionResult.Fail("The tab has closed");
             if (window._floats.FirstOrDefault(e => e.Window.Tab == tab) is { } existing)
             {
-                if (activate) { existing.Window.Activate(); tab.Surface.Focus(); }
+                if (activate)
+                {
+                    if (existing.Window.WindowState == WindowState.Minimized) existing.Window.WindowState = WindowState.Normal;
+                    existing.Window.Activate();
+                    tab.Surface.Focus();
+                }
                 return TabActionResult.Ok;
             }
-            Window owner = window.CommandOwner();
+            Window owner = window.ActiveTerminalWindow() ?? window;
             if (owner is TearOffWindow { IsFloating: true } f) owner = f.Owner;
             if (ownerTabId is not null)
             {
                 owner = window._tearOffs.FirstOrDefault(w => w.Tab.Id == ownerTabId)!;
                 if (owner is null) return TabActionResult.Fail("The requested owning window has closed");
             }
-            // An explicit target is the tab to borrow, not the window that invoked the action.
-            if (ownerTabId is null) owner = window.ActiveTerminalWindow() ?? window;
-            if (owner is TearOffWindow { IsFloating: true } activeFloat) owner = activeFloat.Owner;
             if (activate && owner.WindowState == WindowState.Minimized) owner.WindowState = WindowState.Normal;
             var previous = window._floats.FirstOrDefault(e => ReferenceEquals(e.Window.Owner, owner));
+            if (!activate && previous is not null && ReferenceEquals(window.ActiveTerminalWindow(), previous.Window))
+                return TabActionResult.Fail("A floating terminal has focus; activate the replacement or hide the current float first");
             var origin = previous?.Origin ?? returnTo ?? window.Navigation.Capture();
             if (previous is not null) window.ReleaseFloat(previous.Window.Tab, returnFocus: false);
             window.CloseTerminalPreview();
@@ -173,16 +200,8 @@ public partial class MainWindow
                 host.ReattachRequested += entry.Closing;
                 host.OpenNormallyRequested += t => ShowNormally(t.Id);
                 host.TerminateRequested += window.CloseTab;
-                host.Activated += (_, _) => window.UpdateViewed();
-                host.Deactivated += (_, _) =>
-                {
-                    window.UpdateViewed();
-                    if (window._settings.Floating.HideOnFocusLoss)
-                        window.Dispatcher.BeginInvoke(() =>
-                        {
-                            if (!ReferenceEquals(window.ActiveTerminalWindow(), host)) window.ReleaseFloat(tab, returnFocus: false);
-                        }, DispatcherPriority.Background);
-                };
+                host.Activated += (_, _) => { entry.WasFocused = true; window.UpdateViewed(); };
+                host.Deactivated += (_, _) => window.UpdateViewed();
                 owner.StateChanged += entry.OwnerState;
                 homeWindow.Closing += entry.HomeClosing;
                 if (owner != homeWindow) owner.Closing += entry.HomeClosing;

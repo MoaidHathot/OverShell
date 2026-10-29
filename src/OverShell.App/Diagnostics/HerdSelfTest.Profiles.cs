@@ -44,6 +44,7 @@ internal static partial class HerdSelfTest
             profiles = new { settingsPath = ProfileFixture, defaultProfile = "Profile Cmd" },
             session = new { restore = false, confirmCloseWithAgents = false },
             protocol = new { register = false },
+            extensions = new Dictionary<string, object> { ["summon"] = new { enabled = false } },
         }));
     }
 

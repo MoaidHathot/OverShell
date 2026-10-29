@@ -25,6 +25,7 @@ internal static unsafe partial class ConPtyNative
     public const nuint ProcThreadAttributePseudoConsole = 0x00020016;
     public const uint StillActive = 259;
     public const uint WaitObject0 = 0;
+    public const uint PseudoConsoleInheritCursor = 1;
 
     static ConPtyNative()
     {

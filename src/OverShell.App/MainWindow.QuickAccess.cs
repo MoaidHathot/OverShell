@@ -37,8 +37,7 @@ public partial class MainWindow
         {
             if (ResolveTarget(invocation) is { } tab)
             {
-                ActiveTab = tab;
-                if (!tab.Detached) { if (DashboardVisible) ApplyView("terminal"); BringToFront(); }
+                ShowPresentationResult(Presentations.ShowNormally(tab.Id));
             }
             return true;
         });
@@ -99,9 +98,9 @@ public partial class MainWindow
         var actions = new List<PickItem> { new("Activate tab", Tag: "tab.activate") };
         if (_commands.Find("tab.float.toggle") is not null) actions.Add(new("Toggle floating", Tag: "tab.float.toggle"));
         var action = await _shell.Ui.PickAsync("⌨", "Choose a shortcut action", actions);
-        if (action?.Tag is not string command) return;
+        if (action?.Tag is not string command || !Tabs.Contains(tab) || !IsVisible) return;
         var scope = await _shell.Ui.PickAsync("⌨", "Choose shortcut scope", [new("In OverShell", Tag: false), new("Global hotkey", "Available from other applications", Tag: true)]);
-        if (scope?.Tag is not bool global) return;
+        if (scope?.Tag is not bool global || !Tabs.Contains(tab) || !IsVisible) return;
         var keys = await _shell.Ui.PromptAsync("Shortcut — e.g. ctrl+alt+b or ctrl+alt+k b");
         if (string.IsNullOrWhiteSpace(keys)) return;
         var result = AssignRuntimeShortcut(tab.Id, new Keybinding(keys, command, Arguments: new JsonObject { ["target"] = new JsonObject { ["id"] = tab.Id } }), global);

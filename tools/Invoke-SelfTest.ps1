@@ -5,7 +5,7 @@ Runs one OverShell self-test mode (OVERSHELL_SELFTEST=<mode>) without taking the
 .DESCRIPTION
 By default the test instance runs on a private Win32 desktop (CreateDesktop + CreateProcess with
 lpDesktop): nothing appears on the desktop you are working on, no window takes your focus, a tiling
-window manager never sees the windows, and the instance's own hotkeys cannot clash with yours. Inside
+window manager never sees the windows. Fixtures should disable the default global summon key. Inside
 that desktop the app's windows activate and focus among themselves exactly as on screen, so the
 checks are real - except the ones that need the screen itself (the acrylic reads and the PNG
 screenshots of the `transparency` and `find` modes), which the self-test marks SKIP there. Run with

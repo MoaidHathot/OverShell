@@ -175,6 +175,7 @@ public partial class MainWindow
 
     internal void RefocusOwner(Window owner, IInputElement? previousFocus = null)
     {
+        ScheduleFloatFocusCheck();
         Dispatcher.BeginInvoke(() =>
         {
             if (!owner.IsActive) return;
@@ -197,7 +198,7 @@ public partial class MainWindow
         palette.Title = "New tab with profile — OverShell";
         palette.ContextSource = () => ProfileSourceDescription;
         _profilePicker = _palette = palette;
-        _shortcuts.AddWindow(palette);
+        TrackInputWindow(palette);
         palette.Closed += (_, _) =>
         {
             if (ReferenceEquals(_palette, palette)) _palette = null;

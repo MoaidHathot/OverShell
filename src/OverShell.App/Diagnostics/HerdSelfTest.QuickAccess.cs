@@ -137,6 +137,12 @@ internal static partial class HerdSelfTest
         window.Commands.TryExecute("prompt.toggle");
         window.CloseTab(second);
         window.CloseTab(third);
+        var remaining = window.AddTab(first.Profile, activate: false);
+        window.Detach(remaining);
+        window.Activate();
+        window.CloseTab(first);
+        Check(window.ActiveTab == remaining && !remaining.Detached && window.Tabs.Count == 1, "closing the last main-host tab brings the remaining detached terminal home");
+        Check(await TransferUntilAsync(() => ShortcutRouter.FocusedWindow() == remaining.TerminalHwnd), "the surviving terminal remains keyboard accessible");
         Log($"=== selftest (quicknav) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
 }

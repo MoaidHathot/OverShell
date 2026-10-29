@@ -75,6 +75,11 @@ internal static partial class HerdSelfTest
             var restored = window.OpenSavedTab(savedSuccess, activate: false)!;
             Check(await TransferUntilAsync(() => restored.IsRunning) && restored.Profile.CommandLine == first.Profile.CommandLine && File.ReadAllText(successFile) == "x", "restoring a kept one-shot tab opens its profile without replaying the command");
             window.CloseTab(restored);
+            var duplicate = window.DuplicateTab(success);
+            Check(await TransferUntilAsync(() => duplicate.IsRunning) && !duplicate.IsOneShot && duplicate.Alias is null && File.ReadAllText(successFile) == "x",
+                "duplicating a completed job opens the original profile rather than replaying the one-shot command");
+            window.CloseTab(duplicate);
+            window.ActiveTab = first;
 
             var auto = window.OpenTabFor(new TabRequest(Profile: first.Profile.Id, Scratch: true, Floating: true, Alias: "one-shot-auto",
                 Process: Script("Write-Host AUTO_SUCCESS; exit 0"), OnExit: TabExitBehavior.CloseOnSuccess))!;
