@@ -284,7 +284,7 @@ public partial class MainWindow
                 OpenProfileTab(command["tab.newProfile.".Length..]);
                 return true;
             }
-            var taken = _commands.TryExecute(command);
+            var taken = _commands.TryExecute(command, decision.Command.Arguments);
 
             // A key that ran inside a sequence is always consumed, even by a command that declined.
             return taken || wasPending || decision.Command.Keys.Length > 1;

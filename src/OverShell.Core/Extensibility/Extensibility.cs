@@ -4,6 +4,7 @@ using OverShell.Core.Commands;
 using OverShell.Core.Input;
 using OverShell.Core.Notifications;
 using OverShell.Core.Settings;
+using OverShell.Core.Tabs;
 
 namespace OverShell.Core.Extensibility;
 
@@ -31,6 +32,8 @@ public interface IShell
 
     /// <summary>The tab a command aims at: the tear-off's when the chord came from one, else the active tab.</summary>
     ITab? TargetTab { get; }
+
+    INavigationService Navigation { get; }
 
     ITab? Find(string tabId);
 

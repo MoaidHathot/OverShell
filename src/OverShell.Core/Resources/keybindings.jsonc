@@ -33,6 +33,7 @@
   { "keys": "alt+8",               "command": "tab.switchTo.8" },
   { "keys": "alt+9",               "command": "tab.switchTo.9" },
   { "keys": "ctrl+shift+j",        "command": "tab.jumpToAttention" },
+  { "keys": "ctrl+shift+h",        "command": "navigation.return" },
   { "keys": "ctrl+shift+r",        "command": "tab.rename" },
   { "keys": "ctrl+shift+g",        "command": "tab.moveToGroup" },
   { "keys": "alt+shift+left",      "command": "tab.moveLeft" },

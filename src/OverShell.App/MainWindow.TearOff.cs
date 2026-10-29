@@ -20,7 +20,7 @@ public partial class MainWindow
     /// The tab a command acts on: the tear-off's tab while a chord arrives from a tear-off
     /// window, else the main window's active tab.
     /// </summary>
-    internal TerminalTab? TargetTab => _commandTarget ?? ActiveTab;
+    internal TerminalTab? TargetTab => _commandTarget ?? _tearOffs.FirstOrDefault(w => w.IsActive)?.Tab ?? ActiveTab;
 
     private void InitializeTearOff()
     {

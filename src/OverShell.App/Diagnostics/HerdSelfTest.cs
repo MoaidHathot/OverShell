@@ -35,7 +35,7 @@ internal static partial class HerdSelfTest
 
     public static void Schedule(MainWindow window, TerminalTab firstTab)
     {
-        if (!Enabled)
+        if (!Enabled && Mode is not ("quicknav" or "aliases" or "floats" or "scratch"))
         {
             return;
         }
@@ -52,6 +52,9 @@ internal static partial class HerdSelfTest
             {
                 switch (Mode)
                 {
+                    case "quicknav":
+                        await RunQuickNavigationAsync(window, firstTab);
+                        break;
                     case "previewbench":
                         await RunPreviewBenchmarkAsync(window, firstTab);
                         break;
@@ -215,7 +218,7 @@ internal static partial class HerdSelfTest
     /// </summary>
     public static void SeedState()
     {
-        if (!Enabled)
+        if (!Enabled && Mode is not ("quicknav" or "aliases" or "floats" or "scratch"))
         {
             return;
         }
@@ -225,6 +228,10 @@ internal static partial class HerdSelfTest
             var now = DateTimeOffset.Now;
             switch (Mode)
             {
+                case "quicknav":
+                case "aliases":
+                case "floats":
+                case "scratch":
                 case "previewbench":
                 case "previewnative":
                 case "previews":

@@ -35,6 +35,8 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public ITab? TargetTab => _window.TargetTab;
 
+    public Core.Tabs.INavigationService Navigation => _window.Navigation;
+
     public ITab? Find(string tabId) => _window.Tabs.FirstOrDefault(t => string.Equals(t.Id, tabId, StringComparison.OrdinalIgnoreCase));
 
     public event Action<ITab>? TabOpened;

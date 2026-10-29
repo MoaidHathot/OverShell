@@ -501,7 +501,10 @@ public partial class MainWindow
             return false;
         }
 
-        ActiveTab = Tabs[target.Index];
+        Navigation.BeginAttention();
+        _attentionNavigation = true;
+        try { ActiveTab = Tabs[target.Index]; }
+        finally { _attentionNavigation = false; }
         return true;
     }
     /// <summary>A toast's Allow / Deny (12.17): answers the tab through its reply channel; false when it has none.</summary>
@@ -521,7 +524,10 @@ public partial class MainWindow
     {
         if (_tabsById.TryGetValue(tabId, out var tab))
         {
-            ActiveTab = tab;
+            Navigation.BeginAttention();
+            _attentionNavigation = true;
+            try { ActiveTab = tab; }
+            finally { _attentionNavigation = false; }
             if (WindowState == WindowState.Minimized)
             {
                 WindowState = WindowState.Normal;

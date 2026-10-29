@@ -91,6 +91,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeDepth();
         InitializeFind();
         InitializeTearOff();
+        InitializeNavigation();
         InitializeWorkspaces();
         InitializeSession();
         InitializeExtensions();
@@ -161,6 +162,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             // A detached tab is looked at in its own window; the main host keeps what it has.
             if (value is { Detached: true } detached)
             {
+                VisitTab(detached);
                 _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, detached))?.Activate();
                 return;
             }
@@ -173,6 +175,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             _activeTab = value;
+            VisitTab(value);
 
             if (_activeTab is not null)
             {
@@ -276,6 +279,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _findBar.Forget(tab);
         _endpoint?.Commands.Forget(tab.Id);
         _shell?.RaiseTabClosed(tab);
+        _navigationHistory.Forget(tab.Id);
 
         // Dispose first: it suppresses further input, so the focus and key messages
         // generated while the HwndHost is unloaded can't reach a closed pseudoconsole.
@@ -297,7 +301,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             // The nearest tab that still lives in this window; detached ones have their own.
             var next = Tabs.Where(t => !t.Detached).OrderBy(t => Math.Abs(Tabs.IndexOf(t) - index)).FirstOrDefault() ?? Tabs[Math.Min(index, Tabs.Count - 1)];
-            ActiveTab = next;
+            var previousNavigation = _attentionNavigation;
+            _attentionNavigation = true;
+            try { ActiveTab = next; }
+            finally { _attentionNavigation = previousNavigation; }
         }
 
         RefreshAttention();

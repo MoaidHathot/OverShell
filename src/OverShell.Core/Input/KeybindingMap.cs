@@ -9,7 +9,7 @@ namespace OverShell.Core.Input;
 /// For a sequence: after the command runs, stay in the sequence's prefix so the last chord
 /// can be repeated (<c>ctrl+shift+k j j j</c> walks three tabs). Ignored for a single chord.
 /// </param>
-public sealed record Keybinding(string Keys, string? Command, bool Stay = false);
+public sealed record Keybinding(string Keys, string? Command, bool Stay = false, JsonObject? Arguments = null);
 
 /// <summary>What a sequence of chords means so far.</summary>
 public enum KeyResolution
@@ -25,7 +25,7 @@ public enum KeyResolution
 }
 
 /// <summary>A command bound to a key sequence.</summary>
-public sealed record BoundCommand(KeySequence Keys, string Command, bool Stay);
+public sealed record BoundCommand(KeySequence Keys, string Command, bool Stay, JsonObject? Arguments = null);
 
 /// <summary>
 /// Keys  command map, layered the way Windows Terminal does it: the embedded defaults
@@ -104,7 +104,7 @@ public sealed class KeybindingMap
             }
             else
             {
-                _bySequence[sequence] = new BoundCommand(sequence, binding.Command, binding.Stay && sequence.Length > 1);
+                _bySequence[sequence] = new BoundCommand(sequence, binding.Command, binding.Stay && sequence.Length > 1, binding.Arguments?.DeepClone().AsObject());
             }
         }
     }
@@ -161,7 +161,7 @@ public sealed class KeybindingMap
                 continue;
             }
 
-            var keys = entry["keys"]?.GetValue<string>();
+            var keys = entry["keys"] is JsonValue kv && kv.TryGetValue<string>(out var keyText) ? keyText : null;
             if (string.IsNullOrWhiteSpace(keys))
             {
                 problems.Add($"{sourceName}: binding without \"keys\"");
@@ -172,12 +172,21 @@ public sealed class KeybindingMap
             {
                 null => null,
                 JsonValue v when v.TryGetValue<string>(out var s) => s,
-                JsonObject o => o["action"]?.GetValue<string>(),
+                JsonObject o when o["action"] is JsonValue av && av.TryGetValue<string>(out var action) => action,
                 _ => null,
             };
 
+            if (command is null && entry["command"] is not null)
+            {
+                problems.Add($"{sourceName}: command must be a string or an object with an action");
+                continue;
+            }
+
+            var arguments = (entry["command"] as JsonObject)?.DeepClone().AsObject();
+            arguments?.Remove("action");
+
             var stay = entry["stay"] is JsonValue sv && sv.TryGetValue<bool>(out var b) && b;
-            list.Add(new Keybinding(keys, command, stay));
+            list.Add(new Keybinding(keys, command, stay, arguments));
         }
 
         return list;

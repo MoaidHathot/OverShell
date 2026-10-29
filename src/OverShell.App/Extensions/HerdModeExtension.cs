@@ -38,15 +38,6 @@ public sealed class HerdModeExtension : IExtension
         _settings = shell.ExtensionSettings<HerdModeSettings>(Id);
         var leader = KeyChord.TryParse(_settings.Leader, out _) ? _settings.Leader : Leader;
 
-        // The mode's own commands.
-        shell.Commands.Register("tab.last", "Switch to the last used tab", "Tabs", () =>
-        {
-            if (_lastActive is { } last && shell.Tabs.Contains(last) && !ReferenceEquals(last, shell.ActiveTab))
-            {
-                shell.Activate(last);
-            }
-        }, () => _lastActive is not null && shell.Tabs.Count > 1, "Bounces between the two tabs you were last in");
-
         shell.Commands.Register("herd.hints", "Herd mode: show the keys", "Herd", () => ShowHints(force: true),
             description: $"The keys that follow {KeySequenceText(leader)}");
 
@@ -83,26 +74,8 @@ public sealed class HerdModeExtension : IExtension
             new Keybinding($"{leader} 9", "tab.switchTo.9"),
         ]);
 
-        shell.ActiveTabChanged += OnActiveTabChanged;
         shell.Keys.PendingChanged += OnPendingChanged;
         shell.SettingsChanged += () => _settings = shell.ExtensionSettings<HerdModeSettings>(Id);
-    }
-
-    private ITab? _previousActive;
-    private ITab? _lastActive;
-
-    /// <summary>The tab to bounce back to - the one active before the current one.</summary>
-    internal ITab? LastActive => _lastActive;
-
-    private void OnActiveTabChanged(ITab? tab)
-    {
-        if (ReferenceEquals(tab, _previousActive))
-        {
-            return;
-        }
-
-        _lastActive = _previousActive;
-        _previousActive = tab;
     }
 
     private void OnPendingChanged(IReadOnlyList<KeyChord> pending)
@@ -192,7 +165,6 @@ public sealed class HerdModeExtension : IExtension
     {
         if (_shell is not null)
         {
-            _shell.ActiveTabChanged -= OnActiveTabChanged;
             _shell.Keys.PendingChanged -= OnPendingChanged;
         }
 

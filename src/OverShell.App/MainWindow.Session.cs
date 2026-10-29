@@ -434,7 +434,11 @@ public partial class MainWindow
     private TearOffWindow? _lastActivatedTearOff;
 
     /// <summary>Called by the windows as they activate: the main window clears the tear-off memory, a tear-off sets it.</summary>
-    internal void NoteActivated(TearOffWindow? tearOff) => _lastActivatedTearOff = tearOff;
+    internal void NoteActivated(TearOffWindow? tearOff)
+    {
+        _lastActivatedTearOff = tearOff;
+        VisitTab(tearOff?.Tab ?? ActiveTab);
+    }
 
     /// <summary>A tab's extension state changed: write the session if it differs (it carries the properties).</summary>
     internal void SaveSessionSoon() => SaveSession();

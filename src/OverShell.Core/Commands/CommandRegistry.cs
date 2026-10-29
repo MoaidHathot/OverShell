@@ -1,4 +1,11 @@
+using System.Text.Json.Nodes;
+
 namespace OverShell.Core.Commands;
+
+/// <summary>Captured before execution; a picker or asynchronous action must not retarget to later focus.</summary>
+public sealed record CommandContext(string? TabId = null, string? HostId = null);
+
+public sealed record CommandInvocation(string Id, JsonObject Arguments, CommandContext Context);
 
 /// <summary>
 /// One thing the user can ask OverShell to do, by name. Everything the chrome offers —
@@ -20,6 +27,8 @@ public sealed record CommandDescriptor(
     string? Description = null)
 {
     public bool IsEnabled => CanExecute?.Invoke() ?? true;
+
+    public Func<CommandInvocation, bool>? Invoke { get; init; }
 }
 
 /// <summary>The set of commands the running application knows. Registration is additive; ids are unique.</summary>
@@ -28,6 +37,8 @@ public sealed class CommandRegistry
     private readonly Dictionary<string, CommandDescriptor> _commands = new(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyCollection<CommandDescriptor> All => _commands.Values;
+
+    public Func<CommandContext>? CaptureContext { get; set; }
 
     public void Register(CommandDescriptor command)
     {
@@ -45,15 +56,21 @@ public sealed class CommandRegistry
     public void Register(string id, string title, string category, Func<bool> execute, Func<bool>? canExecute = null, string? description = null) =>
         Register(new CommandDescriptor(id, title, category, execute, canExecute, description));
 
+    public void Register(string id, string title, string category, Func<CommandInvocation, bool> execute, Func<bool>? canExecute = null, string? description = null) =>
+        Register(new CommandDescriptor(id, title, category, () => false, canExecute, description) { Invoke = execute });
+
     public CommandDescriptor? Find(string id) => _commands.GetValueOrDefault(id);
 
     /// <summary>Removes a command; false when there was none. For commands that come from files that reload (snippets).</summary>
     public bool Remove(string id) => _commands.Remove(id);
 
     /// <summary>Runs a command by id. False when unknown, disabled, or the command declined.</summary>
-    public bool TryExecute(string id)
+    public bool TryExecute(string id, JsonObject? arguments = null, CommandContext? context = null)
     {
         var command = Find(id);
-        return command is not null && command.IsEnabled && command.Execute();
+        if (command is null || !command.IsEnabled) return false;
+        return command.Invoke is { } invoke
+            ? invoke(new CommandInvocation(id, arguments?.DeepClone().AsObject() ?? new JsonObject(), context ?? CaptureContext?.Invoke() ?? new CommandContext()))
+            : command.Execute();
     }
 }
