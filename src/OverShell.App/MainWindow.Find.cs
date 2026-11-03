@@ -55,13 +55,7 @@ public partial class MainWindow
             return;
         }
 
-        if (tab.Detached || tab.Floating)
-        {
-            TerminalWindowFor(tab)?.Find.Open(tab);
-            return;
-        }
-
-        _findBar.Open(tab);
+        FindControllerFor(tab)?.Open(tab);
     }
 
     private void StepFind(int direction) => FindControllerFor(TargetTab)?.Session?.Step(direction);
@@ -74,8 +68,6 @@ public partial class MainWindow
             return null;
         }
 
-        return tab.Detached || tab.Floating
-            ? TerminalWindowFor(tab)?.Find
-            : _findBar;
+        return FloatFor(tab)?.Panel.Find ?? (tab.Detached ? TerminalWindowFor(tab)?.Find : _findBar);
     }
 }

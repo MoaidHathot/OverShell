@@ -20,7 +20,7 @@ public partial class MainWindow
     /// The tab a command acts on: the tear-off's tab while a chord arrives from a tear-off
     /// window, else the main window's active tab.
     /// </summary>
-    internal TerminalTab? TargetTab => _commandTarget ?? (ActiveTerminalWindow() as TearOffWindow)?.Tab ?? ActiveTab;
+    internal TerminalTab? TargetTab => _commandTarget ?? FocusedTerminalTab ?? (ActiveTerminalWindow() as TearOffWindow)?.Tab ?? ActiveTab;
 
     private void InitializeTearOff()
     {
@@ -32,6 +32,7 @@ public partial class MainWindow
     /// <param name="placement">Where the window goes (a restored session); null for the default offset from the main window.</param>
     internal TearOffWindow? Detach(TerminalTab tab, Core.Settings.SavedWindow? placement = null)
     {
+        ReleaseFloatsUsing(tab);
         ReleaseFloat(tab, returnFocus: false);
         if (tab.Detached || Tabs.Count < 2)
         {
@@ -82,6 +83,7 @@ public partial class MainWindow
     /// <summary>Brings a tab's surface back into the main host and makes it the active tab.</summary>
     internal void Attach(TerminalTab tab)
     {
+        ReleaseFloatsUsing(tab);
         ReleaseFloat(tab, returnFocus: false);
         var window = _tearOffs.FirstOrDefault(w => ReferenceEquals(w.Tab, tab));
         if (window is null)

@@ -10,7 +10,7 @@ namespace OverShell.App.Diagnostics;
 
 internal static partial class HerdSelfTest
 {
-    private static bool QuickAccessMode => Mode is "quicknav" or "aliases" or "floats" or "scratch" or "quickrestore1" or "quickrestore2";
+    private static bool QuickAccessMode => Mode is "quicknav" or "aliases" or "floats" or "embeddedpixels" or "scratch" or "quickrestore1" or "quickrestore2";
 
     private static void SeedQuickRestore()
     {
@@ -59,7 +59,7 @@ internal static partial class HerdSelfTest
             Check(persistent.Id != expected["id"]?.GetValue<string>() && persistent.NamingId == expected["namingId"]?.GetValue<string>(), "runtime IDs renew while persistent naming identity survives");
             Check(window.Tabs.Single(t => t.UserLabel == "qa-kept").Lifetime == TabLifetime.Standard, "a kept scratch tab restores as a normal tab");
             Check(window.Tabs.Single(t => t.UserLabel == "qa-policy").Lifetime is { Scratch: true, Restore: true, History: false }, "explicit retention policy survives restoration");
-            Check(window.ActiveTab == persistent && window.FloatingWindows.Count == 0 && await TransferUntilAsync(() => window.Tabs.All(t => t.IsRunning)),
+            Check(window.ActiveTab == persistent && window.FloatingPanels.Count == 0 && await TransferUntilAsync(() => window.Tabs.All(t => t.IsRunning)),
                 "the original work is selected, fresh processes run, and temporary floating hosts are absent");
         }
         Log($"=== selftest ({Mode}) result: {(pass ? "ALL PASS" : "FAILED")} ===");

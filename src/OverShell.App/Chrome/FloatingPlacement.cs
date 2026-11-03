@@ -1,40 +1,26 @@
-using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Interop;
 using OverShell.Core.Settings;
 
 namespace OverShell.App.Chrome;
 
+/// <summary>Floating bounds are owner-client DIPs, so layout and DPI changes stay inside the same window.</summary>
 internal static class FloatingPlacement
 {
-    internal static Rect Calculate(Rect work, Rect owner, FloatingSettings settings)
+    internal static Rect Calculate(Size area, FloatingSettings settings)
     {
-        var width = Math.Min(work.Width, Math.Max(400, owner.Width * settings.EffectiveWidth));
-        var height = Math.Min(work.Height, Math.Max(240, owner.Height * settings.EffectiveHeight));
-        var right = settings.Position is "topRight" or "bottomRight";
-        var x = right ? owner.Right - width - 16 : owner.Left + (owner.Width - width) / 2;
-        var y = settings.Position == "topRight" ? owner.Top + 48
-            : settings.Position == "bottomRight" ? owner.Bottom - height - 16 : owner.Top + (owner.Height - height) / 2;
-        return new Rect(Math.Clamp(x, work.Left, work.Right - width), Math.Clamp(y, work.Top, work.Bottom - height), width, height);
+        if (area.Width <= 0 || area.Height <= 0) return Rect.Empty;
+        var width = Math.Min(area.Width, Math.Max(360, area.Width * settings.EffectiveWidth));
+        var height = Math.Min(area.Height, Math.Max(220, area.Height * settings.EffectiveHeight));
+        var x = settings.Position is "topRight" or "bottomRight" ? area.Width - width - 12 : (area.Width - width) / 2;
+        var y = settings.Position == "topRight" ? 12 : settings.Position == "bottomRight" ? area.Height - height - 12 : (area.Height - height) / 2;
+        return Constrain(new Rect(x, y, width, height), area);
     }
 
-    internal static void Apply(Window window, Window owner, FloatingSettings settings)
+    internal static Rect Constrain(Rect bounds, Size area)
     {
-        var hwnd = new WindowInteropHelper(owner).Handle;
-        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfoW(MonitorFromWindow(hwnd, 2), ref info) || !GetWindowRect(hwnd, out var bounds)) return;
-        var placed = Calculate(info.Work.Rect, bounds.Rect, settings);
-        _ = SetWindowPos(new WindowInteropHelper(window).Handle, 0, (int)placed.X, (int)placed.Y, (int)placed.Width, (int)placed.Height, 0x0004 | 0x0010);
+        if (area.Width <= 0 || area.Height <= 0) return Rect.Empty;
+        var width = Math.Clamp(bounds.Width, Math.Min(200, area.Width), area.Width);
+        var height = Math.Clamp(bounds.Height, Math.Min(140, area.Height), area.Height);
+        return new Rect(Math.Clamp(bounds.X, 0, area.Width - width), Math.Clamp(bounds.Y, 0, area.Height - height), width, height);
     }
-
-    [StructLayout(LayoutKind.Sequential)] private struct NativeRect
-    {
-        public int Left, Top, Right, Bottom;
-        public readonly Rect Rect => new(Left, Top, Right - Left, Bottom - Top);
-    }
-    [StructLayout(LayoutKind.Sequential)] private struct MonitorInfo { public int Size; public NativeRect Monitor, Work; public uint Flags; }
-    [DllImport("user32.dll")] private static extern nint MonitorFromWindow(nint hwnd, uint flags);
-    [DllImport("user32.dll")] private static extern bool GetMonitorInfoW(nint monitor, ref MonitorInfo info);
-    [DllImport("user32.dll")] private static extern bool GetWindowRect(nint hwnd, out NativeRect rect);
-    [DllImport("user32.dll")] private static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int width, int height, uint flags);
 }

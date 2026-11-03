@@ -93,7 +93,8 @@ most-recently-used switcher instead: hold Ctrl, tap Tab, release to land).
 **Do:** right-click a tab, choose **Set alias…**, and call it `build`. Switch to another
 tab, open `Ctrl+Shift+Space`, type `@build`, then press **Shift+Enter**.
 
-**You see:** the build terminal is interactive in a floating window. The main tab remains
+**You see:** the build terminal is interactive in an inset panel inside the existing
+window, so your Windows tiling manager does not rearrange it. The main tab remains
 selected underneath. Type or inspect what you need, then click the float's **X** or press
 **Ctrl+Shift+H**. The float hides, the process keeps running, and input returns to your work.
 **Ctrl+Shift+W** would terminate the floating tab instead. Escape belongs to the terminal.
@@ -158,7 +159,8 @@ opencode` in any shell), then restart the agent inside the tab.
 the explain panel says *authority: integration*. OpenCode V2 gets a small `overshell-v2`
 plugin directory with a per-client bridge; `uninstall` removes OverShell's files.
 The session name becomes the large first line on the tab, with project and state below.
-Two sessions in the same folder keep distinct names; identical names get stable identifiers.
+Two sessions in the same folder keep their task names. Identical names stay clean;
+the tab selector shows small numbers to distinguish them when choosing a tab.
 **Setting: Tab labels** selects session-first, project-first or harness-name labels.
 The guide's [section 8](GUIDE.md#8-harness-integrations) has Copilot, Claude and Codex.
 

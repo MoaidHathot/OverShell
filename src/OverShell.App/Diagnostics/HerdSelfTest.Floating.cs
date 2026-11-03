@@ -24,15 +24,19 @@ internal static partial class HerdSelfTest
         Check(window.Keybindings.TryResolve(attentionKey, out var attentionCommand) && attentionCommand == "tab.float.attention"
             && window.Keybindings.TryResolve(inboxKey, out var inboxCommand) && inboxCommand == "inbox.open", "floating attention and the existing inbox have distinct effective default shortcuts");
         var firstHwnd = first.TerminalHwnd;
+        var topLevelCount = Application.Current.Windows.Count;
+        var ownerHwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
         Check(window.Presentations.ShowFloating(first.Id).Success && first.Floating && window.Tabs.Count == 1, "the only tab can float while remaining in the tab collection");
         Check(await TransferUntilAsync(() => ShortcutRouter.FocusedWindow() == firstHwnd), "the floated only tab receives native input focus");
         Check(first.TerminalHwnd == firstHwnd && window.ActiveTab == first, "floating the active tab preserves its HWND and selected tab identity");
-        var only = window.FloatingWindows.Single();
-        Check(only.Owner == window && !only.ShowInTaskbar && only.IsActive, "the float is an owned interactive window without a taskbar entry");
+        var only = window.FloatingPanels.Single();
+        Check(only.OwnerWindow == window && Window.GetWindow(only) == window && Application.Current.Windows.Count == topLevelCount,
+            "the float is part of the existing window with no new top-level WPF window");
+        Check(GetFloatingRoot(firstHwnd, 2) == ownerHwnd, "the live terminal remains a native child of the original top-level HWND");
         var hide = FindAll<Button>(only.CaptionSurface).Single(b => (b.ToolTip as string)?.StartsWith("Hide floating", StringComparison.Ordinal) == true);
         hide.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
         Check(await TransferUntilAsync(() => !first.Floating && ShortcutRouter.FocusedWindow() == firstHwnd), "the float's X hides it and restores native focus");
-        Check(first.IsRunning && first.TerminalHwnd == firstHwnd && window.FloatingWindows.Count == 0, "Hide preserves the session and cleans up the floating host");
+        Check(first.IsRunning && first.TerminalHwnd == firstHwnd && window.FloatingPanels.Count == 0, "Hide preserves the session and cleans up the floating host");
 
         var second = window.AddTab(first.Profile, activate: false);
         var third = window.AddTab(first.Profile, activate: false);
@@ -53,8 +57,13 @@ internal static partial class HerdSelfTest
             window.Commands.TryExecute("prompt.toggle");
             window.PromptBarView.Text = "origin draft stays here";
             await Task.Delay(100);
+            var backgroundGrid = first.Grid;
             Check(window.Presentations.ShowFloating(second.Id).Success, "a background tab opens floating");
-            var floating = window.FloatingWindows.Single();
+            var floating = window.FloatingPanels.Single();
+            Check(floating.HasBackgroundPreview && floating.HasParkedBackground && first.Grid == backgroundGrid,
+                "the background stays visible as a preview without losing its terminal grid");
+            Check(GetFloatingRoot(hwnd, 2) == ownerHwnd && Application.Current.Windows.Count == topLevelCount,
+                "borrowing a background terminal creates no tiling-manager window");
             Check(await TransferUntilAsync(() => ShortcutRouter.FocusedWindow() == hwnd), "floating transfers Win32 input focus to the borrowed terminal");
             Check(window.ActiveTab == first && window.Shell.FocusedTab == second && window.Shell.TargetTab == second, "selected main tab and focused/command tab are independent");
             Check(second.Session.ProcessId == pid && second.TerminalHwnd == hwnd, "the float reuses the exact process and terminal HWND");
@@ -77,7 +86,7 @@ internal static partial class HerdSelfTest
             floating.PromptBar.Text = "Write-Host floating-prompt";
             await floating.PromptBar.SendAsync();
             window.Commands.TryExecute("prompt.toggle");
-            Check(window.Presentations.ShowFloating(third.Id).Success && window.FloatingWindows.Count == 1 && !second.Floating, "a second target replaces the owner's float");
+            Check(window.Presentations.ShowFloating(third.Id).Success && window.FloatingPanels.Count == 1 && !second.Floating, "a second target replaces the owner's float");
             Check(window.Presentations.HideFloating(third.Id).Success && window.ActiveTab == first, "hiding the replacement returns to the original main tab");
             Check(await TransferUntilAsync(() => window.PromptBarView.IsKeyboardFocusWithin), "the original prompt focus survives a chain of floating targets");
             window.Commands.TryExecute("prompt.toggle");
@@ -102,7 +111,13 @@ internal static partial class HerdSelfTest
                 window.Presentations.HideFloating(second.Id);
                 await Task.Delay(20);
             }
-            Check(second.TerminalHwnd == hwnd && second.Session.ProcessId == pid && window.FloatingWindows.Count == 0 && window.RoutedWindowCount == 0, "twenty show/hide cycles preserve process/HWND and release every host and input registration");
+            Check(second.TerminalHwnd == hwnd && second.Session.ProcessId == pid && window.FloatingPanels.Count == 0 && window.RoutedWindowCount == 0, "twenty show/hide cycles preserve process/HWND and release every host and input registration");
+            first.Surface.Focus();
+            window.Presentations.ShowFloating(second.Id, activate: false);
+            Check(await TransferUntilAsync(() => ShortcutRouter.FocusedWindow() == firstHwnd) && window.Shell.FocusedTab == first,
+                "a non-activating embedded float preserves native input in the background session");
+            window.Presentations.HideFloating(second.Id);
+            Check(await TransferUntilAsync(() => ShortcutRouter.FocusedWindow() == firstHwnd), "hiding a non-activating panel preserves the background input focus too");
             window.Addresses.Assign(second.Id, "float-test");
             window.Commands.TryExecute("palette.tabs");
             await Task.Delay(100);
@@ -112,7 +127,7 @@ internal static partial class HerdSelfTest
             window.Commands.TryExecute("navigation.return");
             Check(!second.Floating && window.ActiveTab == first, "Return also dismisses the current floating detour");
             window.HandleArguments([ProtocolRequest.FloatUrl(second.Id)]);
-            Check(await TransferUntilAsync(() => second.Floating && window.FloatingWindows.Single().IsActive), "the notification protocol opens a focused float without refocusing the main window");
+            Check(await TransferUntilAsync(() => second.Floating && window.Shell.FocusedTab == second), "the notification protocol focuses the embedded terminal");
             using var http = new HttpClient();
             http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", window.Endpoint!.Token);
             var invalidDelete = await http.DeleteAsync(window.Endpoint.BaseUrl + "/v1/tabs/" + second.Id + "/presentation");
@@ -130,12 +145,12 @@ internal static partial class HerdSelfTest
                 {"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"overshell_present","arguments":{"tab":"alias:float-test","mode":"floating"}}}
                 """), CancellationToken.None);
             Check(result?["result"]?["isError"] is null && second.Floating, "MCP presentation is a call through the real HTTP adapter");
-            var retainedBar = window.FloatingWindows.Single().PromptBar;
+            var retainedBar = window.FloatingPanels.Single().PromptBar;
             window.Commands.TryExecute("prompt.toggle");
             retainedBar.Text = "unsent floating draft";
             window.Presentations.HideFloating(second.Id);
             window.Presentations.ShowFloating(second.Id);
-            Check(window.FloatingWindows.Single().PromptBar.Text == "unsent floating draft", "hiding and reopening preserves the float's unsent prompt draft");
+            Check(window.FloatingPanels.Single().PromptBar.Text == "unsent floating draft", "hiding and reopening preserves the float's unsent prompt draft");
             window.Presentations.HideFloating(second.Id);
             second.ApplyReport(new IntegrationReport(second.Id, "selftest", 1, AgentState.Working, "selftest", "working", null, null, null, Release: false));
             second.ApplyReport(new IntegrationReport(second.Id, "selftest", 2, AgentState.Done, "selftest", "done", null, null, null, Release: false));
@@ -159,25 +174,31 @@ internal static partial class HerdSelfTest
             var denied = await http.PostAsync(window.Endpoint.BaseUrl + "/v1/tabs/" + second.Id + "/presentation", Body("{\"mode\":\"floating\"}"));
             Check((int)denied.StatusCode == 403 && !second.Floating, "disabling endpoint.control live disables the new control operations");
             window.Presentations.ShowFloating(second.Id);
-            Check(window.FloatingWindows.Single().Width < window.Width * 0.75, "configured floating geometry applies to the live native host");
-            var replacedHost = window.FloatingWindows.Single();
+            Check(window.FloatingPanels.Single().Bounds.Width < window.Width * 0.75, "configured floating geometry applies within the owner");
+            var replacedHost = window.FloatingPanels.Single();
+            replacedHost.ResizeBy(10000, 10000);
+            Check(new Rect(replacedHost.RenderSize).Contains(replacedHost.Bounds), "resizing is clamped to the owner's client area");
             window.Presentations.HideFloating(second.Id);
             window.Presentations.ShowFloating(second.Id);
             await Task.Delay(100);
-            Check(second.Floating && window.FloatingWindows.Single() != replacedHost, "a delayed focus-loss callback cannot dismiss a replacement host for the same tab");
+            Check(second.Floating && window.FloatingPanels.Single() != replacedHost, "a delayed focus-loss callback cannot dismiss a replacement host for the same tab");
             window.ExecuteForTab("tab.alias", second);
             await Task.Delay(150);
             var ownedPicker = Application.Current.Windows.OfType<Chrome.PaletteWindow>().Single(w => w.IsActive);
-            Check(second.Floating && ownedPicker.Owner == window.FloatingWindows.Single(), "hide-on-focus-loss retains a float while its owned picker has focus");
-            // Leave through the owned picker, when the float itself is already inactive.
+            Check(second.Floating && ownedPicker.Owner == window, "pickers belong to the existing owner and retain the floating command context");
+            ProfileKey(ownedPicker, Key.Escape);
+            await Task.Delay(150);
             window.Activate();
             // SetForegroundWindow (used by Window.Activate) can be refused on a non-input
             // desktop. SetActiveWindow changes only this test thread's active window.
             if (!OnInputDesktop) _ = SetTestActiveWindow(new System.Windows.Interop.WindowInteropHelper(window).Handle);
             Check(await TransferUntilAsync(() => !ownedPicker.IsActive), "the owned picker loses input focus on the test desktop");
+            window.ExecuteForTab("prompt.toggle", first);
+            window.PromptBarView.FocusInput();
             var hiddenAfterPicker = await TransferUntilAsync(() => !second.Floating);
-            Check(hiddenAfterPicker, "hide-on-focus-loss follows focus leaving an owned picker for the main window");
-            if (!hiddenAfterPicker) Log($"  focus evidence: main={window.IsActive} active={window.ActiveTerminalWindow()?.Title} float={window.FloatingWindows.FirstOrDefault()?.IsActive} hideOnLoss={window.CurrentSettings.Floating.HideOnFocusLoss}");
+            Check(hiddenAfterPicker, "hide-on-focus-loss follows input leaving the embedded panel for the original prompt");
+            if (!hiddenAfterPicker) Log($"  focus evidence: main={window.IsActive} target={window.Shell.FocusedTab?.Id} float={window.FloatingPanels.FirstOrDefault()?.IsInputWithin} hideOnLoss={window.CurrentSettings.Floating.HideOnFocusLoss}");
+            window.ExecuteForTab("prompt.toggle", first);
             File.WriteAllText(AppPaths.SettingsFile, originalSettings);
             window.ReloadConfiguration(all: false, settings: true);
             window.Presentations.ShowFloating(second.Id);
@@ -201,7 +222,7 @@ internal static partial class HerdSelfTest
             window.ActiveTab = first;
             window.Presentations.ShowFloating(third.Id);
             window.Commands.TryExecute("tab.close");
-            Check(!window.Tabs.Contains(third) && window.Tabs.Contains(first) && window.FloatingWindows.Count == 0, "Close tab terminates the focused floating tab, not the underlying work");
+            Check(!window.Tabs.Contains(third) && window.Tabs.Contains(first) && window.FloatingPanels.Count == 0, "Close tab terminates the focused floating tab, not the underlying work");
         }
         finally
         {
@@ -218,4 +239,7 @@ internal static partial class HerdSelfTest
 
     [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetActiveWindow")]
     private static extern nint SetTestActiveWindow(nint window);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetAncestor")]
+    private static extern nint GetFloatingRoot(nint window, uint flags);
 }

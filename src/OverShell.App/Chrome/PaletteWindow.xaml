@@ -103,19 +103,24 @@
                     <DataTemplate DataType="{x:Type chrome:PaletteItem}">
                         <Grid>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="22" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <Border Grid.Column="0"
+                            <TextBlock Grid.Column="0" Text="{Binding Number}" Visibility="{Binding NumberVisibility}"
+                                       MinWidth="22" Margin="0,0,8,0" VerticalAlignment="Center"
+                                       FontFamily="{StaticResource Font.Mono}" FontSize="{StaticResource Font.Size.Small}"
+                                       Foreground="{StaticResource Text.Disabled}" />
+                            <Border Grid.Column="1"
                                     Width="8" Height="8"
                                     CornerRadius="4"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
                                     Background="{Binding Dot}"
                                     Visibility="{Binding DotVisibility}" />
-                            <TextBlock Grid.Column="0"
+                            <TextBlock Grid.Column="1"
                                        Text="{Binding Glyph}"
                                        FontFamily="{Binding GlyphFont}"
                                        HorizontalAlignment="Left"
@@ -124,7 +129,7 @@
                                        Foreground="{StaticResource Text.Secondary}"
                                        Visibility="{Binding GlyphVisibility}" />
 
-                            <StackPanel Grid.Column="1" Margin="4,0,12,0">
+                            <StackPanel Grid.Column="2" Margin="4,0,12,0">
                                 <TextBlock Text="{Binding Title}"
                                            FontFamily="{StaticResource Font.Ui}"
                                            FontSize="{StaticResource Font.Size.Body}"
@@ -138,7 +143,7 @@
                                            Visibility="{Binding DetailVisibility}" />
                             </StackPanel>
 
-                            <TextBlock Grid.Column="2"
+                            <TextBlock Grid.Column="3"
                                        Text="{Binding Hint}"
                                        VerticalAlignment="Center"
                                        FontFamily="{StaticResource Font.Mono}"

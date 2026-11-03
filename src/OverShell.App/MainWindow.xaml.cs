@@ -161,7 +161,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 if (value.Floating) ReleaseFloat(value, returnFocus: false);
                 if (!value.Detached)
-                    foreach (var entry in _floats.Where(e => ReferenceEquals(e.Window.Owner, this)).ToArray()) ReleaseFloat(entry.Window.Tab, returnFocus: false);
+                    foreach (var entry in _floats.Where(e => ReferenceEquals(e.Owner, this)).ToArray()) ReleaseFloat(entry.Panel.Tab, returnFocus: false);
             }
             if (ReferenceEquals(_activeTab, value))
             {
@@ -281,6 +281,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     internal void CloseTab(TerminalTab tab)
     {
+        ReleaseFloatsUsing(tab);
         var releasedFloat = ReleaseFloat(tab, returnFocus: false);
         var floatingReturn = releasedFloat?.HadFocus == true ? releasedFloat.Origin : null;
         if (ReferenceEquals(_terminalPreview?.Tab, tab) || ReferenceEquals(_hoverPreviewTab, tab)) CloseTerminalPreview();
@@ -1403,6 +1404,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     /// <summary>The window's one heartbeat, twice a second: status text, exit detection, agent timers, hover refresh.</summary>
     private void UpdateStatus()
     {
+        if (!ReferenceEquals(FocusedTerminalTab, _reportedFocusedTab)) UpdateViewed();
         var now = DateTimeOffset.Now;
         if (_sequences is not null)
         {
@@ -1412,7 +1414,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // Only a tab that actually started can have died. The PTY starts on a background
         // thread, so a plain !IsRunning check would fire on every healthy new tab.
-        foreach (var tab in Tabs)
+        foreach (var tab in Tabs.ToArray())
         {
             if (tab.HasStarted && !tab.IsRunning)
             {

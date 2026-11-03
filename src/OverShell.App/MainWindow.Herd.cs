@@ -237,11 +237,13 @@ public partial class MainWindow
         }
 
         var owner = CommandOwner();
-        var target = owner is TearOffWindow tearOff ? tearOff.Tab : ActiveTab;
+        var target = TargetTab;
         var origin = Navigation.Capture();
-        _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target, floating, origin));
+        var selectionOrder = DisplayOrder.ToArray();
+        _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target, floating, origin, selectionOrder));
         TrackInputWindow(_palette);
-        if (initial.Length == 0) _palette.SetContext(floating ? "Enter: show floating" : $"Enter: switch tab · {HintFor("palette.openFloating")}: show floating");
+        if (initial.Length == 0) _palette.SetContext((floating ? "Enter: show floating" : $"Enter: switch tab · {HintFor("palette.openFloating")}: show floating")
+            + (_settings.Tabs.ShowPickerNumbers ? " · @number: select a tab" : string.Empty));
         _palette.Closed += (_, _) =>
         {
             _palette = null;
@@ -258,7 +260,7 @@ public partial class MainWindow
         };
     }
 
-    private IReadOnlyList<PaletteItem> BuildPaletteItems(PaletteQuery query, TerminalTab? target, bool floating = false, Core.Tabs.NavigationPoint? origin = null)
+    private IReadOnlyList<PaletteItem> BuildPaletteItems(PaletteQuery query, TerminalTab? target, bool floating = false, Core.Tabs.NavigationPoint? origin = null, IReadOnlyList<TerminalTab>? selectionOrder = null)
     {
         var scored = new List<(int Score, int Order, PaletteItem Item)>();
         var order = 0;
@@ -294,10 +296,13 @@ public partial class MainWindow
             var aliasQuery = query.StateFilter?.StartsWith("alias:", StringComparison.OrdinalIgnoreCase) == true
                 ? query.StateFilter[6..] : query.StateFilter;
             var aliasTarget = aliasQuery is null ? null : _addresses.Resolve(new Core.Tabs.TabSelector(Alias: aliasQuery)).TabId;
-            for (var i = 0; i < Tabs.Count; i++)
+            var numbered = int.TryParse(query.StateFilter, out var number) && number > 0;
+            var tabOrder = selectionOrder ?? DisplayOrder;
+            for (var i = 0; i < tabOrder.Count; i++)
             {
-                var tab = Tabs[i];
-                if (aliasTarget is not null ? tab.Id != aliasTarget : query.StateFilter is { } state && !tab.StateText.StartsWith(state, StringComparison.OrdinalIgnoreCase) && !tab.State.ToString().StartsWith(state, StringComparison.OrdinalIgnoreCase))
+                var tab = tabOrder[i];
+                if (!Tabs.Contains(tab)) continue;
+                if (numbered ? i + 1 != number : aliasTarget is not null ? tab.Id != aliasTarget : query.StateFilter is { } state && !tab.StateText.StartsWith(state, StringComparison.OrdinalIgnoreCase) && !tab.State.ToString().StartsWith(state, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -320,6 +325,7 @@ public partial class MainWindow
                 scored.Add((score.Value + boost, order++, new PaletteItem
                 {
                     Title = tab.DisplayLabel,
+                    Number = _settings.Tabs.ShowPickerNumbers ? i + 1 : null,
                     Detail = string.IsNullOrEmpty(tab.Detail) ? tab.WorkingDirectory : $"{tab.Detail}  ·  {tab.WorkingDirectory}",
                     Hint = tab.ShortcutHint.Length > 0 ? tab.ShortcutHint : i < 9 ? $"Alt+{i + 1}" : null,
                     Dot = tab.StateBrush,
@@ -565,6 +571,11 @@ public partial class MainWindow
     {
         ScheduleFloatFocusCheck();
         var focused = FocusedTerminalTab;
+        if (FloatForOwner(ActiveTerminalWindow()) is { } presentation)
+        {
+            presentation.Active = ReferenceEquals(presentation.Panel.Tab, focused);
+            presentation.WasFocused |= presentation.Active;
+        }
         foreach (var tab in Tabs)
         {
             var viewed = ReferenceEquals(tab, focused);

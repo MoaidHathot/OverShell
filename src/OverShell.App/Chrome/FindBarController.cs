@@ -11,12 +11,13 @@ namespace OverShell.App.Chrome;
 /// window's active tab changes while the bar is open; closing the bar ends it and gives
 /// the keyboard back to the terminal.
 /// </summary>
-internal sealed class FindBarController
+internal sealed class FindBarController : IDisposable
 {
     private readonly FindBar _bar;
     private readonly Window _owner;
     private readonly TerminalSearch _search;
     private FindSession? _session;
+    private bool _paused;
 
     public FindBarController(FindBar bar, Window owner, TerminalSearch search)
     {
@@ -24,21 +25,47 @@ internal sealed class FindBarController
         _owner = owner;
         _search = search;
 
-        bar.QueryChanged += (needle, matchCase) => _session?.SetQuery(needle, matchCase);
-        bar.StepRequested += direction => _session?.Step(direction);
+        bar.QueryChanged += OnQueryChanged;
+        bar.StepRequested += OnStepRequested;
         bar.CloseRequested += Close;
 
         // Highlights are positioned in screen pixels: stale the moment the window moves, and
         // in the way when another window covers the terminal.
-        owner.LocationChanged += (_, _) => _session?.Refresh();
-        owner.SizeChanged += (_, _) => _session?.Refresh();
-        owner.Activated += (_, _) => _session?.Resume();
-        owner.Deactivated += (_, _) => _session?.Suspend();
+        owner.LocationChanged += OnLocationChanged;
+        owner.SizeChanged += OnSizeChanged;
+        owner.Activated += OnActivated;
+        owner.Deactivated += OnDeactivated;
     }
 
     public bool IsOpen => _bar.Visibility == Visibility.Visible;
     internal bool InputHasFocus => _bar.IsKeyboardFocusWithin;
     internal void FocusInput() => _bar.FocusInput();
+    internal bool Paused => _paused;
+    internal void SetPaused(bool paused)
+    {
+        _paused = paused;
+        if (paused) _session?.Suspend(); else if (_owner.IsActive) _session?.Resume();
+    }
+
+    private void OnQueryChanged(string needle, bool matchCase) => _session?.SetQuery(needle, matchCase);
+    private void OnStepRequested(int direction) => _session?.Step(direction);
+    private void OnLocationChanged(object? sender, EventArgs e) { if (!_paused) _session?.Refresh(); }
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e) { if (!_paused) _session?.Refresh(); }
+    private void OnActivated(object? sender, EventArgs e) { if (!_paused) _session?.Resume(); }
+    private void OnDeactivated(object? sender, EventArgs e) => _session?.Suspend();
+
+    public void Dispose()
+    {
+        _session?.Dispose();
+        _session = null;
+        _bar.QueryChanged -= OnQueryChanged;
+        _bar.StepRequested -= OnStepRequested;
+        _bar.CloseRequested -= Close;
+        _owner.LocationChanged -= OnLocationChanged;
+        _owner.SizeChanged -= OnSizeChanged;
+        _owner.Activated -= OnActivated;
+        _owner.Deactivated -= OnDeactivated;
+    }
 
     /// <summary>The live session, for diagnostics and the self-test.</summary>
     internal FindSession? Session => _session;

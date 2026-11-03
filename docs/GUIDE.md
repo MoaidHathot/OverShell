@@ -493,12 +493,16 @@ Choose **Setting: Tab labels** in the palette, or set this in `settings.jsonc`:
 |---|---|
 | `session` (default) | Session/task title, meaningful application title, project, then harness |
 | `project` | Project followed by the session/task title |
-| `harness` | Harness name, with duplicate qualifiers |
+| `harness` | Harness name, with project context where useful |
 
-Changes apply live. Custom names always win. Automatic duplicates use the project and,
-when needed, a short persistent identifier such as `[a13f]` before the title, so ellipsis
-cannot hide the distinguishing part. Identifiers survive reordering, restoration and
-reopening. Tooltips show full names, directory and session identity; the tab switcher and
+Changes apply live. Custom names always win. Automatic duplicates use project context
+when it distinguishes them. Otherwise their everyday names remain clean; tab selectors
+show small numbers in tab-strip order. Type `@3`, for example, to select tab 3. Numbers
+are selection addresses, not persistent identities, and are held stable while a picker
+is open. `tabs.showPickerNumbers` controls their display. **Show this tab's number and
+ID** (`tab.identify`) reveals its runtime address explicitly. If desired,
+`tabs.showDuplicateIds: true` enables the older persistent-ID prefixes.
+Tooltips show full names, directory and session identity; the tab switcher and
 history search session names as well as custom names. Ordinary shell tabs keep their
 application/profile titles, with the same duplicate handling.
 
@@ -575,9 +579,14 @@ another tab. Parameterized commands also accept `target: { "id": "..." }` or a u
 the tab picker floats its selected tab. **Show a tab floating…** opens a picker whose
 Enter action floats. `Ctrl+Alt+Shift+J` floats a tab needing attention. Every tab can
 float, including the only tab and a detached terminal. A `◇` marks the floating tab.
-One quick float is visible per owning window; switching its target retains the original
-return context. The same terminal, process and scrollback move. Its grid may resize,
-so terminal applications can reflow normally.
+One quick float is visible per owning window, as an inset panel within that window.
+It creates no top-level window for a Windows tiling manager to tile. Switching its
+target retains the original return context. Drag its caption to move it, resize from
+its lower-right corner, or expand it within the owner's content area. The same terminal,
+process and scrollback move. Its grid may resize, so terminal applications can reflow
+normally. The underlying terminal is shown as a read-only styled preview until the
+panel closes; clicking that backdrop returns to it. The panel's terminal background
+is opaque for readability, and its normal opacity is restored when it returns home.
 
 - **X / Hide floating terminal:** dismiss the presentation and return to the original
   work; the process continues and the tab remains listed.
@@ -605,7 +614,7 @@ origin falls back to an available tab.
 }
 ```
 
-Position is `center`, `topRight`, or `bottomRight`, clamped to the owner's monitor.
+Position is `center`, `topRight`, or `bottomRight`, clamped to the owner's content area.
 Focus-loss dismissal treats owned pickers as part of the float. Attention presentation
 is `tab` or `floating`; notification activation is `tab`, `floating`, or `preview`.
 These settings apply live and are available in **Change a setting…**.

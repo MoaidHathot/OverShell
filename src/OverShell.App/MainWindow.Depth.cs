@@ -22,13 +22,13 @@ public partial class MainWindow
     private ExplainWindow? _explain;
 
     internal PromptBar PromptBarView => Prompt;
-    private PromptBar CurrentPrompt => CommandOwner() is TearOffWindow host ? host.PromptBar : Prompt;
+    private PromptBar CurrentPrompt => FloatFor(TargetTab)?.Panel.PromptBar ?? (CommandOwner() is TearOffWindow host ? host.PromptBar : Prompt);
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<PromptBar, object> _configuredPrompts = new();
 
-    private void ConfigureTerminalWindow(TearOffWindow host)
+    private void ConfigureTerminalWindow(TearOffWindow host) => ConfigurePrompt(host.Tab, host.PromptBar);
+
+    private void ConfigurePrompt(TerminalTab tab, PromptBar prompt)
     {
-        var tab = host.Tab;
-        var prompt = host.PromptBar;
         if (_configuredPrompts.TryGetValue(prompt, out _)) return;
         _configuredPrompts.Add(prompt, new object());
         prompt.SendRequested = (draft, target) => ForCommandTarget(tab, () => SendPrompt(draft.Text, target, draft.Files) > 0);
@@ -94,7 +94,7 @@ public partial class MainWindow
 
     /// <summary>The open tabs as the address parser sees them (§12.16).</summary>
     private IReadOnlyList<AddressableTab> AddressableTabs() =>
-        Tabs.Select((t, i) => new AddressableTab(t.Id, i, t.Label, t.Group, t.State.ToString(), t.IsAgent, t.IsRunning, t.Alias)).ToList();
+        DisplayOrder.Select((t, i) => new AddressableTab(t.Id, i, t.Label, t.Group, t.State.ToString(), t.IsAgent, t.IsRunning, t.Alias)).ToList();
 
     /// <summary>
     /// Types <paramref name="text"/> into every target and presses Enter. Address words at
@@ -195,7 +195,8 @@ public partial class MainWindow
         }
 
         Prompt.SetSnippets(_snippets);
-        foreach (var host in _tearOffs.Concat(FloatingWindows)) host.PromptBar.SetSnippets(_snippets);
+        foreach (var host in _tearOffs) host.PromptBar.SetSnippets(_snippets);
+        foreach (var panel in FloatingPanels) panel.PromptBar.SetSnippets(_snippets);
     }
 
     private static string Truncate(string s)

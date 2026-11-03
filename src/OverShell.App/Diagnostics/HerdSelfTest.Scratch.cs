@@ -28,7 +28,7 @@ internal static partial class HerdSelfTest
         try
         {
             window.Commands.TryExecute("tab.newFloating");
-            var normal = window.FloatingWindows.Single().Tab;
+            var normal = window.FloatingPanels.Single().Tab;
             Check(normal.Lifetime == TabLifetime.Standard && !normal.IsScratch, "New floating tab creates an ordinary restorable tab");
             Check(await TransferUntilAsync(() => normal.IsRunning), "the new floating tab starts a real shell");
             window.Presentations.HideFloating(normal.Id);
@@ -106,6 +106,8 @@ internal static partial class HerdSelfTest
                 """)!.AsObject());
             var backgroundId = background.Tab?["id"]?.GetValue<string>();
             Check(background.Result.Status == ControlStatus.Ok && backgroundId is not null && window.Shell.FocusedTab == first, "API activate:false creates a floating terminal without taking input focus");
+            if (background.Result.Status != ControlStatus.Ok || window.Shell.FocusedTab != first)
+                Log($"  background float: result={background.Result} focus={window.Shell.FocusedTab?.Id} expected={first.Id} native=0x{ShortcutRouter.FocusedWindow():X} expectedHwnd=0x{first.TerminalHwnd:X}");
             Check((await control.LifetimeAsync("alias:background-created", JsonNode.Parse("""{"scratch":false,"restore":true,"history":true,"onExit":"keep"}""")!.AsObject())).Status == ControlStatus.Ok,
                 "control callers can promote a scratch tab through the lifetime API");
             if (backgroundId is not null) window.CloseTab((TerminalTab)window.Shell.Find(backgroundId)!);

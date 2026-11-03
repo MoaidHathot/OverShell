@@ -17,6 +17,10 @@ public sealed class PaletteItem
     /// <summary>Right-aligned hint: a key chord, or a tab's Alt+N.</summary>
     public string? Hint { get; init; }
 
+    /// <summary>An ephemeral selection address, separate from the tab's displayed name and runtime ID.</summary>
+    public int? Number { get; init; }
+    public Visibility NumberVisibility => Number is null ? Visibility.Collapsed : Visibility.Visible;
+
     public string? Glyph { get; init; }
 
     public Brush? Dot { get; init; }

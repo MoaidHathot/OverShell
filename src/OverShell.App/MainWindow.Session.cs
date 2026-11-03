@@ -920,7 +920,7 @@ public partial class MainWindow
 
         Dispatcher.BeginInvoke(() =>
         {
-            if (IsActive && _settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
+            if (IsActive && FloatForOwner(this) is null && _settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
         }, System.Windows.Threading.DispatcherPriority.Input);
     }
 

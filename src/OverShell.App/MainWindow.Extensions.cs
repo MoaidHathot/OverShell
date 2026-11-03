@@ -120,7 +120,7 @@ public partial class MainWindow
 
     internal TerminalTab? OpenTabFor(TabRequest request, out string? error, Core.Tabs.NavigationPoint? returnTo = null)
     {
-        if (request.Floating && !request.Activate && ActiveTerminalWindow() is Chrome.TearOffWindow { IsFloating: true })
+        if (request.Floating && !request.Activate && FocusedFloat is not null)
         {
             error = "A floating terminal has focus; activate the replacement or hide the current float first";
             return null;
@@ -270,6 +270,7 @@ public partial class MainWindow
     /// </summary>
     private bool OnChord(Key key, ModifierKeys modifiers)
     {
+        if (!ReferenceEquals(FocusedTerminalTab, _reportedFocusedTab)) UpdateViewed();
         if (!_canonicalChords.TryGetValue((key, modifiers), out var chord))
         {
             chord = new KeyChord(ToChordModifiers(modifiers), key.ToString());
@@ -310,7 +311,7 @@ public partial class MainWindow
         }
 
         // A chord from a tear-off aims at that window's tab.
-        _commandTarget = TerminalWindowForRoot(_shortcuts.CurrentRoot)?.Tab;
+        _commandTarget = FocusedTerminalTab;
         try
         {
             if (command.StartsWith("tab.newProfile.", StringComparison.OrdinalIgnoreCase) && _commands.Find(command) is null)

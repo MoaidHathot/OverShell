@@ -55,13 +55,14 @@ public class TabLabelTests
     }
 
     [Fact]
-    public void Same_project_duplicates_have_visible_stable_distinct_identifiers()
+    public void Same_project_duplicates_keep_clean_names_by_default_and_offer_identifiers_explicitly()
     {
         TabLabelEntry[] tabs = [new("one", "aaaa1111", "A very long identical task name", "repo", false), new("two", "aaaa2222", "A very long identical task name", "repo", false)];
-        var result = TabLabels.Prefixes(tabs);
+        Assert.All(TabLabels.Prefixes(tabs).Values, prefix => Assert.Empty(prefix));
+        var result = TabLabels.Prefixes(tabs, showIdentifiers: true);
         Assert.StartsWith("[aaaa1]", result["one"]);
         Assert.StartsWith("[aaaa2]", result["two"]);
-        Assert.Equal(result["one"], TabLabels.Prefixes(tabs.Reverse().ToArray())["one"]);
+        Assert.Equal(result["one"], TabLabels.Prefixes(tabs.Reverse().ToArray(), showIdentifiers: true)["one"]);
         Assert.Equal("", TabLabels.Prefixes([tabs[0]])["one"]);
     }
 
@@ -69,7 +70,7 @@ public class TabLabelTests
     public void Manual_names_are_preserved_even_when_they_resemble_an_automatic_qualifier()
     {
         TabLabelEntry[] tabs = [new("one", "aaaa1111", "Task", "repo", false), new("two", "bbbb2222", "Task", "repo", false), new("manual", "cccc3333", "[aaaa] repo — Task", "repo", true)];
-        var prefixes = TabLabels.Prefixes(tabs);
+        var prefixes = TabLabels.Prefixes(tabs, showIdentifiers: true);
         Assert.Equal("", prefixes["manual"]);
         Assert.Equal(tabs.Length, tabs.Select(t => prefixes[t.Key] + t.Text).Distinct().Count());
     }
@@ -85,6 +86,8 @@ public class TabLabelTests
     public void Defaults_catalog_and_saved_metadata_round_trip()
     {
         Assert.Equal(TabLabelMode.Session, AppSettings.LoadDefaults().Tabs.EffectiveLabelMode);
+        Assert.False(AppSettings.LoadDefaults().Tabs.ShowDuplicateIds);
+        Assert.True(AppSettings.LoadDefaults().Tabs.ShowPickerNumbers);
         Assert.Equal(3, SettingsCatalog.Find("tabs.labelMode")!.Choices.Count);
         var snapshot = new SessionSnapshot { Tabs = [new SavedTab { NamingId = "aaaa1111", Label = "custom", SessionId = "session-a", SessionTitle = "Task", TerminalTitle = "OC | repo | Task", Project = "repo" }] };
         var restored = Jsonc.To<SessionSnapshot>(Jsonc.Parse(Jsonc.Serialize(snapshot), out _), out _)!;

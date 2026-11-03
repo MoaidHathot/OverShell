@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using OverShell.App.Chrome;
@@ -11,17 +12,58 @@ public partial class MainWindow
 {
     private readonly List<FloatEntry> _floats = [];
     private readonly Dictionary<string, PromptBar> _floatingPrompts = [];
+    private readonly Dictionary<Window, string?> _inputWindowTargets = [];
     private bool _movingPresentation;
+    private long _floatGeneration;
     private bool _floatFocusCheckPending;
     private TerminalTab? _reportedFocusedTab;
     internal ITabPresentations Presentations { get; private set; } = null!;
-    internal IReadOnlyList<TearOffWindow> FloatingWindows => _floats.Select(e => e.Window).ToArray();
+    internal IReadOnlyList<FloatingTerminalPanel> FloatingPanels => _floats.Select(e => e.Panel).ToArray();
     internal int RoutedWindowCount => _shortcuts.AdditionalWindowCount;
+
     internal void TrackInputWindow(Window window)
     {
+        _inputWindowTargets[window] = TargetTab?.Id;
         _shortcuts.AddWindow(window);
+        window.Activated += (_, _) => UpdateViewed();
         window.Deactivated += (_, _) => ScheduleFloatFocusCheck();
-        window.Closed += (_, _) => ScheduleFloatFocusCheck();
+        window.Closed += (_, _) => { _inputWindowTargets.Remove(window); ScheduleFloatFocusCheck(); };
+    }
+
+    private sealed class FloatEntry(FloatingTerminalPanel panel, Panel home, Window homeWindow, NavigationPoint origin)
+    {
+        public string Id { get; } = Guid.NewGuid().ToString("N");
+        public FloatingTerminalPanel Panel { get; } = panel;
+        public Window Owner => Panel.OwnerWindow;
+        public Panel Home { get; } = home;
+        public Window HomeWindow { get; } = homeWindow;
+        public NavigationPoint Origin { get; } = origin;
+        public EventHandler? OwnerState;
+        public EventHandler? OwnerActivation;
+        public System.ComponentModel.CancelEventHandler? Closing;
+        public bool HadFocus;
+        public bool Active;
+        public bool WasFocused;
+        public FindBarController? BackgroundFind;
+        public bool BackgroundFindPaused;
+    }
+
+    private FloatEntry? FloatFor(TerminalTab? tab) => _floats.FirstOrDefault(e => e.Panel.Tab == tab);
+    private FloatEntry? FloatForOwner(Window? owner) => _floats.FirstOrDefault(e => ReferenceEquals(e.Owner, owner));
+    private FloatEntry? FocusedFloat => _floats.FirstOrDefault(IsFloatFocused);
+
+    private bool IsFloatFocused(FloatEntry entry)
+    {
+        if (!ReferenceEquals(ActiveTerminalWindow(), entry.Owner)) return false;
+        var dialog = Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive && !ReferenceEquals(w, entry.Owner));
+        if (dialog is not null && _inputWindowTargets.TryGetValue(dialog, out var target)) return target == entry.Panel.Tab.Id;
+        var nativeFocus = ShortcutRouter.FocusedWindow();
+        if (nativeFocus != 0 && nativeFocus == entry.Panel.Tab.TerminalHwnd) return true;
+        if (entry.Panel.BackgroundTab is { } background && background != entry.Panel.Tab && nativeFocus != 0 && nativeFocus == background.TerminalHwnd) return false;
+        if (entry.Panel.IsInputWithin) return true;
+        if (entry.Owner is TearOffWindow secondary && (secondary.PromptBar.IsKeyboardFocusWithin || secondary.Find.InputHasFocus)) return false;
+        if (entry.Owner == this && (Prompt.IsKeyboardFocusWithin || Find.IsKeyboardFocusWithin)) return false;
+        return entry.Active;
     }
 
     private void ScheduleFloatFocusCheck()
@@ -32,26 +74,9 @@ public partial class MainWindow
         {
             _floatFocusCheckPending = false;
             if (_movingPresentation || !_settings.Floating.HideOnFocusLoss) return;
-            var active = ActiveTerminalWindow();
-            // Focus can leave through an owned picker: the float was already inactive
-            // while the picker had focus, so its own Deactivated event cannot tell us.
-            foreach (var entry in _floats.Where(e => e.WasFocused && !ReferenceEquals(e.Window, active)).ToArray())
-                ReleaseFloat(entry.Window.Tab, returnFocus: false);
+            foreach (var entry in _floats.Where(e => e.WasFocused && !IsFloatFocused(e)).ToArray())
+                ReleaseFloat(entry.Panel.Tab, returnFocus: false);
         }, DispatcherPriority.Background);
-    }
-
-    private sealed class FloatEntry(TearOffWindow window, Panel home, Window homeWindow, NavigationPoint origin)
-    {
-        public string Id { get; } = Guid.NewGuid().ToString("N");
-        public TearOffWindow Window { get; } = window;
-        public Panel Home { get; } = home;
-        public Window HomeWindow { get; } = homeWindow;
-        public NavigationPoint Origin { get; } = origin;
-        public Action<TerminalTab>? Closing;
-        public EventHandler? OwnerState;
-        public System.ComponentModel.CancelEventHandler? HomeClosing;
-        public bool HadFocus;
-        public bool WasFocused;
     }
 
     private void InitializeFloating()
@@ -79,6 +104,7 @@ public partial class MainWindow
         });
         _commands.Register("tab.float.attention", "Show waiting tab floating", "Tabs", () => JumpWaiting(1, false, false, "Nothing needs you", floating: true));
         StateChanged += (_, _) => { if (WindowState == WindowState.Minimized) CloseFloats(returnFocus: false); };
+        GotKeyboardFocus += (_, _) => UpdateViewed();
     }
 
     private void ShowPresentationResult(TabActionResult result)
@@ -91,56 +117,77 @@ public partial class MainWindow
         var active = Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive && w.IsVisible && w.WindowState != WindowState.Minimized);
         while (active is not null)
         {
-            if (ReferenceEquals(active, this) || _tearOffs.Any(w => ReferenceEquals(w, active)) || _floats.Any(e => ReferenceEquals(e.Window, active))) return active;
+            if (ReferenceEquals(active, this) || _tearOffs.Any(w => ReferenceEquals(w, active))) return active;
             active = active.Owner;
         }
         return null;
     }
 
-    internal TerminalTab? FocusedTerminalTab => ActiveTerminalWindow() switch
+    internal TerminalTab? FocusedTerminalTab
     {
-        TearOffWindow host when !host.Tab.Floating || host.IsFloating => host.Tab,
-        Window host when ReferenceEquals(host, this) && !DashboardVisible && ActiveTab?.Floating != true => ActiveTab,
-        _ => null,
-    };
+        get
+        {
+            var owner = ActiveTerminalWindow();
+            if (owner is null) return null;
+            if (FloatForOwner(owner) is { } entry && IsFloatFocused(entry)) return entry.Panel.Tab;
+            return owner is TearOffWindow secondary ? secondary.Tab : !DashboardVisible ? ActiveTab : null;
+        }
+    }
 
-    private TearOffWindow? TerminalWindowFor(TerminalTab? tab) =>
-        _floats.FirstOrDefault(e => e.Window.Tab == tab)?.Window ?? _tearOffs.FirstOrDefault(w => w.Tab == tab);
+    private TearOffWindow? TerminalWindowFor(TerminalTab? tab) => _tearOffs.FirstOrDefault(w => w.Tab == tab);
+    private Window OwnerForTab(TerminalTab tab) => FloatFor(tab)?.Owner ?? TerminalWindowFor(tab) ?? (Window)this;
 
-    private TearOffWindow? TerminalWindowForRoot(nint root) => root == 0 ? null
-        : FloatingWindows.Concat(_tearOffs).FirstOrDefault(w => new WindowInteropHelper(w).Handle == root);
-
-    private FloatEntry? ReleaseFloat(TerminalTab tab, bool returnFocus, bool closeWindow = true)
+    private void ActivateFloat(FloatEntry entry)
     {
-        var entry = _floats.FirstOrDefault(e => e.Window.Tab == tab);
+        entry.Active = entry.WasFocused = true;
+        entry.Panel.Tab.FloatingFocusRequested = true;
+        if (entry.Owner.WindowState == WindowState.Minimized) entry.Owner.WindowState = WindowState.Normal;
+        entry.Owner.Activate();
+        if (entry.Panel.PromptBar.IsVisible) entry.Panel.PromptBar.FocusInput(); else entry.Panel.Tab.Surface.Focus();
+        UpdateViewed();
+    }
+
+    private FloatEntry? ReleaseFloat(TerminalTab tab, bool returnFocus)
+    {
+        var entry = FloatFor(tab);
         if (entry is null) return null;
-        entry.HadFocus = ReferenceEquals(ActiveTerminalWindow(), entry.Window);
+        _floatGeneration++;
+        entry.HadFocus = IsFloatFocused(entry);
+        var focusedBackground = entry.Panel.BackgroundTab is { PresentationParked: true } background && ShortcutRouter.FocusedWindow() == background.TerminalHwnd ? background : null;
         ClearLinkHover();
         var previousMoving = _movingPresentation;
         _movingPresentation = true;
         try
         {
             _floats.Remove(entry);
-            entry.Window.ReattachRequested -= entry.Closing;
-            entry.Window.Owner.StateChanged -= entry.OwnerState;
-            entry.HomeWindow.Closing -= entry.HomeClosing;
-            if (entry.Window.Owner != entry.HomeWindow) entry.Window.Owner.Closing -= entry.HomeClosing;
-            var view = entry.Window.Release();
-            // Owner-close handlers release before the original host closes; no session is disposed here.
+            entry.Owner.StateChanged -= entry.OwnerState;
+            entry.Owner.Activated -= entry.OwnerActivation;
+            entry.Owner.Deactivated -= entry.OwnerActivation;
+            entry.HomeWindow.Closing -= entry.Closing;
+            if (entry.Owner != entry.HomeWindow) entry.Owner.Closing -= entry.Closing;
+            var view = entry.Panel.Release();
             entry.Home.Children.Add(view);
-            if (closeWindow) entry.Window.Close();
+            entry.BackgroundFind?.SetPaused(entry.BackgroundFindPaused);
             if (entry.HomeWindow is TearOffWindow home) home.ApplyBodyOpacity(); else ApplyBodyOpacity();
             (Presentations as WindowPresentations)?.Raise(tab.Id, "regular");
         }
         finally { _movingPresentation = previousMoving; }
         if (returnFocus && entry.HadFocus) Navigation.Restore(entry.Origin);
+        else if (focusedBackground is not null && entry.Owner.IsActive && Tabs.Contains(focusedBackground)) focusedBackground.Surface.Focus();
         UpdateViewed();
         return entry;
     }
 
+    // A background view must come home before its tab is closed, detached or borrowed elsewhere.
+    private void ReleaseFloatsUsing(TerminalTab tab)
+    {
+        foreach (var entry in _floats.Where(e => e.Panel.BackgroundTab == tab && e.Panel.Tab != tab).ToArray())
+            ReleaseFloat(entry.Panel.Tab, returnFocus: false);
+    }
+
     private void CloseFloats(bool returnFocus)
     {
-        foreach (var entry in _floats.ToArray()) ReleaseFloat(entry.Window.Tab, returnFocus);
+        foreach (var entry in _floats.ToArray()) ReleaseFloat(entry.Panel.Tab, returnFocus);
     }
 
     private sealed class WindowPresentations(MainWindow window) : ITabPresentations
@@ -148,82 +195,76 @@ public partial class MainWindow
         public event Action<PresentationChange>? Changed;
         internal void Raise(string id, string mode) => Changed?.Invoke(new(id, mode));
         public IReadOnlyList<FloatingPresentation> Floating => window._floats.Select(e =>
-            new FloatingPresentation(e.Id, e.Window.Tab.Id, (e.Window.Owner as TearOffWindow)?.Tab.Id, ReferenceEquals(window.ActiveTerminalWindow(), e.Window))).ToArray();
+            new FloatingPresentation(e.Id, e.Panel.Tab.Id, (e.Owner as TearOffWindow)?.Tab.Id, window.IsFloatFocused(e))).ToArray();
 
         public TabActionResult ShowFloating(string tabId, string? ownerTabId = null, NavigationPoint? returnTo = null, bool activate = true)
         {
             if (!window._tabsById.TryGetValue(tabId, out var tab)) return TabActionResult.Fail("The tab has closed");
-            if (window._floats.FirstOrDefault(e => e.Window.Tab == tab) is { } existing)
+            if (window.FloatFor(tab) is { } existing)
             {
-                if (activate)
-                {
-                    if (existing.Window.WindowState == WindowState.Minimized) existing.Window.WindowState = WindowState.Normal;
-                    existing.Window.Activate();
-                    tab.Surface.Focus();
-                }
+                if (activate) window.ActivateFloat(existing);
                 return TabActionResult.Ok;
             }
-            Window owner = window.ActiveTerminalWindow() ?? window;
-            if (owner is TearOffWindow { IsFloating: true } f) owner = f.Owner;
-            if (ownerTabId is not null)
-            {
-                owner = window._tearOffs.FirstOrDefault(w => w.Tab.Id == ownerTabId)!;
-                if (owner is null) return TabActionResult.Fail("The requested owning window has closed");
-            }
+            var owner = ownerTabId is null ? window.ActiveTerminalWindow() ?? window : window._tearOffs.FirstOrDefault(w => w.Tab.Id == ownerTabId);
+            if (owner is null) return TabActionResult.Fail("The requested owning window has closed");
             if (activate && owner.WindowState == WindowState.Minimized) owner.WindowState = WindowState.Normal;
-            var previous = window._floats.FirstOrDefault(e => ReferenceEquals(e.Window.Owner, owner));
-            if (!activate && previous is not null && ReferenceEquals(window.ActiveTerminalWindow(), previous.Window))
+            var previous = window.FloatForOwner(owner);
+            if (!activate && previous is not null && window.IsFloatFocused(previous))
                 return TabActionResult.Fail("A floating terminal has focus; activate the replacement or hide the current float first");
             var origin = previous?.Origin ?? returnTo ?? window.Navigation.Capture();
-            if (previous is not null) window.ReleaseFloat(previous.Window.Tab, returnFocus: false);
+            var oldFocus = Keyboard.FocusedElement;
+            var oldTab = window.FocusedTerminalTab;
+            if (previous is not null) window.ReleaseFloat(previous.Panel.Tab, returnFocus: false);
+            window.ReleaseFloatsUsing(tab);
             window.CloseTerminalPreview();
             window.ClearLinkHover();
             if (tab.View.Parent is not Panel home || Window.GetWindow(tab.View) is not { } homeWindow)
                 return TabActionResult.Fail("The terminal has no live presentation host");
+            var area = owner is TearOffWindow secondary ? secondary.TerminalArea : window.MainHost;
+            var background = owner is TearOffWindow t ? t.Tab : window.DashboardVisible ? null : window.ActiveTab;
             if (!window._floatingPrompts.TryGetValue(tab.Id, out var prompt))
                 window._floatingPrompts[tab.Id] = prompt = new PromptBar { Visibility = Visibility.Collapsed };
-            var host = new TearOffWindow(owner, tab, floating: true, window.Search, prompt);
-            host.ShowActivated = activate;
-            window.ConfigureTerminalWindow(host);
-            var entry = new FloatEntry(host, home, homeWindow, origin);
-            entry.Closing = _ => window.ReleaseFloat(tab, returnFocus: true, closeWindow: false);
+            var panel = new FloatingTerminalPanel(owner, area, tab, window.Search, prompt, window._settings.Floating);
+            window.ConfigurePrompt(tab, prompt);
+            var entry = new FloatEntry(panel, home, homeWindow, origin) { Active = activate, WasFocused = activate };
             entry.OwnerState = (_, _) => { if (owner.WindowState == WindowState.Minimized) window.ReleaseFloat(tab, returnFocus: false); };
-            entry.HomeClosing = (_, _) => window.ReleaseFloat(tab, returnFocus: false);
+            entry.OwnerActivation = (_, _) => window.UpdateViewed();
+            entry.Closing = (_, _) => window.ReleaseFloat(tab, returnFocus: false);
             var previousMoving = window._movingPresentation;
             window._movingPresentation = true;
             try
             {
                 window.FindControllerFor(tab)?.Forget(tab);
                 home.Children.Remove(tab.View);
-                host.Host();
+                window._floatGeneration++;
                 window._floats.Add(entry);
-                host.ReattachRequested += entry.Closing;
-                host.OpenNormallyRequested += t => ShowNormally(t.Id);
-                host.TerminateRequested += window.CloseTab;
-                host.Activated += (_, _) => { entry.WasFocused = true; window.UpdateViewed(); };
-                host.Deactivated += (_, _) => window.UpdateViewed();
+                tab.FloatingFocusRequested = activate;
+                panel.HideRequested += () => window.ReleaseFloat(tab, returnFocus: true);
+                panel.OpenNormallyRequested += () => ShowNormally(tab.Id);
+                panel.TerminateRequested += () => window.CloseTab(tab);
+                panel.InputRequested += () => { tab.FloatingFocusRequested = true; entry.Active = entry.WasFocused = true; window.UpdateViewed(); };
                 owner.StateChanged += entry.OwnerState;
-                homeWindow.Closing += entry.HomeClosing;
-                if (owner != homeWindow) owner.Closing += entry.HomeClosing;
-                window._shortcuts.AddWindow(host);
-                host.Show();
-                FloatingPlacement.Apply(host, owner, window._settings.Floating);
-                if (activate)
+                owner.Activated += entry.OwnerActivation;
+                owner.Deactivated += entry.OwnerActivation;
+                homeWindow.Closing += entry.Closing;
+                if (owner != homeWindow) owner.Closing += entry.Closing;
+                panel.Host(background);
+                if (panel.HasParkedBackground && window.FindControllerFor(background) is { } backgroundFind)
                 {
-                    host.Activate();
-                    _ = SetForegroundWindow(new WindowInteropHelper(host).Handle);
-                    if (prompt.Visibility == Visibility.Visible) prompt.FocusInput(); else tab.Surface.Focus();
+                    entry.BackgroundFind = backgroundFind;
+                    entry.BackgroundFindPaused = backgroundFind.Paused;
+                    backgroundFind.SetPaused(true);
+                }
+                if (activate) window.ActivateFloat(entry);
+                else if (owner.IsActive)
+                {
+                    if (oldFocus is System.Windows.Controls.Primitives.TextBoxBase text && text.IsVisible) text.Focus();
+                    else oldTab?.Surface.Focus();
                 }
             }
             catch (InvalidOperationException error)
             {
-                if (window._floats.Contains(entry)) window.ReleaseFloat(tab, returnFocus: false);
-                else
-                {
-                    host.Release();
-                    if (tab.View.Parent is null) home.Children.Add(tab.View);
-                    host.Close();
-                }
+                window.ReleaseFloat(tab, returnFocus: false);
                 return TabActionResult.Fail($"Could not move the terminal: {error.Message}");
             }
             finally { window._movingPresentation = previousMoving; }
@@ -232,12 +273,8 @@ public partial class MainWindow
             return TabActionResult.Ok;
         }
 
-        public TabActionResult ToggleFloating(string tabId)
-        {
-            var entry = window._floats.FirstOrDefault(e => e.Window.Tab.Id == tabId);
-            return entry is not null && ReferenceEquals(window.ActiveTerminalWindow(), entry.Window)
-                ? HideFloating(tabId) : ShowFloating(tabId);
-        }
+        public TabActionResult ToggleFloating(string tabId) => window._tabsById.TryGetValue(tabId, out var tab) && window.FloatFor(tab) is { } entry && window.IsFloatFocused(entry)
+            ? HideFloating(tabId) : ShowFloating(tabId);
 
         public TabActionResult HideFloating(string tabId, bool returnFocus = true)
         {

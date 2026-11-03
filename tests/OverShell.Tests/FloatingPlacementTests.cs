@@ -11,10 +11,10 @@ public class FloatingPlacementTests
     [InlineData("center")]
     [InlineData("topRight")]
     [InlineData("bottomRight")]
-    public void Floating_bounds_fit_negative_monitor_coordinates_and_oversized_owners(string position)
+    public void Floating_bounds_fit_inside_the_owner_client_area(string position)
     {
-        var work = new Rect(-1920, -200, 1920, 1080);
-        var placed = FloatingPlacement.Calculate(work, new Rect(-2200, -400, 4000, 2000), new FloatingSettings { Position = position });
+        var work = new Rect(0, 0, 900, 600);
+        var placed = FloatingPlacement.Calculate(work.Size, new FloatingSettings { Position = position });
         Assert.True(work.Contains(placed));
         Assert.True(placed.Width > 0 && placed.Height > 0);
     }
@@ -26,6 +26,15 @@ public class FloatingPlacementTests
         Assert.Equal(0.8, settings.EffectiveWidth);
         Assert.Equal(0.75, settings.EffectiveHeight);
         var work = new Rect(0, 0, 320, 200);
-        Assert.Equal(work, FloatingPlacement.Calculate(work, work, settings));
+        Assert.Equal(work, FloatingPlacement.Calculate(work.Size, settings));
+    }
+
+    [Fact]
+    public void Dragging_resizing_and_owner_shrink_cannot_move_a_panel_outside_its_owner()
+    {
+        var area = new Size(480, 300);
+        foreach (var requested in new[] { new Rect(-500, -100, 800, 700), new Rect(1000, 1000, 200, 140), new Rect(0, 0, 1, 1) })
+            Assert.True(new Rect(area).Contains(FloatingPlacement.Constrain(requested, area)));
+        Assert.True(FloatingPlacement.Calculate(new Size(), new FloatingSettings()).IsEmpty);
     }
 }

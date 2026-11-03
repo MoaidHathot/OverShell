@@ -32,12 +32,12 @@ public partial class MainWindow
     private sealed class WindowNavigation(MainWindow window) : INavigationService
     {
         private readonly System.Runtime.CompilerServices.ConditionalWeakTable<NavigationPoint, WeakReference<System.Windows.Controls.Primitives.TextBoxBase>> _textFocus = new();
-        public bool CanReturn => window._navigationHistory.Origin is not null || window.ActiveTerminalWindow() is TearOffWindow { IsFloating: true };
+        public bool CanReturn => window._navigationHistory.Origin is not null || window.FloatForOwner(window.ActiveTerminalWindow()) is not null;
 
         public NavigationPoint Capture()
         {
             var owner = window.ActiveTerminalWindow() ?? window;
-            if (window._floats.FirstOrDefault(e => ReferenceEquals(e.Window, owner)) is { } floating) return floating.Origin;
+            if (window.FloatForOwner(owner) is { } floating && window.IsFloatFocused(floating)) return floating.Origin;
             var tab = owner is TearOffWindow secondary ? secondary.Tab : window.ActiveTab;
             var focus = (owner is TearOffWindow t ? t.PromptBar.IsKeyboardFocusWithin : window.Prompt.IsKeyboardFocusWithin) ? "prompt"
                 : (owner is TearOffWindow w ? w.Find.InputHasFocus : window.Find.IsKeyboardFocusWithin) ? "find" : null;
@@ -52,9 +52,9 @@ public partial class MainWindow
 
         public bool Return()
         {
-            if (window.ActiveTerminalWindow() is TearOffWindow { IsFloating: true } floating)
+            if (window.FloatForOwner(window.ActiveTerminalWindow()) is { } floating)
             {
-                window.ReleaseFloat(floating.Tab, returnFocus: true);
+                window.ReleaseFloat(floating.Panel.Tab, returnFocus: true);
                 return true;
             }
             var point = window._navigationHistory.TakeReturn(window.TargetTab?.Id, id => window._tabsById.ContainsKey(id));
@@ -90,9 +90,10 @@ public partial class MainWindow
             var owner = tab.Detached ? (Window?)window._tearOffs.FirstOrDefault(w => w.Tab == tab) : window;
             owner?.Activate();
             window._shell?.SetCursor(point.CursorId is { } cursor ? window._shell.Find(cursor) : null);
+            var presentationGeneration = window._floatGeneration;
             window.Dispatcher.BeginInvoke(() =>
             {
-                if (owner?.IsActive != true || !window.Tabs.Contains(tab)) return;
+                if (owner?.IsActive != true || !window.Tabs.Contains(tab) || presentationGeneration != window._floatGeneration) return;
                 if (_textFocus.TryGetValue(point, out var saved) && saved.TryGetTarget(out var text) && text.IsVisible && Window.GetWindow(text) == owner) text.Focus();
                 else if (point.Focus == "prompt") (owner is TearOffWindow promptOwner ? promptOwner.PromptBar : window.Prompt).FocusInput();
                 else if (point.Focus == "find") { if (owner is TearOffWindow findOwner) findOwner.Find.FocusInput(); else window.Find.FocusInput(); }

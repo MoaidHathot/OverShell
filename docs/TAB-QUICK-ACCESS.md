@@ -1,5 +1,54 @@
 # Tab quick access: implementation and evidence
 
+## In-window presentation and clean labels (2026-11-03)
+
+Floating terminals now use `FloatingTerminalPanel`, an ordinary WPF element inside the
+main or detached window's terminal area. No `Window`, `Popup`, or new top-level HWND is
+created. The same native terminal HWND, ConPTY process, buffer and scrollback move into
+the panel. Its bounds, dragging, expansion and resizing use owner-client DIPs and stay
+inside that content area as the owner resizes.
+
+The native renderer has HWND airspace, and its composition visuals sit above WPF.
+While a different terminal floats, the original view is kept alive at its original grid
+outside the owner's client area, with a styled WPF preview in its place. This preserves
+native keyboard input for non-activating API calls and avoids covering the panel's
+caption with the background terminal. Hide restores the original view and input context.
+The foreground terminal uses an opaque body while embedded; normal opacity returns with
+its regular presentation. Preview readers and owner event handlers are released on Hide.
+
+Focus and command targeting use the actual terminal/input context within the owner,
+including find/prompt bars and owned pickers. Presentation generations prevent deferred
+return-focus work from stealing focus from a newly opened panel. Unfocused new terminals
+wait for an explicit focus request instead of taking focus when their native renderer
+becomes ready.
+
+Duplicate labels use human project context when useful and otherwise remain identical.
+`tabs.showDuplicateIds` defaults to false. Small numbers are shown only in tab selectors
+(`tabs.showPickerNumbers`, default true), matching grouped tab-strip order; `@number`
+selects an entry. A picker keeps its captured number-to-tab mapping throughout that
+selection. API/runtime IDs remain stable and independent. `tab.identify` explicitly
+shows a tab's current number and runtime ID when needed.
+
+Verification for this follow-up:
+
+- 557 C# tests passed; the Release publish passed with warnings treated as errors.
+- 57 floating checks passed in each of composed and opaque modes, including no extra
+  top-level window, unchanged native root HWND, preserved background grid and input,
+  scrollback, commands, replacement/return, bounds, lifecycle cleanup and API behavior.
+- 29 label checks passed, including live defaults/opt-in identifiers and numbered selectors.
+- 14 actual input-desktop pixel checks passed (7 per rendering mode): native foreground,
+  unobscured caption, background preview, owner resize, and clean Hide restoration.
+- The 100-check application harness and the existing navigation, aliases, scratch,
+  MRU, tear-off, find, profiles, history, previews and restart checks passed. The existing
+  dashboard foreground-pixel check was skipped in its private-desktop regression; the
+  new embedded-presentation pixel checks ran on screen without skips.
+
+Logs and pixel captures are under `artifacts/selftest/embedded-floats/`; the runnable
+development build is `artifacts/embedded-floats-package/OverShell.exe`. The new pixel
+probe is `tools/Invoke-SelfTest.ps1 -Mode embeddedpixels -Visible` (it briefly activates
+the isolated test instance). Earlier sections describe the original 0.5.0 implementation
+and its original verification.
+
 ## Contract
 
 - A tab's runtime identity, display name, alias, presentation and retention are independent.

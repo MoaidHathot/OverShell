@@ -13,7 +13,7 @@ public partial class MainWindow
         try
         {
             var prefixes = TabLabels.Prefixes(Tabs.Select(t =>
-                new TabLabelEntry(t.Id, t.NamingId, t.BaseLabel, t.Project, t.UserLabel is not null)).ToArray());
+                new TabLabelEntry(t.Id, t.NamingId, t.BaseLabel, t.Project, t.UserLabel is not null)).ToArray(), _settings.Tabs.ShowDuplicateIds);
             foreach (var tab in Tabs) tab.SetLabelPrefix(prefixes[tab.Id]);
         }
         finally { _refreshingLabels = false; }

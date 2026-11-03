@@ -254,7 +254,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
                 {
                     // A picker, another tab or another application may have taken focus
                     // since this was queued. A delayed activation must respect that choice.
-                    if (!_disposed && IsActive && Window.GetWindow(View)?.IsActive == true) Surface.Focus();
+                    if (!_disposed && IsActive && !PresentationParked && Window.GetWindow(View)?.IsActive == true) Surface.Focus();
                 }, DispatcherPriority.Input);
             }
         }
@@ -275,6 +275,8 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         View.Visibility = (_isActive || _detached || Floating) && _revealed ? Visibility.Visible : Visibility.Hidden;
 
     public bool Floating { get; private set; }
+    internal bool PresentationParked { get; set; }
+    internal bool FloatingFocusRequested { get; set; }
 
     internal void SetFloating(bool floating)
     {
@@ -325,7 +327,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
             // Earlier activation callbacks may have run while the native surface was
             // still hidden. Complete that focus handoff once it can receive input, unless
             // a picker, another window/tab, or an editing field now owns the keyboard.
-            if ((IsActive || Detached || Floating) && Window.GetWindow(View)?.IsActive == true &&
+            if (!PresentationParked && (Floating ? FloatingFocusRequested : IsActive || Detached) && Window.GetWindow(View)?.IsActive == true &&
                 System.Windows.Input.Keyboard.FocusedElement is not System.Windows.Controls.Primitives.TextBoxBase)
                 Surface.Focus();
         }, DispatcherPriority.Render);

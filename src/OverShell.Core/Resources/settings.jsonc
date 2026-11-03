@@ -101,7 +101,7 @@
   "floating": {
     "widthRatio": 0.8,
     "heightRatio": 0.75,
-    // center | topRight | bottomRight; clamped to the owner's monitor work area.
+    // center | topRight | bottomRight; clamped to the existing window's content area.
     "position": "center",
     // Owned pickers count as part of the float. Escape remains terminal input.
     "hideOnFocusLoss": false
@@ -225,10 +225,13 @@
   // Tab items: twoLine shows project and state under the session/task label (strip and list);
   // showHarnessGlyph shows the harness icon (OpenCode, Copilot, ...) on agent tabs.
   "tabs": {
+    // Keep machine IDs out of normal labels; numbers appear only in tab selectors.
+    "showDuplicateIds": false,
+    "showPickerNumbers": true,
     // Runtime aliases: badge beside the name | primary name | hidden (still searchable).
     "aliasDisplay": "badge",
     // Primary label: session/task title (default), project first, or the harness name.
-    // Manual tab names override this. Duplicate automatic names get visible qualifiers.
+    // Manual tab names override this. Duplicate names use project context where useful.
     "labelMode": "session",
     "twoLine": true,
     "showHarnessGlyph": true

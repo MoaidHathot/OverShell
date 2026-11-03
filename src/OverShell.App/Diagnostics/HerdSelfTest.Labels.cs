@@ -15,7 +15,8 @@ internal static partial class HerdSelfTest
         var pass = true;
         void Check(bool ok, string what) { pass &= ok; Log($"  {(ok ? "PASS" : "FAIL")}  {what}"); }
         var settings = File.Exists(AppPaths.SettingsFile) ? File.ReadAllText(AppPaths.SettingsFile) : null;
-        var root = Path.Combine(AppPaths.StateRoot, "label-probe");
+        // Keep the fixture outside a checkout: repository discovery intentionally walks parents.
+        var root = Path.Combine(Path.GetTempPath(), "overshell-label-probe");
         var alpha = Directory.CreateDirectory(Path.Combine(root, "alpha")).FullName;
         var beta = Directory.CreateDirectory(Path.Combine(root, "beta")).FullName;
         var profile = first.Profile with { StartingDirectory = alpha, CommandLine = "powershell.exe -NoProfile -NoLogo -NoExit -Command \"Write-Host 'opencode label probe'\"" };
@@ -43,16 +44,29 @@ internal static partial class HerdSelfTest
             window.ApplySetting(SettingsCatalog.Find("tabs.labelMode")!, "\"project\"");
             Check(await TransferUntilAsync(() => one.Label == "alpha — Immediate rename"), "project-first labels reload live through the settings file");
             window.ApplySetting(SettingsCatalog.Find("tabs.labelMode")!, "\"harness\"");
-            Check(await TransferUntilAsync(() => one.Label.EndsWith("OpenCode", StringComparison.Ordinal) && two.Label.EndsWith("OpenCode", StringComparison.Ordinal) && one.Label != two.Label), "harness mode still distinguishes duplicate agent names");
+            Check(await TransferUntilAsync(() => one.Label == "OpenCode" && two.Label == "OpenCode"), "harness mode keeps duplicate names clean by default");
             window.ApplySetting(SettingsCatalog.Find("tabs.labelMode")!, "\"session\"");
             await TransferUntilAsync(() => window.CurrentSettings.Tabs.EffectiveLabelMode == TabLabelMode.Session);
 
             one.ApplyReport(LabelReport(one, 4, "a", "Shared task"));
             two.ApplyReport(LabelReport(two, 2, "b", "Shared task"));
             var before = one.Label;
-            Check(one.Label != two.Label && one.Label.StartsWith('[') && two.Label.StartsWith('['), "identical tasks get distinct identifiers before text can be truncated");
+            Check(one.Label == "Shared task" && two.Label == "Shared task", "identical tasks do not expose machine IDs in everyday labels");
             window.Tabs.Move(window.Tabs.IndexOf(two), window.Tabs.IndexOf(one));
-            Check(one.Label == before, "identifiers do not change when tabs are reordered");
+            Check(one.Label == before, "clean names do not change when tabs are reordered");
+            window.Commands.TryExecute("palette.floatingTabs");
+            await Task.Delay(100);
+            var picker = window.Palette!;
+            var number = window.DisplayOrder.IndexOf(two) + 1;
+            Check(ProfileRows(picker).Where(r => r.Title == "Shared task").Select(r => r.Number).Distinct().Count() == 2,
+                "the floating selector distinguishes identical labels with small numbers");
+            ProfileInput(picker).Text = "@" + number;
+            Check(ProfileRows(picker).Count == 1 && ProfileRows(picker)[0].Number == number, "@number selects the exact displayed tab-order entry");
+            ProfileKey(picker, System.Windows.Input.Key.Escape);
+            window.ApplySetting(SettingsCatalog.Find("tabs.showDuplicateIds")!, "true");
+            Check(await TransferUntilAsync(() => one.Label.StartsWith('[') && two.Label.StartsWith('[') && one.Label != two.Label), "legacy identifier labels are available as an explicit live setting");
+            window.ApplySetting(SettingsCatalog.Find("tabs.showDuplicateIds")!, "false");
+            Check(await TransferUntilAsync(() => one.Label == "Shared task" && two.Label == "Shared task"), "disabling identifier labels removes them immediately");
             var other = window.AddTab(profile with { StartingDirectory = beta }, activate: false);
             extra.Add(other);
             await TransferUntilAsync(() => other.IsRunning);
@@ -132,7 +146,7 @@ internal static partial class HerdSelfTest
         window.RenameTab(tabs[1], "right");
         window.SaveSession(force: true);
         File.WriteAllText(Path.Combine(AppPaths.StateRoot, "label-expectations.json"), Jsonc.Serialize(tabs.Select(t => new { t.NamingId, t.Label, t.UserLabel }).ToArray()));
-        Log($"  {(tabs.Select(t => t.Label).Distinct().Count() == 4 ? "PASS" : "FAIL")}  four tabs have independent names before restart");
+        Log($"  {(tabs.Select(t => t.NamingId).Distinct().Count() == 4 && tabs[2].Label == tabs[3].Label ? "PASS" : "FAIL")}  four independent identities keep clean duplicate labels before restart");
         Log("=== selftest (labels1) result: closing ===");
         window.Close();
     }

@@ -171,7 +171,7 @@ public partial class MainWindow
 
     /// <summary>The window the command came from, including a detached terminal or its owned palette.</summary>
     internal Window CommandOwner() =>
-        _commandTarget is not null ? TerminalWindowFor(_commandTarget) ?? (Window)this : ActiveTerminalWindow() ?? this;
+        _commandTarget is not null ? OwnerForTab(_commandTarget) : ActiveTerminalWindow() ?? this;
 
     internal void RefocusOwner(Window owner, IInputElement? previousFocus = null)
     {
@@ -184,7 +184,8 @@ public partial class MainWindow
                 text.Focus();
                 return;
             }
-            if (owner is TearOffWindow tearOff && Tabs.Contains(tearOff.Tab)) tearOff.Tab.Surface.Focus();
+            if (FloatForOwner(owner) is { Active: true } floating) floating.Panel.Tab.Surface.Focus();
+            else if (owner is TearOffWindow tearOff && Tabs.Contains(tearOff.Tab)) tearOff.Tab.Surface.Focus();
             else if (_settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
         }, System.Windows.Threading.DispatcherPriority.Input);
     }

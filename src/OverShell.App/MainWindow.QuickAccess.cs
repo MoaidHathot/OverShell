@@ -64,6 +64,12 @@ public partial class MainWindow
                 foreach (var item in RuntimeShortcuts.Where(i => i.TabId == tab.Id).ToArray()) RemoveRuntimeShortcut(item.Id);
             return true;
         });
+        _commands.Register("tab.identify", "Show this tab's number and ID", "Tabs", invocation =>
+        {
+            if (ResolveTarget(invocation) is { } tab)
+                ShowStatusMessage($"Tab {DisplayOrder.IndexOf(tab) + 1} · {tab.DisplayLabel} · ID {tab.Id}");
+            return true;
+        }, description: "Inspect the current tab-order number and stable runtime address when needed");
     }
 
     internal TerminalTab? ResolveTarget(CommandInvocation invocation)

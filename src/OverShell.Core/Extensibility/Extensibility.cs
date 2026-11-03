@@ -30,7 +30,7 @@ public interface IShell
 
     ITab? ActiveTab { get; }
 
-    /// <summary>The tab a command aims at: the tear-off's when the chord came from one, else the active tab.</summary>
+    /// <summary>The explicit command target, otherwise the focused floating, detached or main terminal.</summary>
     ITab? TargetTab { get; }
 
     INavigationService Navigation { get; }
@@ -135,7 +135,7 @@ public interface ITab : INotifyPropertyChanged
 {
     string Id { get; }
 
-    /// <summary>The user's name or the configured automatic label, with duplicate qualifiers.</summary>
+    /// <summary>The user's name or the configured automatic label, with optional duplicate context.</summary>
     string Label { get; }
 
     string? Alias => null;

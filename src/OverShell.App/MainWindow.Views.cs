@@ -234,6 +234,7 @@ public partial class MainWindow
             () => ShowPresentationResult(tab.Floating ? Presentations.HideFloating(tab.Id) : Presentations.ShowFloating(tab.Id)));
         if (tab.Floating) Add("Open in regular view", HintFor("tab.present.normal"), () => Presentations.ShowNormally(tab.Id));
         Add("Assign shortcut…", HintFor("tab.shortcut.assign"), () => ExecuteForTab("tab.shortcut.assign", tab));
+        Add("Show tab number and ID", HintFor("tab.identify"), () => ExecuteForTab("tab.identify", tab));
         Add("Remove shortcuts", null, () => ExecuteForTab("tab.shortcut.remove", tab), RuntimeShortcuts.Any(i => i.TabId == tab.Id));
         Add("Rename…", HintFor("tab.rename"), () => ExecuteForTab("tab.rename", tab));
         Add("Duplicate tab", HintFor("tab.duplicate"), () => DuplicateTab(tab));
@@ -265,6 +266,7 @@ public partial class MainWindow
 
         if (changed)
         {
+            foreach (var entry in _floats.Where(e => e.Owner == this).ToArray()) ReleaseFloat(entry.Panel.Tab, returnFocus: false);
             _previousViewId = _viewId;
             _viewId = id.ToLowerInvariant();
         }
@@ -279,7 +281,7 @@ public partial class MainWindow
         {
             Dispatcher.BeginInvoke(() =>
             {
-                if (IsActive && _settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
+                if (IsActive && FloatForOwner(this) is null && _settings.ViewFor(_viewId).Content == ViewContent.Terminal) ActiveTab?.Surface.Focus();
             }, DispatcherPriority.Input);
         }
     }
@@ -536,10 +538,9 @@ public partial class MainWindow
         {
             _settings = AppSettings.Load(File.Exists(AppPaths.SettingsFile) ? AppPaths.SettingsFile : null);
             ApplyEndpointControl();
-            foreach (var floating in FloatingWindows)
+            foreach (var floating in FloatingPanels)
             {
-                FloatingPlacement.Apply(floating, floating.Owner, _settings.Floating);
-                floating.ApplyBodyOpacity();
+                floating.ApplySettings(_settings.Floating);
             }
             Dashboard.PreviewSettings = _settings.Dashboard;
             PreviewSettingsChanged();
@@ -551,6 +552,7 @@ public partial class MainWindow
                 tab.TabSettingsChanged();
                 tab.SetAlias(tab.Alias);
             }
+            RefreshTabLabels();
 
             WindowChromeInterop.ConfiguredBackdrop = _settings.Window.Backdrop;
 
@@ -625,7 +627,7 @@ public partial class MainWindow
             if (IsLoaded)
             {
                 ApplyBackdrop();
-                foreach (var tearOff in _tearOffs.Concat(FloatingWindows))
+                foreach (var tearOff in _tearOffs)
                 {
                     tearOff.ReapplyBackdrop();
                 }

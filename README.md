@@ -176,8 +176,8 @@ the app; a file with the same name replaces one wholesale).
 **Recognizable tab names.** Agent tabs show their session/task title prominently, with
 project, branch and state underneath. The icon identifies the harness. When metadata is
 unavailable, the terminal title and then the project supply a name. Duplicate automatic
-names get a project qualifier or a short persistent identifier that stays visible before
-truncated text. `Ctrl+Shift+R` gives one tab a custom name; restoring or reopening that tab
+names use a project qualifier when it helps; small tab-order numbers appear in selectors
+instead of machine IDs on the tab strip. `Ctrl+Shift+R` gives one tab a custom name; restoring or reopening that tab
 keeps it, and new tabs in the same folder start with their own names.
 
 **Setting: Tab labels** in the palette changes `tabs.labelMode` live: `session` (default),
@@ -215,8 +215,9 @@ Custom display names (`Ctrl+Shift+R`) retain their existing restoration behavior
 
 **Ctrl+Shift+Y** toggles the current terminal floating; **Ctrl+Alt+Shift+J** floats a
 tab needing attention. In the tab picker, **Shift+Enter** floats the selected tab.
-The same terminal, process and scrollback move into an owned window while the tab stays
-listed. **X hides** the float; **Ctrl+Shift+W terminates** its tab. **Ctrl+Shift+H** returns
+The same terminal, process and scrollback move into an inset panel inside the existing
+window, so a Windows tiling manager has no additional window to tile. The tab stays
+listed. **X hides** the panel; **Ctrl+Shift+W terminates** its tab. **Ctrl+Shift+H** returns
 to the interrupted work, including after several attention jumps. **Ctrl+Shift+K, L**
 still switches to the last-used tab.
 
@@ -226,6 +227,10 @@ float…** runs a real one-shot process with configurable keep/close-on-success/
 behavior. Escape remains terminal input. Settings cover geometry, dismissal, alias display,
 notification activation and scratch defaults. See the [quick-access guide](docs/GUIDE.md#51-aliases-floating-terminals-and-returning)
 and [API/design evidence](docs/TAB-QUICK-ACCESS.md).
+
+Selectors show `1`, `2`, `3`, … alongside clean names; `@number` selects a specific tab.
+**Show this tab's number and ID** exposes its runtime address when needed. The settings
+`tabs.showPickerNumbers` and `tabs.showDuplicateIds` control these presentation choices.
 
 ### Prompt bar and restoration
 

@@ -61,6 +61,9 @@ internal static partial class HerdSelfTest
                     case "floats":
                         await RunFloatingAsync(window, firstTab);
                         break;
+                    case "embeddedpixels":
+                        await RunEmbeddedPixelsAsync(window, firstTab);
+                        break;
                     case "scratch":
                         await RunScratchAsync(window, firstTab);
                         break;
@@ -248,6 +251,7 @@ internal static partial class HerdSelfTest
                 case "quicknav":
                 case "aliases":
                 case "floats":
+                case "embeddedpixels":
                 case "scratch":
                 case "previewbench":
                 case "previewnative":

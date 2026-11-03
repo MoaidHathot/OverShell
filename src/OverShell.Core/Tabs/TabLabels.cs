@@ -78,18 +78,21 @@ public static partial class TabLabels
         };
     }
 
-    /// <summary>Prefixes remain visible when a long title is ellipsized. Manual names always win.</summary>
-    public static IReadOnlyDictionary<string, string> Prefixes(IReadOnlyList<TabLabelEntry> tabs)
+    /// <summary>Use human project context when it distinguishes duplicates. Machine identifiers are opt-in.</summary>
+    public static IReadOnlyDictionary<string, string> Prefixes(IReadOnlyList<TabLabelEntry> tabs, bool showIdentifiers = false)
     {
         var prefixes = tabs.ToDictionary(t => t.Key, _ => string.Empty, StringComparer.Ordinal);
         foreach (var group in tabs.GroupBy(t => t.Text, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
         {
+            if (!showIdentifiers && group.Select(t => t.Project).Distinct(StringComparer.OrdinalIgnoreCase).Count() < 2) continue;
             foreach (var tab in group.Where(t => !t.Manual && t.Project.Length > 0))
             {
                 if (!tab.Text.Equals(tab.Project, StringComparison.OrdinalIgnoreCase) && !tab.Text.StartsWith(tab.Project + " — ", StringComparison.OrdinalIgnoreCase))
                     prefixes[tab.Key] = tab.Project + " — ";
             }
         }
+
+        if (!showIdentifiers) return prefixes;
 
         var groups = tabs.GroupBy(t => prefixes[t.Key] + t.Text, StringComparer.OrdinalIgnoreCase).ToArray();
         var used = new HashSet<string>(groups.Where(g => g.Count() == 1).Select(g => g.Key)

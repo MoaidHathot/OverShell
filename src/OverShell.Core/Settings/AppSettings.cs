@@ -41,6 +41,8 @@ public sealed class NotificationSettings
 
 public sealed class TabSettings
 {
+    public bool ShowDuplicateIds { get; init; }
+    public bool ShowPickerNumbers { get; init; } = true;
     public string AliasDisplay { get; init; } = "badge";
     /// <summary>Automatic primary labels: session (default), project, or harness.</summary>
     public string LabelMode { get; init; } = "session";
