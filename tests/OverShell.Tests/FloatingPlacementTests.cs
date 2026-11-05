@@ -7,6 +7,33 @@ namespace OverShell.Tests;
 
 public class FloatingPlacementTests
 {
+    [Fact]
+    public void Large_displays_use_a_comfortable_initial_size_and_limits_can_be_removed()
+    {
+        var size = new Size(4000, 2200);
+        var bounded = FloatingPlacement.Calculate(size, new FloatingSettings());
+        Assert.Equal(1200, bounded.Width);
+        Assert.Equal(800, bounded.Height);
+        var unlimited = FloatingPlacement.Calculate(size, new FloatingSettings { MaxWidth = 0, MaxHeight = 0 });
+        Assert.Equal(3200, unlimited.Width);
+        Assert.Equal(1650, unlimited.Height);
+    }
+
+    [Fact]
+    public void Background_clips_cover_only_the_region_outside_the_panel()
+    {
+        var area = new Rect(0, 0, 1000, 600);
+        var panel = new Rect(100, 50, 800, 500);
+        var regions = FloatingBackdrop.Regions(area, panel);
+        Assert.Equal(area.Width * area.Height - panel.Width * panel.Height, regions.Sum(r => r.Width * r.Height));
+        Assert.All(regions, r =>
+        {
+            Assert.True(area.Contains(r));
+            var overlap = Rect.Intersect(r, panel);
+            Assert.True(overlap.IsEmpty || overlap.Width == 0 || overlap.Height == 0);
+        });
+    }
+
     [Theory]
     [InlineData("center")]
     [InlineData("topRight")]

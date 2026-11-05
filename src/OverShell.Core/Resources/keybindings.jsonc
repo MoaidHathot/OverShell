@@ -53,6 +53,14 @@
   // unbound by default.
   { "keys": "ctrl+shift+f",        "command": "terminal.find" },
 
+  // Runtime font size on the focused terminal, including embedded and detached views.
+  { "keys": "ctrl+plus",          "command": "terminal.zoomIn" },
+  { "keys": "ctrl+shift+plus",    "command": "terminal.zoomIn" },
+  { "keys": "ctrl+add",           "command": "terminal.zoomIn" },
+  { "keys": "ctrl+minus",         "command": "terminal.zoomOut" },
+  { "keys": "ctrl+subtract",      "command": "terminal.zoomOut" },
+  { "keys": "ctrl+0",             "command": "terminal.zoomReset" },
+
   // ---- prompt bar ----
   // Type once, send to the active tab or to every agent (we own the terminal's input).
   { "keys": "ctrl+shift+enter",    "command": "prompt.toggle" },

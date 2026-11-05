@@ -10,7 +10,7 @@ namespace OverShell.App.Diagnostics;
 
 internal static partial class HerdSelfTest
 {
-    private static bool QuickAccessMode => Mode is "quicknav" or "aliases" or "floats" or "embeddedpixels" or "scratch" or "quickrestore1" or "quickrestore2";
+    private static bool QuickAccessMode => Mode is "quicknav" or "aliases" or "floats" or "embeddedpixels" or "zoom" or "floatstyle" or "scratch" or "quickrestore1" or "quickrestore2";
 
     private static void SeedQuickRestore()
     {

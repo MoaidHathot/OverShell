@@ -68,6 +68,10 @@ public interface ITerminalSurface : IDisposable
 
     (int Columns, int Rows) Grid { get; }
 
+    double? FontSize => null;
+    double? DefaultFontSize => null;
+    bool SetFontSize(double? points) => false;
+
     /// <summary>The pointer to show over the terminal body. Set by the chrome, e.g. while hovering a link.</summary>
     TerminalPointer Pointer { get; set; }
 

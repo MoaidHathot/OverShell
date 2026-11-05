@@ -1,5 +1,65 @@
 # Tab quick access: implementation and evidence
 
+## Floating appearance and terminal font zoom (2026-11-05)
+
+The floating presentation preserves the native terminal's font size and configured
+body opacity. Floating the current tab leaves only a matching tinted backdrop; it
+does not mirror the same resized viewport behind itself. A distinct background stays
+at its original native grid and pixel scale. Composed terminals share the renderer's
+actual pixels through four clipped live mirrors; opaque terminals use the styled
+fallback at native scale. Preview resources are released on Hide.
+
+The panel has a rounded frame, a compact caption with **…** and **X**, and a resize
+grip in the scrollbar margin. Expansion, regular view and termination are in the menu.
+`floating.maxWidth`/`maxHeight` limit the initial size to 1200 × 800 DIPs by default;
+`0` removes either cap. Ratio, position, dragging, expansion and session lifetime keep
+their existing contracts.
+
+Font zoom is a per-open-tab override of the native font size:
+
+| Default shortcut | Command | Behavior |
+|---|---|---|
+| Ctrl+=, Ctrl++, Ctrl+NumPad+ | `terminal.zoomIn` | Increase by `terminal.fontSizeStep` points |
+| Ctrl+-, Ctrl+NumPad- | `terminal.zoomOut` | Decrease by the configured step |
+| Ctrl+0 | `terminal.zoomReset` | Return to this tab's imported profile size |
+
+The step defaults to 1 point and is live configurable from 1–16. Font sizes are bounded
+to 1–128 points, rounded to the control's whole-point precision. Overrides survive
+floating/hiding/detaching and end with the tab. `ITab.FontSize`, `DefaultFontSize` and
+`SetFontSize(double?)` expose the same behavior to extensions; null resets. Tab-control
+payloads include both sizes. `terminal.setFontSize` accepts a numeric `size` (or null)
+and the shared ID/alias/unique-label target selectors.
+
+Review and verification:
+
+- 567 C# tests passed, including overridable keyboard defaults, font limits, bounded
+  placement and styled fallback alpha without mutating shared preview drawings.
+- 57 lifecycle/focus/session checks and 12 real-renderer zoom checks passed in each
+  rendering mode on private desktops. Zoom checks retain the native HWND and PID,
+  change native cell metrics, target regular/floating/detached/background tabs, reject
+  invalid sizes, reload the step and reset the original metrics.
+- Input-desktop appearance checks passed: 18 composed and 17 opaque, zero skips.
+  At 150% display scaling, native glyph height stayed 28 pixels across floating, and
+  sampled foreground/backdrop pixels matched exactly at opacity 0.85. Both modes also
+  retained their background pixel values at the panel's clipping boundaries.
+- The first on-screen capture exposed one-pixel seams: separate WPF rectangles left
+  antialiased gaps, while independently rounded native clips overlapped. New pixel
+  assertions failed in both cases before the fix. WPF now uses one exclusion clip and
+  native regions are partitioned after pixel alignment; both assertions then passed
+  with a zero pixel difference, including after resizing.
+- The follow-up also fixed immediate grid restoration on Hide and numeric command
+  arguments supplied as integer JSON nodes. Earlier private-desktop runs passed the
+  100-check application harness plus navigation, aliases, scratch, find, profiles,
+  settings, previews and tear-off regressions. Floating-appearance pixel checks skipped
+  on private desktops are covered by the on-screen runs above; the existing dashboard
+  pixel regression remained skipped in its private-desktop run.
+
+Logs and screenshots: `artifacts/selftest/float-style/` (`seam-before` retains the
+failing evidence; `seam-after` and `visible-opaque` contain the passing captures).
+Runnable development build: `artifacts/float-style-package/OverShell.exe`.
+Reproduce the focused checks with `tools\Invoke-QuickAccessTests.ps1 -Modes floats,zoom,floatstyle`;
+use `tools\Invoke-SelfTest.ps1 -Mode floatstyle -Visible` for the actual on-screen comparisons.
+
 ## In-window presentation and clean labels (2026-11-03)
 
 Floating terminals now use `FloatingTerminalPanel`, an ordinary WPF element inside the
@@ -9,12 +69,12 @@ the panel. Its bounds, dragging, expansion and resizing use owner-client DIPs an
 inside that content area as the owner resizes.
 
 The native renderer has HWND airspace, and its composition visuals sit above WPF.
-While a different terminal floats, the original view is kept alive at its original grid
-outside the owner's client area, with a styled WPF preview in its place. This preserves
-native keyboard input for non-activating API calls and avoids covering the panel's
-caption with the background terminal. Hide restores the original view and input context.
-The foreground terminal uses an opaque body while embedded; normal opacity returns with
-its regular presentation. Preview readers and owner event handlers are released on Hide.
+The first embedded implementation kept the original view alive at its original grid
+outside the owner's client area, with a styled WPF preview in its place. This preserved
+native keyboard input for non-activating API calls and kept the panel's caption visible.
+It used an opaque foreground body while embedded; the appearance follow-up above replaces
+that behavior with preserved opacity and native-scale backgrounds. Hide restores the
+original view and input context and releases preview readers and owner event handlers.
 
 Focus and command targeting use the actual terminal/input context within the owner,
 including find/prompt bars and owned pickers. Presentation generations prevent deferred

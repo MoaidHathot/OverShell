@@ -221,6 +221,10 @@ listed. **X hides** the panel; **Ctrl+Shift+W terminates** its tab. **Ctrl+Shift
 to the interrupted work, including after several attention jumps. **Ctrl+Shift+K, L**
 still switches to the last-used tab.
 
+Floating preserves the terminal's font size and opacity. The compact header has **X**
+to hide and **…** for other actions; initial size is capped by `floating.maxWidth` and
+`floating.maxHeight` (1200 × 800 DIPs by default; `0` removes a limit).
+
 **Ctrl+Alt+Shift+T** opens a scratch float in the invoking directory. Scratch tabs default
 to no restoration/history; **Keep this tab** promotes one. **Run a command in a scratch
 float…** runs a real one-shot process with configurable keep/close-on-success/close-always
@@ -326,6 +330,9 @@ strip, wrapping (or the most-recent switcher, opt-in) · `Ctrl+Shift+K` then a k
 anywhere · `@3 ...` / `#group ...` / `@blocked ...` in the prompt bar address it · `Alt+Shift+←/→` reorder ·
 `Ctrl+Shift+C` / `Ctrl+Shift+V` clipboard (`Ctrl+C` copies only with a selection;
 `Ctrl+V` and `Shift+Insert` also paste).
+`Ctrl+=` / `Ctrl+-` increase/decrease the focused terminal's font size; `Ctrl+0` resets
+it to the profile size. Zoom belongs to the open tab, including while floating or
+detached. The increment is configurable with `terminal.fontSizeStep` (default: 1 point).
 Right-click a tab, a sidebar row or a card for rename / treat as agent or shell / explain /
 close.
 

@@ -90,6 +90,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         InitializeViews();
         InitializeDepth();
         InitializeFind();
+        InitializeFontZoom();
         InitializeTearOff();
         InitializeNavigation();
         InitializeQuickAccess();

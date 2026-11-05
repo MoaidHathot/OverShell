@@ -10,6 +10,33 @@ namespace OverShell.Tests;
 public class PreviewDrawingTests
 {
     [Fact]
+    public void Floating_fallback_preserves_default_background_alpha_without_fading_coloured_cells_or_mutating_shared_drawings()
+    {
+        Sta.Run(() =>
+        {
+            var frame = new TerminalPreviewFrame(2, 1, 20, 20,
+                [new(0, 0, 1, 0xffffff, 0, PreviewTextStyle.Normal, " "), new(1, 0, 1, 0xffffff, 0xff0000, PreviewTextStyle.Normal, " ")]);
+            var original = PreviewDrawing.Build(frame, "Consolas", 16, CancellationToken.None);
+            var translucent = PreviewDrawing.WithDefaultBackgroundOpacity(original, Colors.Black, 0.5);
+            var pixels = Render(translucent);
+            Assert.InRange(pixels[(10 * 20 + 5) * 4 + 3], (byte)127, (byte)128);
+            Assert.Equal(new byte[] { 255, 0, 0, 255 }, pixels.AsSpan((10 * 20 + 15) * 4, 4).ToArray());
+            Assert.Equal(255, Render(original)[(10 * 20 + 5) * 4 + 3]);
+        });
+
+        static byte[] Render(DrawingImage image)
+        {
+            var visual = new DrawingVisual();
+            using (var context = visual.RenderOpen()) context.DrawImage(image, new Rect(0, 0, 20, 20));
+            var bitmap = new RenderTargetBitmap(20, 20, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            var pixels = new byte[20 * 20 * 4];
+            bitmap.CopyPixels(pixels, 20 * 4, 0);
+            return pixels;
+        }
+    }
+
+    [Fact]
     public async Task Styled_drawings_are_background_thread_safe_and_keep_coloured_blank_cells()
     {
         var frame = new TerminalPreviewFrame(4, 1, 40, 20,

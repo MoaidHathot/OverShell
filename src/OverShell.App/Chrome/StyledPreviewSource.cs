@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using System.Windows.Threading;
+using OverShell.Core.Tabs;
 
 namespace OverShell.App.Chrome;
 
@@ -76,8 +77,8 @@ internal sealed class StyledPreviewSource
             var frame = _tab.Surface.CapturePreview();
             if (frame is null) return;
             var face = string.IsNullOrWhiteSpace(_tab.Profile.FontFace) ? "Cascadia Mono, Consolas" : _tab.Profile.FontFace;
-            var points = _tab.Profile.FontSize ?? 12;
-            var pixels = Math.Clamp(double.IsFinite(points) ? points : 12, 1, 100) * 96 / 72 * VisualTreeHelper.GetDpi(_tab.View).PixelsPerDip;
+            var points = _tab.FontSize ?? _tab.Profile.FontSize ?? 12;
+            var pixels = TerminalFontSize.Normalize(points) * 96d / 72 * VisualTreeHelper.GetDpi(_tab.View).PixelsPerDip;
             PendingDrawings++;
             DrawingImage image;
             try

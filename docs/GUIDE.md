@@ -315,6 +315,9 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+Space` | `palette.tabs` | Tab switcher with screen preview |
 | `Ctrl+Shift+P` | `palette.commands` | Command palette |
 | `Ctrl+Shift+F` | `terminal.find` | Find in this tab's buffer, scrollback included (below) |
+| `Ctrl+=`, `Ctrl++`, `Ctrl+NumPad+` | `terminal.zoomIn` | Increase the focused terminal's font size |
+| `Ctrl+-`, `Ctrl+NumPad-` | `terminal.zoomOut` | Decrease the focused terminal's font size |
+| `Ctrl+0` | `terminal.zoomReset` | Reset to this tab's profile font size |
 | `Ctrl+Shift+1` … `4` | `view.terminal` / `view.herd` / `view.dashboard` / `view.zen` | Views |
 | `` Ctrl+Shift+` `` | `view.toggle` | Back to the previous view |
 | `Ctrl+Shift+Enter` | `prompt.toggle` | Prompt bar |
@@ -322,6 +325,19 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+C` | `clipboard.copyIfSelection` | Copies when something is selected, else reaches the shell as an interrupt |
 | `Ctrl+V`, `Ctrl+Shift+V`, `Shift+Insert` | `clipboard.paste` | Paste text, files or media (text is bracketed when the application asked for it) |
 | `Ctrl+Shift+C` | `clipboard.copy` | Copy |
+
+**Terminal font size.** Zoom changes the renderer's actual font size and reflows the
+terminal grid. Each open tab keeps its own size while floating, hiding or detaching.
+New and restored tabs start at their profile's size. The increment is one point by
+default; `"terminal": { "fontSizeStep": 2 }` changes it live (1–16 points), also available
+as **Setting: Terminal font size step**. All zoom bindings can be replaced or unbound.
+In keybindings, `plus` means the main `=`/`+` key, `add` the numpad `+`, and `subtract`
+the numpad `-`.
+
+For a specific size, use the parameterized command
+`{ "action": "terminal.setFontSize", "size": 16, "target": { "alias": "build" } }`.
+Omit `target` for the focused terminal, or select a tab by `id`. Sizes are 1–128 points,
+rounded to the nearest whole point; `"size": null` resets to the profile default.
 
 Right-click in the terminal copies a selection, else pastes. Applications that request
 mouse reporting receive right-clicks themselves; **Shift+right-click** copies/pastes in
@@ -584,9 +600,12 @@ It creates no top-level window for a Windows tiling manager to tile. Switching i
 target retains the original return context. Drag its caption to move it, resize from
 its lower-right corner, or expand it within the owner's content area. The same terminal,
 process and scrollback move. Its grid may resize, so terminal applications can reflow
-normally. The underlying terminal is shown as a read-only styled preview until the
-panel closes; clicking that backdrop returns to it. The panel's terminal background
-is opaque for readability, and its normal opacity is restored when it returns home.
+normally, while font size, colours and configured transparency stay the same. A
+different underlying terminal is shown as a read-only preview at its original pixel
+scale until the panel closes; clicking that backdrop returns to it. Floating the current
+tab leaves a tinted backdrop. The header's **…** menu contains **Open in regular view**,
+**Expand within this window** and **Terminate tab and session**; double-clicking the
+caption also expands/restores the panel.
 
 - **X / Hide floating terminal:** dismiss the presentation and return to the original
   work; the process continues and the tab remains listed.
@@ -608,6 +627,7 @@ origin falls back to an available tab.
 ```jsonc
 {
   "floating": { "widthRatio": 0.8, "heightRatio": 0.75,
+                "maxWidth": 1200, "maxHeight": 800,
                 "position": "center", "hideOnFocusLoss": false },
   "attention": { "presentation": "tab" },
   "notifications": { "openMode": "floating" }
@@ -615,6 +635,8 @@ origin falls back to an available tab.
 ```
 
 Position is `center`, `topRight`, or `bottomRight`, clamped to the owner's content area.
+Initial dimensions use the ratios, capped at `maxWidth`/`maxHeight` in DIPs; `0` removes
+that limit. Drag-resizing and expansion can use more of the window.
 Focus-loss dismissal treats owned pickers as part of the float. Attention presentation
 is `tab` or `floating`; notification activation is `tab`, `floating`, or `preview`.
 These settings apply live and are available in **Change a setting…**.

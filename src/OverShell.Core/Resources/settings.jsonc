@@ -101,11 +101,17 @@
   "floating": {
     "widthRatio": 0.8,
     "heightRatio": 0.75,
+    // Keep an inset terminal comfortable on large/ultrawide displays; 0 removes a limit.
+    "maxWidth": 1200,
+    "maxHeight": 800,
     // center | topRight | bottomRight; clamped to the existing window's content area.
     "position": "center",
     // Owned pickers count as part of the float. Escape remains terminal input.
     "hideOnFocusLoss": false
   },
+
+  // Runtime zoom is per open tab; reset uses the imported profile's font size.
+  "terminal": { "fontSizeStep": 1 },
 
   "scratch": {
     "profile": null,

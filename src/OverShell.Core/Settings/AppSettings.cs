@@ -246,6 +246,7 @@ public sealed class AppSettings
     public DashboardSettings Dashboard { get; init; } = new();
 
     public FloatingSettings Floating { get; init; } = new();
+    public TerminalSettings Terminal { get; init; } = new();
 
     public ScratchSettings Scratch { get; init; } = new();
 

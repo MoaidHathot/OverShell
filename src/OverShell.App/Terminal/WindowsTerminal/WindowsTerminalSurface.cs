@@ -24,7 +24,6 @@ namespace OverShell.App.Terminal.WindowsTerminal;
 internal sealed class WindowsTerminalSurface : ITerminalSurface
 {
     private const string DefaultFontFace = "Cascadia Mono, Consolas";
-    private const double DefaultFontSize = 12;
 
     private const int WmSetCursor = 0x0020;
     private const int WmMouseMove = 0x0200;
@@ -40,6 +39,7 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
     private Input.NativeDropTarget? _dropTarget;
     private ScrollBar? _scrollBar;
     private (ColorScheme Scheme, TerminalProfile Profile)? _theme;
+    private short? _fontSizeOverride;
     private TerminalPointer _pointer;
     private bool _loaded;
     private bool _connected;
@@ -109,6 +109,19 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
         }
     }
     public (int Columns, int Rows) Grid => (_control.Columns, _control.Rows);
+
+    public double? DefaultFontSize => Core.Tabs.TerminalFontSize.Normalize(_theme?.Profile.FontSize ?? Core.Tabs.TerminalFontSize.Default);
+    public double? FontSize => _fontSizeOverride ?? (short)DefaultFontSize!.Value;
+
+    public bool SetFontSize(double? points)
+    {
+        _control.Dispatcher.VerifyAccess();
+        if (_disposed || points is { } size && !Core.Tabs.TerminalFontSize.IsValid(size)) return false;
+        _fontSizeOverride = points is { } requested ? (short)Core.Tabs.TerminalFontSize.Normalize(requested) : null;
+        if (_loaded) ApplyThemeCore();
+        ViewportChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
 
     /// <summary>
     /// The native window sets its class cursor on every <c>WM_SETCURSOR</c>, so an override
@@ -180,7 +193,7 @@ internal sealed class WindowsTerminalSurface : ITerminalSurface
             : null;
 
     /// <summary>The control takes a short; this is the value it was given.</summary>
-    private static short FontSizeFor(TerminalProfile profile) => (short)Math.Round(profile.FontSize ?? DefaultFontSize);
+    private short FontSizeFor(TerminalProfile profile) => _fontSizeOverride ?? (short)Core.Tabs.TerminalFontSize.Normalize(profile.FontSize ?? Core.Tabs.TerminalFontSize.Default);
 
     public void Attach(ITerminalSession session)
     {

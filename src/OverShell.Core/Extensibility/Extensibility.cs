@@ -173,6 +173,12 @@ public interface ITab : INotifyPropertyChanged
 
     bool IsRunning { get; }
 
+    /// <summary>Effective terminal font size in points; null for an unsupported surface.</summary>
+    double? FontSize => null;
+    double? DefaultFontSize => null;
+    /// <summary>A runtime override, or null to reset to the profile's font size.</summary>
+    TabActionResult SetFontSize(double? points) => TabActionResult.Fail("This terminal does not support font-size changes");
+
     TabLifetime Lifetime => TabLifetime.Standard;
     bool IsOneShot => false;
     int? ExitCode => null;

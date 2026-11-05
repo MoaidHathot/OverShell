@@ -390,6 +390,19 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
 
     public (int Columns, int Rows) Grid => Surface.Grid;
 
+    public double? FontSize => Surface.FontSize;
+    public double? DefaultFontSize => Surface.DefaultFontSize;
+
+    public Core.Tabs.TabActionResult SetFontSize(double? points)
+    {
+        if (_disposed) return Core.Tabs.TabActionResult.Fail("The tab has closed");
+        if (points is { } size && !Core.Tabs.TerminalFontSize.IsValid(size))
+            return Core.Tabs.TabActionResult.Fail($"Font size must be {Core.Tabs.TerminalFontSize.Minimum}–{Core.Tabs.TerminalFontSize.Maximum} points");
+        if (!Surface.SetFontSize(points)) return Core.Tabs.TabActionResult.Fail("This terminal does not support font-size changes");
+        Raise(nameof(FontSize));
+        return Core.Tabs.TabActionResult.Ok;
+    }
+
     /// <summary>Whether the shell integration rode along on the command line, and if not, why (§12.15).</summary>
     public ShellLaunchPlan ShellIntegration { get; }
 

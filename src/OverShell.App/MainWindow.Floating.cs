@@ -167,6 +167,7 @@ public partial class MainWindow
             if (entry.Owner != entry.HomeWindow) entry.Owner.Closing -= entry.Closing;
             var view = entry.Panel.Release();
             entry.Home.Children.Add(view);
+            entry.Home.UpdateLayout();
             entry.BackgroundFind?.SetPaused(entry.BackgroundFindPaused);
             if (entry.HomeWindow is TearOffWindow home) home.ApplyBodyOpacity(); else ApplyBodyOpacity();
             (Presentations as WindowPresentations)?.Raise(tab.Id, "regular");
@@ -228,7 +229,7 @@ public partial class MainWindow
             window.ConfigurePrompt(tab, prompt);
             var entry = new FloatEntry(panel, home, homeWindow, origin) { Active = activate, WasFocused = activate };
             entry.OwnerState = (_, _) => { if (owner.WindowState == WindowState.Minimized) window.ReleaseFloat(tab, returnFocus: false); };
-            entry.OwnerActivation = (_, _) => window.UpdateViewed();
+            entry.OwnerActivation = (_, _) => { panel.ApplyAppearance(); window.UpdateViewed(); };
             entry.Closing = (_, _) => window.ReleaseFloat(tab, returnFocus: false);
             var previousMoving = window._movingPresentation;
             window._movingPresentation = true;

@@ -112,6 +112,8 @@ public static class SettingsCatalog
 
     public static IReadOnlyList<SettingKnob> Knobs { get; } =
     [
+        new("terminal.fontSizeStep", "Terminal font size step", "Points added/removed by the font-size shortcuts. Reset uses the profile's size.", SettingKind.Number,
+            [new("1", "1 point"), new("2", "2 points"), new("4", "4 points")]) { Min = 1, Max = 16 },
         new("scratch.profile", "Scratch terminal profile", "Profile name or ID; empty follows OverShell's default. Applies to new scratch tabs.", SettingKind.Text,
             [new("null", "default profile")]) { Validate = JsoncEdit.ToJson },
         new("scratch.inheritDirectory", "Scratch inherits directory", "Start scratch terminals in the invoking tab's working directory.", SettingKind.Toggle, [On, Off]),
@@ -127,6 +129,10 @@ public static class SettingsCatalog
             [new("0.5", "50%"), new("0.75", "75%"), new("0.95", "95%")]) { Min = 0.25, Max = 1 },
         new("floating.position", "Floating terminal position", "Placement relative to its owner; terminals can also be moved and resized interactively.", SettingKind.Choice,
             [new("\"center\"", "center"), new("\"topRight\"", "top right"), new("\"bottomRight\"", "bottom right")]),
+        new("floating.maxWidth", "Floating terminal maximum width", "Maximum initial width in DIPs; 0 uses only the width ratio. Expansion is still available.", SettingKind.Number,
+            [new("960", "960"), new("1200", "1200"), new("0", "no limit")]) { Min = 0, Max = 10000 },
+        new("floating.maxHeight", "Floating terminal maximum height", "Maximum initial height in DIPs; 0 uses only the height ratio.", SettingKind.Number,
+            [new("600", "600"), new("800", "800"), new("0", "no limit")]) { Min = 0, Max = 10000 },
         new("floating.hideOnFocusLoss", "Hide floats on focus loss", "Dismiss a float when focus leaves it and its owned pickers; the session keeps running.", SettingKind.Toggle, [On, Off]),
         new("attention.presentation", "Attention jump presentation", "Switch tabs or interact in a floating terminal; Return goes back to the interrupted work.", SettingKind.Choice,
             [new("\"tab\"", "tab"), new("\"floating\"", "floating")]),

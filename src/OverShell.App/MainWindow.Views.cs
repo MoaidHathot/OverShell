@@ -642,6 +642,8 @@ public partial class MainWindow
         {
             ApplyView(_viewId);
         }
+        if (all || settings || skins)
+            foreach (var panel in FloatingPanels) panel.ApplyAppearance();
 
         if (all || settings || keybindings || agents)
         {

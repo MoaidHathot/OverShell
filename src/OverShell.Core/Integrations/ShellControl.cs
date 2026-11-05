@@ -91,6 +91,8 @@ public sealed class ShellControl
         ["isRunning"] = t.IsRunning,
         ["isActive"] = t.IsActive,
         ["isFocused"] = t.IsFocused,
+        ["fontSize"] = t.FontSize,
+        ["defaultFontSize"] = t.DefaultFontSize,
         ["floating"] = t.Floating,
         ["detached"] = t.Detached,
         ["scratch"] = t.Lifetime.Scratch,

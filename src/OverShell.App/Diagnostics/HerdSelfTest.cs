@@ -64,6 +64,12 @@ internal static partial class HerdSelfTest
                     case "embeddedpixels":
                         await RunEmbeddedPixelsAsync(window, firstTab);
                         break;
+                    case "zoom":
+                        await RunFontZoomAsync(window, firstTab);
+                        break;
+                    case "floatstyle":
+                        await RunFloatingStyleAsync(window, firstTab);
+                        break;
                     case "scratch":
                         await RunScratchAsync(window, firstTab);
                         break;
@@ -252,6 +258,8 @@ internal static partial class HerdSelfTest
                 case "aliases":
                 case "floats":
                 case "embeddedpixels":
+                case "zoom":
+                case "floatstyle":
                 case "scratch":
                 case "previewbench":
                 case "previewnative":

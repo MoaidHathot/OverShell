@@ -8,6 +8,30 @@ namespace OverShell.App.Chrome;
 /// <summary>Styled fallback: a frozen drawing in the source renderer's pixel coordinate space.</summary>
 internal static class PreviewDrawing
 {
+    /// <summary>Styled fallback keeps coloured cells/text opaque and applies alpha to the default background only.</summary>
+    internal static DrawingImage WithDefaultBackgroundOpacity(DrawingImage image, Color background, double opacity)
+    {
+        if (opacity >= 1) return image;
+        var root = image.Drawing.CloneCurrentValue();
+        Visit(root);
+        root.Freeze();
+        var result = new DrawingImage(root);
+        result.Freeze();
+        return result;
+
+        void Visit(Drawing drawing)
+        {
+            if (drawing is DrawingGroup group)
+                foreach (var child in group.Children) Visit(child);
+            else if (drawing is GeometryDrawing { Brush: SolidColorBrush brush } geometry && brush.Color == background)
+            {
+                var translucent = brush.CloneCurrentValue();
+                translucent.Opacity *= Math.Clamp(opacity, 0, 1);
+                geometry.Brush = translucent;
+            }
+        }
+    }
+
     public static DrawingImage Build(TerminalPreviewFrame frame, string fontFace, double fontPixels, CancellationToken cancellation)
     {
         var drawing = new DrawingGroup();
