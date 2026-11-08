@@ -35,8 +35,8 @@ binaries with Azure Artifact Signing; the Windows Terminal control binaries arri
 same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
-**0.5.0:** [release highlights and upgrade instructions](docs/RELEASE-0.5.0.md),
-with runtime aliases, interactive floating terminals, return-to-work navigation, and scratch commands.
+**0.5.1:** [release highlights and upgrade instructions](docs/RELEASE-0.5.1.md),
+with in-window floating terminals, preserved transparency, cleaner tab labels, and per-tab font-size shortcuts.
 
 ## Build & run
 
