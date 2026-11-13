@@ -44,6 +44,7 @@ public sealed class KeyNavExtension : IExtension
         ]);
 
         shell.Keys.Intercept(() => _pane != Pane.None, OnChord);
+        shell.Keys.ModeEntered += Leave;
         shell.TabClosed += tab => { if (ReferenceEquals(shell.Cursor, tab)) Move(0); };
         shell.SettingsChanged += () => { if (_pane != Pane.None && !PaneVisible(_pane)) Leave(); };
     }
@@ -172,5 +173,9 @@ public sealed class KeyNavExtension : IExtension
         }
     }
 
-    public void Dispose() => Leave();
+    public void Dispose()
+    {
+        if (_shell is not null) _shell.Keys.ModeEntered -= Leave;
+        Leave();
+    }
 }

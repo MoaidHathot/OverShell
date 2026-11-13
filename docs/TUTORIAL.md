@@ -88,6 +88,16 @@ cycle, and so do `Ctrl+Tab` / `Ctrl+Shift+Tab` - right and left as the strip sho
 wrapping at the ends, like Windows Terminal (`switcherMode: "mru"` makes `Ctrl+Tab` a
 most-recently-used switcher instead: hold Ctrl, tap Tab, release to land).
 
+**Do:** look for the small **tab hint** below a status dot. Press **Ctrl+Shift+Q**,
+release the modifiers, then type that hint.
+
+**You see:** the hints become prominent, a bar lists their tab names, and typing a
+hint jumps straight to its tab. **Esc** cancels. Digits `1`–`9` come first, then letters;
+larger sets use hints such as `01`. **Setting: Tab hints → on demand** hides the
+markers until you start picking. **Direct tab hint shortcuts** can generate `Alt+A`
+and similar bindings automatically. [The guide](GUIDE.md#tab-hints-pick-a-tab-without-searching)
+covers configuration and rebinding.
+
 ### A temporary address and a quick detour
 
 **Do:** right-click a tab, choose **Set alias…**, and call it `build`. Switch to another

@@ -773,7 +773,7 @@ public partial class MainWindow
             }));
         }
 
-        foreach (var session in SessionHistory.List(AppPaths.StateRoot))
+        foreach (var session in SessionHistory.List(AppPaths.StateRoot).Where(s => s.Tabs.Count > 0))
         {
             var when = session.SavedAt.ToLocalTime();
             var how = session.Interrupted ? "interrupted" : session.CloseReason == SessionCloseReason.SessionEnding ? "Windows signed out" : "closed";

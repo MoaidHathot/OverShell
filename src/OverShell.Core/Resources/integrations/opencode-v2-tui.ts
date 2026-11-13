@@ -29,7 +29,9 @@ export default Plugin.define({
       const form = forms[0]
       const status = !id ? "idle" : !info ? "unknown" : permission || form ? "blocked"
         : context.data.session.status(id) === "running" ? "working" : info.outcome === "failed" ? "error" : "idle"
-      const location = info?.location ?? context.location ?? context.data.location.default()
+      // The plugin/default location may belong to another project on the shared
+      // service. A selected session owns its location, even while its cache loads.
+      const location = id ? info?.location : context.location ?? context.data.location.default()
       return { id, info, permissions, forms, permission, form, status, location }
     }
 
@@ -37,7 +39,13 @@ export default Plugin.define({
       if (stop.signal.aborted || sending || Date.now() < retryAt) return
       sending = true
       try {
-        const view = current()
+        let view = current()
+        if (view.id && !view.location?.directory) {
+          await context.data.session.sync(view.id)
+          // Navigation may have changed while sync was in flight.
+          view = current()
+        }
+        if (stop.signal.aborted || !view.location?.directory) return
         const payload = {
           tab, source: "opencode-ui", harness: "opencode", state: view.status,
           session: { id: view.id ?? null, title: view.info?.title ?? null },
@@ -71,6 +79,7 @@ export default Plugin.define({
 
     const execute = async (command: { kind: string; requestId?: string | null; response: string }) => {
       const view = current()
+      if (!view.location?.directory) throw new Error("This session is still loading; try again once its location is available")
       if (command.kind === "permission") {
         const request = command.requestId ? view.permissions.find((p) => p.id === command.requestId) : view.permission
         if (!request) throw new Error("That permission is no longer open in this session")

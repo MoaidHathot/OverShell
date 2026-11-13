@@ -21,15 +21,35 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 {
     private readonly MainWindow _window;
     private readonly List<Keybinding> _extensionDefaults = [];
+    private readonly KeyBindingLayers _defaultLayers = new();
+    private readonly Core.Tabs.TabBadges _badges;
 
     public ShellHost(MainWindow window)
     {
         _window = window;
+        _badges = new Core.Tabs.TabBadges(id => Find(id) is not null);
+        _badges.Changed += (id, badge) => { if (Find(id) is TerminalTab tab) tab.SetBadge(badge); };
+        _defaultLayers.Changed += () => _window.RefreshExtensionKeys();
+        _window.Tabs.CollectionChanged += (_, e) =>
+        {
+            if (e.OldItems is not null && e.Action != System.Collections.Specialized.NotifyCollectionChangedAction.Move)
+                foreach (TerminalTab tab in e.OldItems) _badges.Forget(tab.Id);
+            RaiseTabOrderChanged();
+        };
     }
 
     // ----------------------------------------------------------------- IShell
 
     public IReadOnlyList<ITab> Tabs => _window.Tabs;
+
+    public IReadOnlyList<ITab> DisplayOrder => _window.DisplayOrder;
+    public event Action? TabOrderChanged;
+    internal void RaiseTabOrderChanged()
+    {
+        _window.Strip.SynchronizeOrder(_window.DisplayOrder);
+        TabOrderChanged?.Invoke();
+    }
+    public Core.Tabs.ITabBadges Badges => _badges;
 
     public ITab? ActiveTab => _window.ActiveTab;
 
@@ -166,7 +186,14 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public void AddDefaults(IEnumerable<Keybinding> bindings) => _extensionDefaults.AddRange(bindings);
 
+    public IKeyBindingLayer CreateDefaultLayer(string owner) => _defaultLayers.Create(owner);
+    public KeyMode EnterMode(IEnumerable<Keybinding> bindings, Action? closed = null, TimeSpan? timeout = null) => _window.EnterKeyMode(bindings, closed, timeout);
+    public event Action? ModeEntered;
+    internal void RaiseModeEntered() => ModeEntered?.Invoke();
+
     public KeybindingMap Map => _window.Keybindings;
+    public event Action? MapChanged;
+    internal void RaiseKeyMapChanged() => MapChanged?.Invoke();
 
     public IReadOnlyList<KeyChord> Pending => _window.PendingChords;
 
@@ -196,7 +223,7 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
         return false;
     }
     /// <summary>What extensions declared, for the map to layer beneath the user's file.</summary>
-    internal IReadOnlyList<Keybinding> ExtensionDefaults => _extensionDefaults;
+    internal IEnumerable<Keybinding> ExtensionDefaults => _extensionDefaults.Concat(_defaultLayers.Bindings);
 
     // ------------------------------------------------------------ IHostUi
 
@@ -290,17 +317,19 @@ internal sealed class ShellHost : IShell, IKeyBindings, IHostUi
 
     public void ShowBar(object bar)
     {
-        if (bar is FrameworkElement element && !_window.Bars.Children.Contains(element))
+        var host = _window.CommandOwner() is TearOffWindow tear ? tear.Bars : _window.Bars;
+        if (bar is FrameworkElement element && !host.Children.Contains(element))
         {
-            _window.Bars.Children.Add(element);
+            if (element.Parent is System.Windows.Controls.Panel previous) previous.Children.Remove(element);
+            host.Children.Add(element);
         }
     }
 
     public void HideBar(object bar)
     {
-        if (bar is FrameworkElement element)
+        if (bar is FrameworkElement { Parent: System.Windows.Controls.Panel host } element)
         {
-            _window.Bars.Children.Remove(element);
+            host.Children.Remove(element);
         }
     }
 

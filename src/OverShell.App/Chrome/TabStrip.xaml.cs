@@ -86,6 +86,12 @@ public partial class TabStrip : UserControl
     /// <summary>True while more tabs exist than the strip can show - diagnostics and the self-test.</summary>
     public bool IsOverflowing => _mode == TabsStyle.Strip && Scroller.ScrollableWidth > 0.5;
 
+    /// <summary>Live grouping preserves old group positions; navigation uses first appearance in source order.</summary>
+    internal void SynchronizeOrder(IReadOnlyList<TerminalTab> order)
+    {
+        if (_view is not null && !_view.Cast<TerminalTab>().SequenceEqual(order)) _view.Refresh();
+    }
+
     /// <summary>The overflow button was clicked: the window offers tab switching and creation actions.</summary>
     public event Action<Button>? OverflowRequested;
 
@@ -98,11 +104,6 @@ public partial class TabStrip : UserControl
     /// <summary>Scrolls the strip so <paramref name="tab"/>'s item is in view (the active tab, after a switch or a new tab).</summary>
     public void EnsureVisible(TerminalTab tab)
     {
-        if (_mode != TabsStyle.Strip)
-        {
-            return;
-        }
-
         // Containers of grouped items hang off the group's generator; the visual tree finds them wherever they are.
         Dispatcher.BeginInvoke(() =>
         {
@@ -379,7 +380,7 @@ public partial class TabStrip : UserControl
     }
 
     /// <summary>The view index of the item whose bounds contain the pointer along the strip's axis, or null.</summary>
-    private int? IndexAt(Point position)
+    internal int? IndexAt(Point position)
     {
         if (_view is null)
         {
@@ -389,7 +390,9 @@ public partial class TabStrip : UserControl
         var horizontal = _mode == TabsStyle.Strip;
         for (var i = 0; i < _view.Count; i++)
         {
-            if (Items.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement container || !container.IsVisible)
+            // Grouped tabs use the group's generator, not the top-level generator
+            // (which returns group headers). Hit-test the actual tab presenter.
+            if (_view.GetItemAt(i) is not TerminalTab tab || FindPresenter(Items, tab) is not { IsVisible: true } container)
             {
                 continue;
             }

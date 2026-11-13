@@ -35,8 +35,8 @@ binaries with Azure Artifact Signing; the Windows Terminal control binaries arri
 same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
-**0.5.1:** [release highlights and upgrade instructions](docs/RELEASE-0.5.1.md),
-with in-window floating terminals, preserved transparency, cleaner tab labels, and per-tab font-size shortcuts.
+**0.6.0:** [release highlights and upgrade instructions](docs/RELEASE-0.6.0.md),
+with automatic tab hints, extension-driven navigation, and reliable restored tab details.
 
 ## Build & run
 
@@ -86,6 +86,9 @@ and benchmark protocol.
 navigation and a real restart pair on private desktops, retaining logs and a summary.
 Individual modes are `quicknav`, `aliases`, `floats`, `scratch`, `quickrestore1` and
 `quickrestore2`; see the [verification record](docs/TAB-QUICK-ACCESS.md).
+The tab-hint and restored-detail checks use `hints`, `details`, and `details1,details2`;
+the last pair abruptly terminates an isolated instance and verifies the next process's
+restored subtitles. See the [tab-hint verification record](docs/TAB-HINTS-AND-RESTORE.md).
 `-Mode sixel -Visible` checks native images and their pixels through ConPTY;
 the [Sixel crash report](docs/SIXEL-CRASH.md) includes the real DNX application check.
 
@@ -129,6 +132,7 @@ reload automatically. `OVERSHELL_WT_SETTINGS` has priority over these source set
 | Open the default profile | `Ctrl+Shift+T` | **+** or **… → New tab** |
 | Choose a profile | `Ctrl+Shift+N` | **⌄** for the profile list, or **… → New tab with profile…** for the searchable picker |
 | Switch to an open tab | `Ctrl+Shift+Space` | **… → Switch tab…** |
+| Pick a tab by its small hint | `Ctrl+Shift+Q`, then the hint | **Pick tab by hint** in the palette |
 
 **+** and **⌄** follow the last tab. When tabs overflow, they stay pinned at the right
 of the scrolling tabs, including at minimum window size. In side-list and rail layouts
@@ -236,6 +240,18 @@ Selectors show `1`, `2`, `3`, … alongside clean names; `@number` selects a spe
 **Show this tab's number and ID** exposes its runtime address when needed. The settings
 `tabs.showPickerNumbers` and `tabs.showDuplicateIds` control these presentation choices.
 
+**Automatic tab hints.** A small monospaced marker below each status dot gives a quick
+navigation address: `1`–`9`, then letters (omitting `I` and `O`). Press **Ctrl+Shift+Q**,
+release the modifiers, and type the hint to jump; **Esc** cancels. More than 33 tabs use
+additional hints beginning with `0`, such as `01`. The pick bar lists off-screen tabs too.
+Hints follow grouped tab order and keep their captured targets while you are choosing.
+**Setting: Tab hints** selects always-visible or on-demand display; **Toggle tab hints**
+changes visibility for this run. Optional **Direct tab hint shortcuts** automatically
+adds bindings such as `Alt+A` on unoccupied chords, with your keybindings taking priority.
+This is the `tabs.hints` extension, using the public badge, display-order and key-mode APIs.
+See the [guide](docs/GUIDE.md#tab-hints-pick-a-tab-without-searching) and
+[design and verification](docs/TAB-HINTS-AND-RESTORE.md).
+
 ### Prompt bar and restoration
 
 `Ctrl+Shift+Enter` opens a prompt bar under the terminal: type once and send to the
@@ -320,7 +336,7 @@ Every configuration file — `settings.jsonc`, `keybindings.jsonc`, `agents\*.js
 
 ## Keys & palette
 
-`Ctrl+Shift+P` commands · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
+`Ctrl+Shift+P` commands · `Ctrl+Shift+Q` pick by hint · `Ctrl+Shift+Space` switch tab (fuzzy; `@blocked`, `#repo`; with a
 screen preview) · `Ctrl+Shift+J` jump to the tab that needs you · `Ctrl+Shift+R` rename ·
 `Ctrl+Shift+1..4` views · `Ctrl+Shift+Enter` prompt bar · `Ctrl+Shift+G` group · `Ctrl+Shift+E` explain ·
 `Ctrl+Shift+F` find · `Ctrl+Shift+N` choose a profile · `Ctrl+Shift+O` enlarge terminal preview · `Ctrl+Shift+T` / `Ctrl+Shift+W` / `Ctrl+Shift+D` / `Alt+1..9` tabs (Windows

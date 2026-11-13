@@ -313,6 +313,7 @@ categories and ids; the bound chord is shown on the right). The defaults:
 | `Ctrl+Shift+E` | `tab.explain` | Why is this tab in this state |
 | `Ctrl+Shift+X` / `Ctrl+Shift+A` | `tab.detach` / `tab.attach` | Tear the tab off into its own window / bring it back |
 | `Ctrl+Shift+Space` | `palette.tabs` | Tab switcher with screen preview |
+| `Ctrl+Shift+Q`, then a hint | `tab.hints.pick` | Pick by the small marker below a tab's status dot; Esc cancels |
 | `Ctrl+Shift+P` | `palette.commands` | Command palette |
 | `Ctrl+Shift+F` | `terminal.find` | Find in this tab's buffer, scrollback included (below) |
 | `Ctrl+=`, `Ctrl++`, `Ctrl+NumPad+` | `terminal.zoomIn` | Increase the focused terminal's font size |
@@ -379,7 +380,7 @@ a restart, so delayed reads and prompt history can still use them. **Open clipbo
 files folder** (`clipboard.openFiles`) opens that directory for managing these files.
 
 Commands with no default chord of their own, for the palette or your own bindings:
-`tab.resume`, `tab.markAgent`, `tab.markShell`, `tab.last`, `tab.nextBlocked`,
+`tab.hints.toggle`, `tab.resume`, `tab.markAgent`, `tab.markShell`, `tab.last`, `tab.nextBlocked`,
 `tab.previousBlocked`, `tab.nextDone`, `sidebar.focus`, `dashboard.focus`, `prompt.blocked`,
 `layout.<name>`, `settings.reload`, `settings.open`, `settings.init`, `session.save`,
 `session.history`, `workspace.save`, `workspace.open.<name>`, `terminal.findUp`,
@@ -412,6 +413,63 @@ Key names follow Windows Terminal: `ctrl`, `shift`, `alt`, `win`; letters, digit
 `semicolon`, `quote`, `backtick`, `[`, `]`. A name that is not a key is reported, not
 guessed. The Windows Terminal object shape (`{ "keybindings": [ { "command": { "action":
 "…" }, "keys": "…" } ] }`) is accepted too.
+
+### Tab hints: pick a tab without searching
+
+The small monospaced marker below a tab's status dot is its **tab hint**. Hints are
+assigned in grouped tab-strip order: `1`–`9`, then `A`–`Z` excluding `I` and `O`, which
+can resemble digits. The first 33 tabs use one key. Additional tabs use a leading
+`0`, such as `01`, `02`, …; larger sets get longer, unambiguous hints. The first nine
+still match the existing `Alt+1`–`Alt+9` positions. Sidebar rows and dashboard cards
+show the same hints even when their visual sorting differs from the strip.
+
+Press **Ctrl+Shift+Q**, release Ctrl/Shift, then type the hint. Letters work with or
+without Shift; keypad digits and shifted number keys work too. There is no Enter step. A compact, scrollable
+bar lists hint/name pairs, including off-screen tabs and in Zen or detached windows.
+Hints become more prominent while picking. Escape, an invalid key, clicking away,
+focus loss, configuration reload or the ten-second timeout ends selection. A held
+selection key's repeat is consumed until release.
+
+Hints normally update when tabs are added, closed, regrouped or reordered. A pending
+pick holds its mapping to the original runtime IDs; a disappearing target cannot
+redirect the selection to its replacement. Hints are regenerated after a restart
+and do not modify names, aliases, session IDs or prompt addresses (`@number` remains
+a numeric position, and `@alias` remains an alias).
+
+Use **Setting: Tab hints** for a persistent visibility preference, or **Toggle tab
+hints** (`tab.hints.toggle`) for a temporary toggle:
+
+```jsonc
+{
+  "extensions": {
+    "tabs.hints": {
+      "display": "onDemand", // "always" is the default
+      "timeoutMs": 10000,
+      "directModifiers": null // optional: "alt" for automatically generated Alt+hint
+    }
+  }
+}
+```
+
+Direct bindings use unoccupied keys, preserving existing commands and leader
+prefixes. Your explicit bindings and `unbound` entries take priority. For a hint
+such as `01`, a direct Alt binding is `Alt+0`, release Alt, then `1`. Tooltips show
+the available shortcuts. **Setting: Direct tab hint shortcuts** changes this live.
+`"enabled": false` disables the extension; reenabling an extension that was disabled
+at startup takes a restart, as with other built-ins.
+
+Rebind the picker through ordinary `keybindings.jsonc`:
+
+```jsonc
+[
+  { "keys": "ctrl+shift+q", "command": "unbound" },
+  { "keys": "ctrl+shift+f10", "command": "tab.hints.pick" }
+]
+```
+
+The built-in extension uses the same public APIs available to extension authors:
+display order/change events, owned runtime badge layers, replaceable default-key
+layers and scoped one-shot key modes. See [the API notes and evidence](TAB-HINTS-AND-RESTORE.md).
 
 ### Herd mode: the keyboard way around many tabs
 
@@ -498,6 +556,13 @@ The harness icon identifies the program. The dot is the profile's
 colour for a plain shell and the state's colour for an agent: pulsing blue working,
 amber with a ring **needs you**, green **done** until you look, red error, grey exited.
 An unread badge marks a state you have not seen; a thin bar shows OSC 9;4 progress.
+The grey second line is also called the **subtitle**. A reported agent-session
+directory owns its project context while that integration is active. Shell
+announcements are remembered separately for returning to the shell, and background
+tool processes cannot replace the selected session's project. During OpenCode
+startup the bridge waits for the selected session's own location instead of using
+another project's fallback. Update the installed bridge with
+`OverShell integrations install opencode` and restart the clients to use this behavior.
 
 Choose **Setting: Tab labels** in the palette, or set this in `settings.jsonc`:
 

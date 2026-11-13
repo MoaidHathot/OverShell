@@ -22,24 +22,25 @@ public static class SessionHistory
 
     /// <summary>
     /// Archives <paramref name="snapshot"/> unless it is empty or its tabs are the same as the
-    /// newest archive's (a restart that restored everything and closed again adds nothing;
-    /// nor does a moved window or another closed-tab entry — the archive is about the tabs).
+    /// newest archive's and no crash-history boundary would be lost. Repeated clean
+    /// sessions collapse; distinct interrupted runs and clean closes after a crash must
+    /// remain distinguishable for the restore-loop policy.
     /// Returns the archive path, or null when nothing was written.
     /// </summary>
     public static string? Archive(string stateRoot, SessionSnapshot snapshot, out string? error)
     {
         error = null;
-        if (snapshot.Tabs.Count == 0)
-        {
-            return null;
-        }
-
         var directory = Directory(stateRoot);
         try
         {
-            System.IO.Directory.CreateDirectory(directory);
             var newest = List(stateRoot).FirstOrDefault();
-            if (newest is not null && TabsJson(newest.Tabs) == TabsJson(snapshot.Tabs))
+            // Closing the final tab is a clean run boundary as well. Keep that
+            // marker after an interrupted run, even though it has no tabs to reopen.
+            if (snapshot.Tabs.Count == 0 && newest?.Interrupted != true) return null;
+            System.IO.Directory.CreateDirectory(directory);
+            if (newest is not null && newest.Interrupted == snapshot.Interrupted &&
+                (!snapshot.Interrupted || newest.StartedAt == snapshot.StartedAt) &&
+                TabsJson(newest.Tabs) == TabsJson(snapshot.Tabs))
             {
                 return null;
             }

@@ -30,8 +30,12 @@ public static class RestorePolicy
         }
 
         var strikes = 1;
+        var runs = new HashSet<DateTimeOffset> { previous.StartedAt!.Value };
         foreach (var archive in archives)
         {
+            // Startup archives the interrupted live file before asking this policy.
+            // That copy (and any other checkpoint of this run) is not another crash.
+            if (archive.StartedAt is { } start && !runs.Add(start)) continue;
             if (strikes >= Strikes)
             {
                 break;

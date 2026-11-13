@@ -347,6 +347,7 @@ public partial class MainWindow
             ApplyBackdrop();
         }
         Dashboard.InvalidatePreviews();
+        if (ActiveTab is { } selected) _tabStrip.EnsureVisible(selected);
     }
 
     /// <summary>Wraps a side panel with a hairline towards the terminal.</summary>

@@ -46,7 +46,7 @@ internal static partial class ProcessTree
     private static partial bool CloseHandle(nint handle);
 
     /// <summary>One process below the shell: its id and image name without extension.</summary>
-    public readonly record struct Entry(uint Pid, string Image);
+    public readonly record struct Entry(uint Pid, uint ParentPid, string Image);
 
     /// <summary>
     /// Image names (without extension, as they appear) of every process below
@@ -108,7 +108,7 @@ internal static partial class ProcessTree
                     }
 
                     var name = image.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ? image[..^4] : image;
-                    result.Add(new Entry(childPid, name));
+                    result.Add(new Entry(childPid, pid, name));
                     queue.Enqueue(childPid);
                 }
             }

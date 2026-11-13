@@ -35,7 +35,7 @@ internal static partial class HerdSelfTest
 
     public static void Schedule(MainWindow window, TerminalTab firstTab)
     {
-        if (!Enabled && !QuickAccessMode)
+        if (!Enabled && !QuickAccessMode && !TabNavigationMode)
         {
             return;
         }
@@ -52,6 +52,16 @@ internal static partial class HerdSelfTest
             {
                 switch (Mode)
                 {
+                    case "details":
+                        await RunDetailsAsync(window, firstTab);
+                        break;
+                    case "hints":
+                        await RunHintsAsync(window, firstTab);
+                        break;
+                    case "details1":
+                    case "details2":
+                        await RunDetailsRestartAsync(window, firstTab);
+                        break;
                     case "quicknav":
                         await RunQuickNavigationAsync(window, firstTab);
                         break;
@@ -240,7 +250,7 @@ internal static partial class HerdSelfTest
     /// </summary>
     public static void SeedState()
     {
-        if (!Enabled && !QuickAccessMode)
+        if (!Enabled && !QuickAccessMode && !TabNavigationMode)
         {
             return;
         }
@@ -250,6 +260,9 @@ internal static partial class HerdSelfTest
             var now = DateTimeOffset.Now;
             switch (Mode)
             {
+                case "details2":
+                    Environment.SetEnvironmentVariable("OVERSHELL_WT_SETTINGS", System.IO.Path.Combine(AppPaths.StateRoot, "details-profiles.json"));
+                    break;
                 case "quickrestore1":
                 case "quickrestore2":
                     SeedQuickRestore();
@@ -3878,7 +3891,9 @@ internal static partial class HerdSelfTest
         Check(followed, "A: leaving the nested shell goes back to the outer shell's directory");
 
         await WaitForPromptAsync(bare);
-        bare.SendText("$e=[char]27; $a=[char]7; cd $env:TEMP; Write-Host \"${e}]9;9;$env:TEMP${a}\"\r");
+        // Tabs rebuild TEMP from the registry; the harness's isolated TEMP is not
+        // necessarily the child's. Name the intended fixture directory explicitly.
+        bare.SendText($"$path='{temp.Replace("'", "''", StringComparison.Ordinal)}'; cd -LiteralPath $path; [Console]::Write(([string][char]27) + ']9;9;' + $path + ([char]7))\r");
         followed = await WaitForCwdAsync(bare, temp, 4);
         Log($"  A OSC 9;9 {temp}: cwd='{bare.WorkingDirectory}' announces={bare.AnnouncesDirectory}");
         Check(followed && bare.AnnouncesDirectory, "A: an OSC 9;9 announcement set the directory and marked the shell as announcing");
@@ -5147,7 +5162,15 @@ internal static partial class HerdSelfTest
             var visual = new System.Windows.Media.DrawingVisual();
             using (var dc = visual.RenderOpen())
             {
-                dc.DrawRectangle(new System.Windows.Media.VisualBrush(element), null, new System.Windows.Rect(0, 0, width, height));
+                // Auto bounds include overflowing descendants and can squeeze a whole
+                // scroll extent into the capture. Use the actual viewport in local DIPs.
+                var bounds = new System.Windows.Rect(0, 0, width, height);
+                dc.DrawRectangle(new System.Windows.Media.VisualBrush(element)
+                {
+                    ViewboxUnits = System.Windows.Media.BrushMappingMode.Absolute,
+                    Viewbox = bounds,
+                    Stretch = System.Windows.Media.Stretch.Fill,
+                }, null, bounds);
             }
 
             bitmap.Render(visual);

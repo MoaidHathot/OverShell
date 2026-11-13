@@ -16,8 +16,8 @@ public enum CwdSource
 /// <summary>
 /// Which process in a tab speaks for "where the tab is" (DESIGN.md §12.14). The shell's
 /// directory is what the user means by it — <c>cd foo; opencode</c> leaves the shell in
-/// <c>foo</c> and the agent starts there — so the deepest known shell wins: a nested
-/// <c>cmd</c> inside <c>pwsh</c> is where the prompt is. A tab whose root is not a shell
+/// <c>foo</c> and the agent starts there — so a directly nested shell can win. Never
+/// walk through an agent or service into its tool shells. A tab whose root is not a shell
 /// (a profile that runs the agent itself) is asked directly.
 /// </summary>
 public static class ShellCwdTarget
@@ -36,17 +36,21 @@ public static class ShellCwdTarget
 
     /// <summary>
     /// The pid to ask and how: the deepest shell in <paramref name="descendants"/>
-    /// (breadth-first order, nearest first, as <c>ProcessTree</c> returns them), else the
+    /// (breadth-first order, nearest first, as <c>ProcessTree</c> returns them) connected
+    /// to the root by shells only, else the
     /// root (<paramref name="rootImage"/> says what it is).
     /// </summary>
-    public static (uint Pid, string Image, CwdSource Source) Pick(uint rootPid, string rootImage, IReadOnlyList<(uint Pid, string Image)> descendants)
+    public static (uint Pid, string Image, CwdSource Source) Pick(uint rootPid, string rootImage, IReadOnlyList<(uint Pid, uint ParentPid, string Image)> descendants)
     {
         var chosen = (Pid: rootPid, Image: rootImage);
+        var shells = new HashSet<uint>();
+        if (IsShell(rootImage)) shells.Add(rootPid);
         foreach (var entry in descendants)
         {
-            if (IsShell(entry.Image))
+            if (shells.Contains(entry.ParentPid) && IsShell(entry.Image))
             {
-                chosen = entry;
+                shells.Add(entry.Pid);
+                chosen = (entry.Pid, entry.Image);
             }
         }
 

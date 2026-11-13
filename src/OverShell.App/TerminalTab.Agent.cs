@@ -223,7 +223,7 @@ public sealed partial class TerminalTab
     {
         get
         {
-            var cwd = _workingDirectory;
+            var cwd = WorkingDirectory;
             if (string.IsNullOrWhiteSpace(cwd))
             {
                 return string.Empty;
@@ -353,11 +353,12 @@ public sealed partial class TerminalTab
             if (Floating) lines.Add("Shown floating — Hide keeps this tab running; Close tab terminates it");
             if (Alias is { } alias) lines.Add($"Alias: @{alias} (this open tab)");
             if (ShortcutHint.Length > 0) lines.Add($"Shortcuts: {ShortcutHint}");
+            if (Badge?.Help is { Length: > 0 } help) lines.Add(help);
             if (!string.Equals(Title, Label, StringComparison.Ordinal)) lines.Add(Title);
             if (SessionTitle is { } sessionTitle && !string.Equals(sessionTitle, Label, StringComparison.Ordinal) && !string.Equals(sessionTitle, Title, StringComparison.Ordinal)) lines.Add(sessionTitle);
-            if (!string.IsNullOrEmpty(_workingDirectory))
+            if (!string.IsNullOrEmpty(WorkingDirectory))
             {
-                lines.Add(_workingDirectory);
+                lines.Add(WorkingDirectory);
             }
 
             if (IsMuted)
@@ -736,7 +737,7 @@ public sealed partial class TerminalTab
 
         // The directory, from the shell process itself, when the shell never says (§12.14):
         // two seconds after output (a `cd` prints a prompt), ten seconds otherwise.
-        if (_agents.Detection.CwdFromProcess && !_cwdProbeBusy && !_cwdProbeDenied && IsRunning && Session.ProcessId is { } shellPid)
+        if (_agents.Detection.CwdFromProcess && !_directory.HasSessionDirectory && !_cwdProbeBusy && !_cwdProbeDenied && IsRunning && Session.ProcessId is { } shellPid)
         {
             var interval = version != _cwdProbeVersion ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(10);
             if (now - _lastCwdProbeAt >= interval)
@@ -751,13 +752,14 @@ public sealed partial class TerminalTab
         _cwdProbeBusy = true;
         _cwdProbeVersion = version;
         _lastCwdProbeAt = now;
+        var revision = _directory.Revision;
         try
         {
             var rootImage = RootImageName();
             var target = await Task.Run(() =>
             {
                 var entries = ProcessTree.DescendantEntries(pid);
-                return ShellCwdTarget.Pick((uint)pid, rootImage, entries.Select(e => (e.Pid, e.Image)).ToList());
+                return ShellCwdTarget.Pick((uint)pid, rootImage, entries.Select(e => (e.Pid, e.ParentPid, e.Image)).ToList());
             });
 
             if (_disposed)
@@ -768,7 +770,7 @@ public sealed partial class TerminalTab
             // The root shell announces its own directory: nothing to probe for it. (A nested
             // shell below it is another matter - it is probed as long as it is the deepest.)
             var aboutRoot = target.Pid == (uint)pid;
-            if (aboutRoot && _cwdFromShell)
+            if (aboutRoot && AnnouncesDirectory)
             {
                 return;
             }
@@ -796,7 +798,7 @@ public sealed partial class TerminalTab
             {
                 cwd = await Task.Run(() => ProcessCwd.Read(target.Pid));
                 via = $"process {target.Image} ({target.Pid})";
-                if (_disposed)
+                if (_disposed || revision != _directory.Revision)
                 {
                     return;
                 }
@@ -813,7 +815,7 @@ public sealed partial class TerminalTab
 
             if (cwd is not null)
             {
-                ApplyProbedWorkingDirectory(cwd, via, aboutRoot);
+                ApplyProbedWorkingDirectory(cwd, via, aboutRoot, revision);
             }
         }
         finally
@@ -838,10 +840,11 @@ public sealed partial class TerminalTab
         if (!report.Advisory && !Agent.AcceptsReport(report.Source, report.Seq)) return;
         if (report.Advisory && (Agent.State == AgentState.Exited || Agent.Authority == AgentAuthority.Integration)) return;
 
-        if (report.Release)
+        if (report.Release || report.State == AgentState.Exited && !report.MetadataOnly)
         {
             if (Agent.AuthoritySource is { } owner && !string.Equals(owner, report.Source, StringComparison.OrdinalIgnoreCase)) return;
             Agent.OnRelease(report.Source, now);
+            ReleaseDirectory(report.Source);
             if (report.State == AgentState.Exited && _harnessFromIntegration is not null)
             {
                 // The harness said goodbye: the tab is a shell again once its process is gone; the
@@ -868,7 +871,9 @@ public sealed partial class TerminalTab
                 Agent.OnReport(report.Source, report.Seq, report.State, report.Message, report.Summary, report.SessionId, now, report.SessionTitle, report.SessionKnown, report.MetadataOnly);
             }
 
-            if (report.WorkingDirectory is { Length: > 0 } cwd) ApplyProbedWorkingDirectory(cwd, report.Source, aboutRootShell: false);
+            var previousDirectory = WorkingDirectory;
+            _directory.Report(report.Source, Agent.SessionId, report.WorkingDirectory);
+            DirectoryObservationCompleted(previousDirectory, report.Source);
 
             if (previousSession != Agent.SessionId) OpenRequest = null;
 
@@ -1087,6 +1092,7 @@ public sealed partial class TerminalTab
         }
 
         _harnessFromIntegration = null;
+        ReleaseDirectory();
         ReevaluateHarness(now, $"{rules.Id} process gone");
         RaiseAgentProperties();
     }
@@ -1114,6 +1120,7 @@ public sealed partial class TerminalTab
             return;
         }
 
+        if (!isAgent || Harness is not null && id != Harness) ReleaseDirectory();
         Harness = id;
         var rules = _agents.Rules.Find(id) ?? _agents.Rules.Generic;
         Agent.SetRules(rules, isAgent, now);

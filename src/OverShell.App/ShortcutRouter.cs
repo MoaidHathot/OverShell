@@ -46,6 +46,7 @@ internal sealed class ShortcutRouter : IDisposable
     private const int WmKeyDown = 0x0100;
     private const int WmKeyUp = 0x0101;
     private const int WmSysKeyDown = 0x0104;
+    private const int WmSysKeyUp = 0x0105;
     private const int WmMouseMove = 0x0200;
     private const int WmLButtonDown = 0x0201;
     private const int WmLButtonUp = 0x0202;
@@ -75,6 +76,7 @@ internal sealed class ShortcutRouter : IDisposable
 
     private readonly HashSet<IntPtr> _windows = [];
     private readonly Input.RightClickGesture _rightClick = new();
+    private readonly HashSet<int> _suppressedKeys = [];
     private IntPtr _windowHandle;
     private bool _pointerOverTerminal;
     private bool _disposed;
@@ -229,6 +231,10 @@ internal sealed class ShortcutRouter : IDisposable
     /// </summary>
     public Func<Key, ModifierKeys, bool>? Chord { get; set; }
 
+    /// <summary>A completed key mode must not leak the held selection key's auto-repeat into the terminal.</summary>
+    internal void SuppressUntilRelease(Key key) => _suppressedKeys.Add(KeyInterop.VirtualKeyFromKey(key));
+    public Action? InputInterrupted { get; set; }
+
     public void Dispose()
     {
         if (_disposed)
@@ -270,7 +276,8 @@ internal sealed class ShortcutRouter : IDisposable
 
                 break;
 
-            case WmKeyUp:
+            case WmKeyUp or WmSysKeyUp:
+                if (_suppressedKeys.Remove((int)((long)msg.wParam & 0xFF)) && IsOurs(msg.hwnd)) handled = true;
                 if (((long)msg.wParam & 0xFF) == VkControl && IsOurs(msg.hwnd))
                 {
                     ControlReleased?.Invoke();
@@ -279,6 +286,7 @@ internal sealed class ShortcutRouter : IDisposable
                 break;
 
             case WmRButtonDown:
+                if (IsOurs(msg.hwnd)) InputInterrupted?.Invoke();
                 _rightClick.Cancel();
                 if (IsOurs(msg.hwnd) && IsTerminalWindow(msg.hwnd))
                 {
@@ -296,12 +304,15 @@ internal sealed class ShortcutRouter : IDisposable
 
             case WmCancelMode:
                 _rightClick.Cancel();
+                _suppressedKeys.Clear();
+                if (IsOurs(msg.hwnd)) InputInterrupted?.Invoke();
 
                 break;
 
             case WmMouseMove or WmLButtonDown or WmLButtonDblClk or WmLButtonUp:
                 if (IsOurs(msg.hwnd))
                 {
+                    if (msg.message is WmLButtonDown or WmLButtonDblClk) InputInterrupted?.Invoke();
                     OnMouse(ref msg, ref handled);
                 }
 
@@ -333,6 +344,14 @@ internal sealed class ShortcutRouter : IDisposable
     private void OnKeyDown(ref MSG msg, ref bool handled)
     {
         var virtualKey = (int)((long)msg.wParam & 0xFF);
+
+        // A real new press also clears a stale suppression after focus left the app
+        // before key-up arrived. Auto-repeat is the only traffic we suppress here.
+        if (_suppressedKeys.Contains(virtualKey))
+        {
+            if (((long)msg.lParam & KeyWasDownFlag) != 0) { handled = true; return; }
+            _suppressedKeys.Remove(virtualKey);
+        }
 
         // VK_PACKET / VK_PROCESSKEY come from injected-Unicode or IME paths and carry no
         // usable key identity. Bare modifiers can't form a chord either.

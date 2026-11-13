@@ -107,7 +107,8 @@ internal static partial class HerdSelfTest
             await TransferUntilAsync(() => one.OutputVersion > output);
             Check(one.WorkingDirectory == beta && one.Detail.Contains("beta", StringComparison.Ordinal), "ordinary output cannot replay an old directory over a session move");
             one.SendText($"[Console]::Write(([string][char]27) + ']7;{new Uri(alpha).AbsoluteUri}' + ([char]7))\r");
-            Check(await TransferUntilAsync(() => one.WorkingDirectory == alpha), "a new OSC 7 directory overrides an older OSC 9;9 announcement");
+            await Task.Delay(150);
+            Check(one.WorkingDirectory == beta, "shell directory announcements cannot replace the integration's selected-session location");
 
             window.RenameTab(one, "First custom");
             window.RenameTab(two, "Second custom");

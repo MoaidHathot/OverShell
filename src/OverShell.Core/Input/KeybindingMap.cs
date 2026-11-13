@@ -110,7 +110,7 @@ public sealed class KeybindingMap
     }
 
     /// <summary>A bound chord that is also the start of a longer sequence makes the longer one unreachable.</summary>
-    private void ReportShadowed()
+    internal void ReportShadowed()
     {
         foreach (var sequence in _bySequence.Keys.Where(k => k.Length > 1))
         {

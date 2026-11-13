@@ -56,7 +56,7 @@ public sealed partial class TerminalTab
 
             var branch = _branch is null ? string.Empty : _dirty == true ? _branch + "*" : _branch;
             var state = StateText;
-            var parts = new[] { state, branch, string.IsNullOrEmpty(_workingDirectory) ? string.Empty : Path.GetFileName(_workingDirectory.TrimEnd('\\', '/')) }
+            var parts = new[] { state, branch, string.IsNullOrEmpty(WorkingDirectory) ? string.Empty : Path.GetFileName(WorkingDirectory.TrimEnd('\\', '/')) }
                 .Where(p => p.Length > 0);
             return string.Join(" · ", parts);
         }
@@ -71,6 +71,8 @@ public sealed partial class TerminalTab
             {
                 _branch = null;
                 _dirty = null;
+                _headWriteTime = default;
+                _lastGitCheck = default;
                 RaiseGit();
             }
 
@@ -85,15 +87,16 @@ public sealed partial class TerminalTab
         _lastGitCheck = now;
         var changed = false;
 
-        if (!string.Equals(_gitCwd, _workingDirectory, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(_gitCwd, WorkingDirectory, StringComparison.OrdinalIgnoreCase))
         {
-            _gitCwd = _workingDirectory;
-            var root = GitRepository.FindRoot(_workingDirectory);
+            _gitCwd = WorkingDirectory;
+            var root = GitRepository.FindRoot(WorkingDirectory);
             if (!string.Equals(root, _gitRoot, StringComparison.OrdinalIgnoreCase))
             {
                 _gitRoot = root;
                 _headFile = root is null ? null : GitRepository.HeadFile(root);
                 _headWriteTime = default;
+                _branch = null;
                 _dirty = null;
                 changed = true;
             }
@@ -134,6 +137,15 @@ public sealed partial class TerminalTab
         {
             RaiseGit();
         }
+    }
+
+    private void InvalidateGit()
+    {
+        _gitCwd = _gitRoot = _headFile = _branch = null;
+        _dirty = null;
+        _headWriteTime = default;
+        _lastGitCheck = default;
+        RaiseGit();
     }
 
     /// <summary>The shared status service answered for this tab's repository.</summary>

@@ -70,6 +70,7 @@ public partial class MainWindow
         LoadKeybindings();
         Closed += (_, _) =>
         {
+            CancelKeyMode();
             _extensions.Dispose();
             _shell.DisposeHotKeys();
         };
@@ -205,6 +206,7 @@ public partial class MainWindow
     /// </summary>
     private void LoadKeybindings()
     {
+        CancelKeyMode();
         _keybindings = KeybindingMap.Load(File.Exists(AppPaths.KeybindingsFile) ? AppPaths.KeybindingsFile : null, _shell?.ExtensionDefaults,
             _runtimeShortcuts.Items.Where(i => !i.Global).Select(i => i.Binding));
         _tabStrip?.SetActionHints(HintFor("tab.new"), HintFor("tab.newWithProfile"));
@@ -241,6 +243,7 @@ public partial class MainWindow
             _sequences.Cancel();
             _shell?.RaisePendingChanged(_sequences.Pending);
         }
+        _shell?.RaiseKeyMapChanged();
     }
 
     private static ModifierKeys ToModifiers(ChordModifiers m)
@@ -276,15 +279,17 @@ public partial class MainWindow
             chord = new KeyChord(ToChordModifiers(modifiers), key.ToString());
         }
 
-        // An extension that owns the keyboard for the moment (an open switcher) sees the chord first.
-        if (!_sequences.IsPending && _shell.TryIntercept(chord))
+        // A scoped one-shot map takes precedence even over another extension's cursor.
+        var mode = _keyMode;
+        if (mode is null && !_sequences.IsPending && _shell.TryIntercept(chord))
         {
             return true;
         }
 
         var wasPending = _sequences.IsPending;
-        var decision = _sequences.Feed(chord, DateTimeOffset.Now);
-        if (wasPending || decision.Outcome is KeyOutcome.Pending)
+        var decision = mode is null ? _sequences.Feed(chord, DateTimeOffset.Now) : mode.Feed(chord, DateTimeOffset.Now);
+        if (mode is not null) _shortcuts.SuppressUntilRelease(key);
+        if (mode is null && (wasPending || decision.Outcome is KeyOutcome.Pending))
         {
             _shell.RaisePendingChanged(decision.Pending);
         }
@@ -324,7 +329,7 @@ public partial class MainWindow
             var taken = _commands.TryExecute(command, decision.Command.Arguments);
 
             // A key that ran inside a sequence is always consumed, even by a command that declined.
-            return taken || wasPending || decision.Command.Keys.Length > 1;
+            return taken || mode is not null || wasPending || decision.Command.Keys.Length > 1;
         }
         finally
         {
@@ -352,6 +357,7 @@ public partial class MainWindow
     /// <summary>A pending sequence that has waited past the timeout is dropped; the heartbeat calls this.</summary>
     private void ExpireSequences(DateTimeOffset now)
     {
+        _keyMode?.Expire(now);
         if (_sequences.Expire(now))
         {
             _shell.RaisePendingChanged(_sequences.Pending);

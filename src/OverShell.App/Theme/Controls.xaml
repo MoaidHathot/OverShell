@@ -2,6 +2,30 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework">
 
+    <!-- A runtime badge occupies the quiet line below the status dot, not the label. -->
+    <Style x:Key="TabHintBadge" TargetType="TextBlock">
+        <Setter Property="Text" Value="{Binding Badge.Text}" />
+        <Setter Property="ToolTip" Value="{Binding Badge.Help}" />
+        <Setter Property="AutomationProperties.Name" Value="{Binding Badge.Text, StringFormat='Tab hint {0}'}" />
+        <Setter Property="AutomationProperties.HelpText" Value="{Binding Badge.Help}" />
+        <Setter Property="FontFamily" Value="{StaticResource Font.Mono}" />
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="Foreground" Value="{StaticResource Text.Secondary}" />
+        <Setter Property="Opacity" Value="0.85" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="Margin" Value="0,1,0,0" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Badge}" Value="{x:Null}">
+                <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Badge.Emphasized}" Value="True">
+                <Setter Property="Foreground" Value="{StaticResource Text.Primary}" />
+                <Setter Property="Opacity" Value="1" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
     <!-- ===================== Window caption buttons ==================== -->
 
     <Style x:Key="CaptionButton" TargetType="Button">

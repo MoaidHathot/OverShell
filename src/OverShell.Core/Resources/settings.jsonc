@@ -136,6 +136,15 @@
   // Extensions: features built on top of the shell. Each has a section under its id with
   // "enabled" and its own settings; see the guide for the built-in ones.
   "extensions": {
+    // Small automatic navigation markers below tab status dots. Ctrl+Shift+Q, then
+    // the hint, picks a tab (Esc cancels). display: always | onDemand, applied live.
+    "tabs.hints": {
+      "display": "always",
+      // Optional direct bindings, e.g. "alt" makes Alt+<hint> jump directly. User
+      // keybindings override generated defaults; null keeps only existing Alt+1..9.
+      // "directModifiers": "alt",
+      "timeoutMs": 10000
+    }
   },
 
   // Registers overshell:// for this user at start (HKCU, no elevation), so a clicked
@@ -231,7 +240,7 @@
   // Tab items: twoLine shows project and state under the session/task label (strip and list);
   // showHarnessGlyph shows the harness icon (OpenCode, Copilot, ...) on agent tabs.
   "tabs": {
-    // Keep machine IDs out of normal labels; numbers appear only in tab selectors.
+    // Keep machine IDs out of normal labels; selector numbers and tab hints are separate.
     "showDuplicateIds": false,
     "showPickerNumbers": true,
     // Runtime aliases: badge beside the name | primary name | hidden (still searchable).

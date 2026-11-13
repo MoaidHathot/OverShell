@@ -235,6 +235,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         tab.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName == nameof(TerminalTab.Group)) _shell?.RaiseTabOrderChanged();
             if (e.PropertyName == nameof(TerminalTab.Label) && ReferenceEquals(tab, ActiveTab))
             {
                 Title = $"{tab.Label} — OverShell";
@@ -400,6 +401,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         // Every chord goes through keybindings.jsonc → command; nothing is hard-coded here.
         router.Chord = OnChord;
+        router.InputInterrupted = CancelKeyMode;
 
         // Classic console behaviour: right-click copies a selection, else pastes — in the
         // main window's terminal or in a tear-off's.
@@ -423,6 +425,10 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     internal bool RouteRightButtonForDiagnostics(nint hwnd, bool pressed, bool shift = false) =>
         _shortcuts.RouteForDiagnostics(new MSG { hwnd = hwnd, message = pressed ? 0x0204 : 0x0205, wParam = shift ? 4 : 0 });
+
+    internal bool RouteHintKeyForDiagnostics(nint hwnd, Key key, bool repeat = false, bool released = false) =>
+        _shortcuts.RouteForDiagnostics(new MSG { hwnd = hwnd, message = released ? 0x0101 : 0x0100,
+            wParam = KeyInterop.VirtualKeyFromKey(key), lParam = repeat ? 0x40000000 : 0 });
 
     /// <returns>True when a selection existed and was copied.</returns>
     private bool Copy() => Copy(TargetTab);

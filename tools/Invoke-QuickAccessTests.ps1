@@ -2,8 +2,9 @@
 .SYNOPSIS
 Runs quick-access and related regressions on isolated private Win32 desktops.
 .DESCRIPTION
-Each mode has its own TEMP, config and state. quickrestore1/quickrestore2 share only
-their restart fixture. Logs and a machine-readable summary are retained under Output.
+Each mode has its own TEMP, config and state. quickrestore1/quickrestore2 and
+details1/details2 share their own restart fixtures (details1 is terminated abruptly).
+Logs, WPF captures and a machine-readable summary are retained under Output.
 Separate invocations with distinct Output/Tag can run concurrently without taking focus.
 #>
 [CmdletBinding()]
@@ -20,28 +21,31 @@ $Output = [IO.Path]::GetFullPath($Output)
 $Exe = [IO.Path]::GetFullPath($Exe)
 [IO.Directory]::CreateDirectory($Output) | Out-Null
 $fixture = Join-Path $Output 'profiles.json'
-[IO.File]::WriteAllText($fixture, '{"defaultProfile":"QA PowerShell","profiles":{"list":[{"guid":"302a0b80-f71f-49ed-83d2-057c26d389db","name":"QA PowerShell","commandline":"powershell.exe -NoLogo -NoProfile"}]}}')
+# Windows PowerShell defaults to Restricted on clean machines. Permit only this
+# fixture process to load the generated prompt hook; the user's policy is untouched.
+[IO.File]::WriteAllText($fixture, '{"defaultProfile":"QA PowerShell","profiles":{"list":[{"guid":"302a0b80-f71f-49ed-83d2-057c26d389db","name":"QA PowerShell","commandline":"powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass"}]}}')
 $results = @()
 $originalTemp = $env:TEMP
 $originalTmp = $env:TMP
 try {
     foreach ($mode in $Modes) {
-        $group = if ($mode -in @('quickrestore1', 'quickrestore2')) { 'restart' } else { $mode }
+        $group = if ($mode -in @('quickrestore1', 'quickrestore2')) { 'restart' } elseif ($mode -in @('details1', 'details2')) { 'details-restart' } else { $mode }
         $root = Join-Path $Output $group
         $state = Join-Path $root 'state'
         $temp = Join-Path $TempRoot "$Tag-$group"
         $config = Join-Path $temp 'config'
         foreach ($directory in @($root, $config, $temp)) { [IO.Directory]::CreateDirectory($directory) | Out-Null }
-        $keep = $mode -eq 'quickrestore2'
+        $keep = $mode -in @('quickrestore2', 'details2')
         if (-not $keep) {
-            $settings = @{ protocol = @{ register = $false }; session = @{ confirmCloseWithAgents = $false }; extensions = @{ summon = @{ enabled = ($mode -eq 'summon') } }; notifications = @{ sinks = @{ sound = @{ enabled = $false }; toast = @{ enabled = $false }; palantir = @{ enabled = $false } } } }
+            $settings = @{ protocol = @{ register = $false }; session = @{ confirmCloseWithAgents = ($mode -eq 'resilience') }; extensions = @{ summon = @{ enabled = ($mode -eq 'summon') } }; notifications = @{ sinks = @{ sound = @{ enabled = $false }; toast = @{ enabled = $false }; palantir = @{ enabled = $false } } } }
             [IO.File]::WriteAllText((Join-Path $config 'settings.jsonc'), (ConvertTo-Json $settings -Depth 6).Replace("`r`n", "`n"))
         }
         $env:TEMP = $temp
         $env:TMP = $temp
         $environment = @{ OVERSHELL_WT_SETTINGS = $fixture }
         foreach ($key in $Env.Keys) { $environment[$key] = $Env[$key] }
-        & (Join-Path $PSScriptRoot 'Invoke-SelfTest.ps1') -Mode $mode -Exe $Exe -ConfigDir $config -StateDir $state -KeepState:$keep -Desktop "overshell-$Tag-$group" -Env $environment
+        $end = if ($mode -eq 'details1') { 'kill' } else { 'close' }
+        & (Join-Path $PSScriptRoot 'Invoke-SelfTest.ps1') -Mode $mode -Exe $Exe -ConfigDir $config -StateDir $state -KeepState:$keep -Desktop "overshell-$Tag-$group" -Env $environment -End $end
         $passed = $LASTEXITCODE -eq 0
         $log = Join-Path $temp 'overshell-selftest.log'
         $tally = if (Test-Path -LiteralPath $log) { (Select-String -LiteralPath $log -Pattern '=== selftest tally:' | Select-Object -Last 1).Line } else { $null }
@@ -49,6 +53,7 @@ try {
             $path = Join-Path $temp $name
             if (Test-Path -LiteralPath $path) { Copy-Item -LiteralPath $path -Destination (Join-Path $root "$mode-$name") }
         }
+        Get-ChildItem -LiteralPath $temp -Filter '*.png' -File | Copy-Item -Destination $root -Force
         $savedConfig = Join-Path $root "$mode-configuration"
         [IO.Directory]::CreateDirectory($savedConfig) | Out-Null
         Copy-Item -Path (Join-Path $config '*') -Destination $savedConfig -Recurse -Force

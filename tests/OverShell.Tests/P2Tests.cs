@@ -600,15 +600,15 @@ public class CwdTargetTests
         var pwshRoot = ShellCwdTarget.Pick(100, "pwsh", []);
         Assert.Equal((100u, "pwsh", CwdSource.Prompt), pwshRoot);
 
-        var nestedCmd = ShellCwdTarget.Pick(100, "pwsh", [(101, "cmd"), (102, "conhost")]);
+        var nestedCmd = ShellCwdTarget.Pick(100, "pwsh", [(101, 100, "cmd"), (102, 100, "conhost")]);
         Assert.Equal((101u, "cmd", CwdSource.Process), nestedCmd);
 
         // Breadth-first: a shell deeper in the tree comes later and wins over its parent shell.
-        var deeper = ShellCwdTarget.Pick(100, "cmd", [(101, "bash"), (102, "node"), (103, "pwsh")]);
+        var deeper = ShellCwdTarget.Pick(100, "cmd", [(101, 100, "bash"), (102, 101, "node"), (103, 101, "pwsh")]);
         Assert.Equal((103u, "pwsh", CwdSource.Prompt), deeper);
 
         // An agent profile: the agent process itself is asked.
-        var agent = ShellCwdTarget.Pick(200, "opencode", [(201, "node")]);
+        var agent = ShellCwdTarget.Pick(200, "opencode", [(201, 200, "node")]);
         Assert.Equal((200u, "opencode", CwdSource.Process), agent);
     }
 

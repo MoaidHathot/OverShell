@@ -27,6 +27,7 @@ async function bridge(tab = "tab-a", enabled = true, rootPermissions = false) {
   const waiting = []
   let responseStatus = 200
   let readFailure = false
+  let synchronize = async () => {}
   const location = { directory: "C:\\same-project" }
   const context = {
     location,
@@ -34,6 +35,7 @@ async function bridge(tab = "tab-a", enabled = true, rootPermissions = false) {
       location: { default: () => location },
       session: {
         get: (id) => sessions.get(id),
+        sync: async (id) => synchronize(id),
         family: (id) => families.get(id) ?? [id],
         status: (id) => statuses.get(id) ?? "idle",
         permission: { list: (id) => permissions.get(id) ?? [] },
@@ -50,7 +52,7 @@ async function bridge(tab = "tab-a", enabled = true, rootPermissions = false) {
     client: {
       session: {
         permission: { reply: async (input) => { calls.push({ kind: "permission", input: plain(input) }); return {} } },
-        create: async (input) => { calls.push({ kind: "create", input: plain(input) }); return { id: "created" } },
+        create: async (input) => { calls.push({ kind: "create", input: plain(input) }); sessions.set("created", { id: "created", title: "New session", location: input.location }); return { id: "created" } },
         prompt: async (input) => { calls.push({ kind: "prompt", input: plain(input) }); return {} },
       },
     },
@@ -91,10 +93,11 @@ async function bridge(tab = "tab-a", enabled = true, rootPermissions = false) {
   const cleanup = module.namespace.default.setup(context)
   await settle()
   return {
-    sessions, statuses, permissions, forms, families, reports, calls, toasts, intervals,
+    sessions, statuses, permissions, forms, families, reports, calls, toasts, intervals, location,
     route: (next) => { route = next },
     failNext: () => { responseStatus = 500 },
     failRead: () => { readFailure = true },
+    onSync: (callback) => { synchronize = callback },
     advance: (milliseconds) => { clock += milliseconds },
     tick: async () => { for (const callback of [...intervals]) callback(); await settle() },
     command: async (command) => { assert.ok(waiting.length); waiting.shift()([command]); await settle() },
@@ -143,6 +146,79 @@ test("renames, existing-session navigation and home update without another agent
     await client.tick()
     assert.deepEqual(client.reports.at(-1).session, { id: null, title: null })
     assert.equal(client.reports.at(-1).state, "idle")
+  } finally { await client.dispose() }
+})
+
+test("an uncached selected session cannot publish the plugin's fallback project or clear its saved title", async () => {
+  const client = await bridge()
+  try {
+    client.location.directory = "C:\\Shubbak"
+    client.route({ type: "session", sessionID: "restoring" })
+    const count = client.reports.length
+    await client.tick()
+    assert.equal(client.reports.length, count)
+    client.sessions.set("restoring", { id: "restoring", title: "Restored task", location: { directory: "C:\\actual-project" } })
+    await client.tick()
+    assert.equal(client.reports.at(-1).session.title, "Restored task")
+    assert.equal(client.reports.at(-1).cwd, "C:\\actual-project")
+  } finally { await client.dispose() }
+})
+
+test("a partially loaded session cannot borrow a different session's directory", async () => {
+  const client = await bridge()
+  try {
+    client.location.directory = "C:\\Shubbak"
+    client.sessions.set("b", { id: "b", title: "Correct title" })
+    client.route({ type: "session", sessionID: "b" })
+    const count = client.reports.length
+    await client.tick()
+    assert.equal(client.reports.length, count)
+    client.sessions.get("b").location = { directory: "C:\\beta" }
+    await client.tick()
+    assert.equal(client.reports.at(-1).cwd, "C:\\beta")
+    assert.equal(client.reports.at(-1).session.title, "Correct title")
+  } finally { await client.dispose() }
+})
+
+test("session synchronization rechecks selection instead of publishing the previously requested session", async () => {
+  const client = await bridge()
+  try {
+    client.route({ type: "session", sessionID: "loading" })
+    client.onSync(async (id) => {
+      assert.equal(id, "loading")
+      client.sessions.set(id, { id, title: "Late task", location: { directory: "C:\\late-project" } })
+      client.route({ type: "session", sessionID: "b" })
+    })
+    await client.tick()
+    assert.equal(client.reports.at(-1).session.id, "b")
+    assert.equal(client.reports.at(-1).session.title, "Task B")
+    assert.notEqual(client.reports.at(-1).cwd, "C:\\late-project")
+  } finally { await client.dispose() }
+})
+
+test("cleanup during a pending synchronization cannot publish metadata after the release", async () => {
+  const client = await bridge()
+  let complete
+  client.route({ type: "session", sessionID: "loading" })
+  client.onSync(() => new Promise((resolve) => { complete = resolve }))
+  await client.tick()
+  assert.equal(typeof complete, "function")
+  await client.dispose()
+  const count = client.reports.length
+  client.sessions.set("loading", { id: "loading", title: "Too late", location: { directory: "C:\\late-project" } })
+  complete()
+  await settle()
+  assert.equal(client.reports.length, count)
+  assert.equal(client.reports.at(-1).state, "exited")
+})
+
+test("commands cannot borrow the fallback location while a selected session is still loading", async () => {
+  const client = await bridge()
+  try {
+    client.route({ type: "session", sessionID: "loading" })
+    await client.command({ seq: 1, kind: "prompt", response: "Do not send to the fallback project" })
+    assert.equal(client.calls.length, 0)
+    assert.match(client.toasts.at(-1).message, /still loading/)
   } finally { await client.dispose() }
 })
 

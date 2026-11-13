@@ -28,6 +28,14 @@ public interface IShell
 {
     IReadOnlyList<ITab> Tabs { get; }
 
+    /// <summary>Grouped tab-strip order, including detached and floating tabs. UI-thread snapshot.</summary>
+    IReadOnlyList<ITab> DisplayOrder { get; }
+
+    /// <summary>The display order changed (open, close, move or group edit), after the collection update.</summary>
+    event Action? TabOrderChanged;
+
+    ITabBadges Badges { get; }
+
     ITab? ActiveTab { get; }
 
     /// <summary>The explicit command target, otherwise the focused floating, detached or main terminal.</summary>
@@ -139,6 +147,8 @@ public interface ITab : INotifyPropertyChanged
     string Label { get; }
 
     string? Alias => null;
+
+    TabBadge? Badge => null;
 
     string Title { get; }
 
@@ -253,7 +263,22 @@ public interface IKeyBindings
     /// </summary>
     void AddDefaults(IEnumerable<Keybinding> bindings);
 
+    /// <summary>Live defaults owned by an extension; replaceable and removed on disposal, beneath user settings.</summary>
+    IKeyBindingLayer CreateDefaultLayer(string owner);
+
+    /// <summary>
+    /// Capture a one-shot map ahead of ordinary shortcuts/interceptors. All keys are
+    /// consumed until selection, rejection, Escape, timeout or disposal. Focus loss,
+    /// mouse interaction and configuration reload cancel it. A new mode closes the old one.
+    /// The closed callback runs before the selected command is dispatched.
+    /// </summary>
+    KeyMode EnterMode(IEnumerable<Keybinding> bindings, Action? closed = null, TimeSpan? timeout = null);
+    /// <summary>A scoped mode is starting; non-modal cursors/switchers should relinquish their keys.</summary>
+    event Action? ModeEntered;
+
     KeybindingMap Map { get; }
+    /// <summary>The effective map was rebuilt, including runtime assignments and extension defaults.</summary>
+    event Action? MapChanged;
 
     /// <summary>The chords of a key sequence pressed so far; empty when none is pending.</summary>
     IReadOnlyList<KeyChord> Pending { get; }

@@ -285,7 +285,60 @@ public class RestorePolicyTests
     };
 
     private static ArchivedSession Archive(bool interrupted, int livedSeconds, bool stamped = true) =>
-        new("x.json", T0.AddSeconds(livedSeconds), stamped ? T0 : null, interrupted, interrupted ? null : SessionCloseReason.Closed, [new SavedTab()]);
+        new("x.json", T0.AddMinutes(-5).AddSeconds(livedSeconds), stamped ? T0.AddMinutes(-5) : null, interrupted, interrupted ? null : SessionCloseReason.Closed, [new SavedTab()]);
+
+    [Fact]
+    public void Archive_of_the_previous_run_is_not_a_second_crash()
+    {
+        var previous = Live(interrupted: true, 20);
+        var archivedCopy = new ArchivedSession("just-archived.json", previous.SavedAt, previous.StartedAt, true, null, previous.Tabs);
+        Assert.False(RestorePolicy.ShouldHold(previous, [archivedCopy]));
+        Assert.False(RestorePolicy.ShouldHold(previous, [archivedCopy, Archive(interrupted: false, 20)]));
+        Assert.True(RestorePolicy.ShouldHold(previous, [archivedCopy, Archive(interrupted: true, 20)]));
+    }
+
+    [Theory]
+    [InlineData(false, 20)]
+    [InlineData(true, 180)]
+    public void Identical_tabs_do_not_erase_a_clean_or_long_run_between_early_crashes(bool interrupted, int livedSeconds)
+    {
+        var root = Directory.CreateTempSubdirectory("overshell-restore-runs");
+        try
+        {
+            SessionSnapshot Run(int minutes, int seconds, bool crashed) => new()
+            {
+                StartedAt = T0.AddMinutes(minutes), SavedAt = T0.AddMinutes(minutes).AddSeconds(seconds),
+                CloseReason = crashed ? null : SessionCloseReason.Closed,
+                Tabs = [new SavedTab { ProfileId = "same-profile", WorkingDirectory = @"C:\same-tabs" }],
+            };
+            Assert.NotNull(SessionHistory.Archive(root.FullName, Run(0, 20, true), out _));
+            Assert.NotNull(SessionHistory.Archive(root.FullName, Run(5, livedSeconds, interrupted), out _));
+            var first = Run(10, 20, true);
+            Assert.NotNull(SessionHistory.Archive(root.FullName, first, out _));
+            Assert.Null(SessionHistory.Archive(root.FullName, first, out _));
+            Assert.False(RestorePolicy.ShouldHold(first, SessionHistory.List(root.FullName)));
+            var second = Run(15, 20, true);
+            Assert.NotNull(SessionHistory.Archive(root.FullName, second, out _));
+            Assert.True(RestorePolicy.ShouldHold(second, SessionHistory.List(root.FullName)));
+        }
+        finally { root.Delete(true); }
+    }
+
+    [Fact]
+    public void Closing_the_last_tab_cleanly_breaks_the_crash_chain_too()
+    {
+        var root = Directory.CreateTempSubdirectory("overshell-restore-empty-close");
+        try
+        {
+            Assert.NotNull(SessionHistory.Archive(root.FullName, Live(interrupted: true, 20), out _));
+            var clean = new SessionSnapshot { StartedAt = T0.AddMinutes(2), SavedAt = T0.AddMinutes(2).AddSeconds(20), CloseReason = SessionCloseReason.Closed };
+            Assert.NotNull(SessionHistory.Archive(root.FullName, clean, out _));
+            var later = new SessionSnapshot { StartedAt = T0.AddMinutes(4), SavedAt = T0.AddMinutes(4).AddSeconds(20), Tabs = [new SavedTab { ProfileId = "new" }] };
+            Assert.NotNull(SessionHistory.Archive(root.FullName, later, out _));
+            Assert.False(RestorePolicy.ShouldHold(later, SessionHistory.List(root.FullName)));
+        }
+        finally { root.Delete(true); }
+    }
 
     [Fact]
     public void Two_early_interrupted_runs_in_a_row_hold_the_restore()

@@ -13,6 +13,10 @@ and their verification are recorded in [docs/TAB-QUICK-ACCESS.md](docs/TAB-QUICK
 They extend the existing engine/extension boundary with typed addressing, presentation,
 navigation and retention rather than giving UI features independent tab registries.
 
+Directory provenance, restoration details and the `tabs.hints` extension are recorded
+in [docs/TAB-HINTS-AND-RESTORE.md](docs/TAB-HINTS-AND-RESTORE.md), including the public
+display-order, badge-layer, default-key-layer and scoped-key-mode contracts.
+
 ---
 
 ## 1. What it is

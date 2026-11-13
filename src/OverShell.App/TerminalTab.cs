@@ -35,7 +35,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     private readonly Dispatcher _dispatcher;
 
     private string? _shellTitle;
-    private string? _workingDirectory;
+    private readonly Core.Tabs.TabDirectory _directory;
     private long _outputVersion;
     private bool _isActive;
     private bool _detached;
@@ -61,7 +61,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
         var startingDirectory = ResolveStartingDirectory(profile);
 
         // Seed the directory so the status bar is useful before the shell emits OSC 7/9;9.
-        _workingDirectory = startingDirectory;
+        _directory = new Core.Tabs.TabDirectory(startingDirectory);
 
         var commandLine = processCommandLine ?? Expand(profile.CommandLine) ?? "powershell.exe";
 
@@ -175,7 +175,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     public string Title =>
         IsMeaningfulTitle(_shellTitle) ? TitleText.ForDisplay(_shellTitle) : Profile.Name;
 
-    public string? WorkingDirectory => _workingDirectory;
+    public string? WorkingDirectory => _directory.Current;
 
     /// <summary>
     /// Secondary line for the status bar. Prefers a real working directory, and only
@@ -186,9 +186,9 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(_workingDirectory))
+            if (!string.IsNullOrWhiteSpace(WorkingDirectory))
             {
-                return _workingDirectory;
+                return WorkingDirectory;
             }
 
             return IsMeaningfulTitle(_shellTitle) ? TitleText.ForDisplay(_shellTitle) : string.Empty;
@@ -453,35 +453,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
             (title, cwd) = _announcements.Observe(chunk);
         }
 
-        // A fresh announcement can reclaim title ownership after an integration unloads,
-        // even when its text happens to equal a title emitted by an earlier session.
-        var titleChanged = title is not null;
-        var cwdChanged = cwd is not null && cwd != _workingDirectory;
-
-        // The shell told us itself: from here on the process probe defers to it (the
-        // sequence is exact and immediate; the probe is a guess every few seconds). That
-        // holds from the first announcement - usually the directory the shell started in,
-        // so nothing "changed" - not only from the first cd (§12.15).
-        var announced = cwd is not null && !_cwdFromShell;
-        if (announced)
-        {
-            _cwdFromShell = true;
-        }
-
-        if (!titleChanged && !cwdChanged && !announced)
-        {
-            return;
-        }
-
-        if (titleChanged)
-        {
-            _shellTitle = title;
-        }
-
-        if (cwdChanged)
-        {
-            _workingDirectory = cwd;
-        }
+        if (title is null && cwd is null) return;
 
         _dispatcher.BeginInvoke(() =>
         {
@@ -490,15 +462,22 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
                 return;
             }
 
-            if (titleChanged)
+            // Mutate the model on the same thread that receives reports and finishes
+            // probes. Posting only the notifications lets an older callback expose a
+            // newer I/O-thread value under the wrong session's metadata.
+            if (cwd is not null)
             {
-                Raise(nameof(Title));
-                OnTitleChanged(title!);
+                var previous = WorkingDirectory;
+                _directory.Announce(cwd);
+                DirectoryObservationCompleted(previous, "OSC");
             }
 
-            if (cwdChanged)
+            // Even repeated title text is fresh evidence after an integration unloads.
+            if (title is not null)
             {
-                RaiseWorkingDirectoryChanged();
+                _shellTitle = title;
+                Raise(nameof(Title));
+                OnTitleChanged(title);
             }
 
             Raise(nameof(StatusDetail));
@@ -508,6 +487,7 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     /// <summary>Everything that shows the directory re-reads it. UI thread.</summary>
     private void RaiseWorkingDirectoryChanged()
     {
+        InvalidateGit();
         Raise(nameof(WorkingDirectory));
         Raise(nameof(Project));
         Raise(nameof(ProjectAndBranch));
@@ -519,7 +499,21 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     }
 
     /// <summary>True once the shell has announced its directory itself (OSC 7 / 9;9); the probe then defers to it for the shell's own process.</summary>
-    internal bool AnnouncesDirectory => _cwdFromShell;
+    internal bool AnnouncesDirectory => _directory.AnnouncesDirectory;
+
+    private void DirectoryObservationCompleted(string? previous, string via)
+    {
+        if (string.Equals(previous, WorkingDirectory, StringComparison.OrdinalIgnoreCase)) return;
+        _agents.Trace.Write($"[{Id}] cwd: {WorkingDirectory} via {via}");
+        RaiseWorkingDirectoryChanged();
+    }
+
+    private void ReleaseDirectory(string? source = null)
+    {
+        var previous = WorkingDirectory;
+        _directory.Release(source);
+        DirectoryObservationCompleted(previous, "integration released; shell location");
+    }
 
     /// <summary>
     /// The process probe found the tab's shell somewhere else (§12.14). UI thread. Accepted
@@ -527,19 +521,12 @@ public sealed partial class TerminalTab : INotifyPropertyChanged, IDisposable, C
     /// reading is about that same shell; a nested shell that does not announce
     /// (<c>cmd</c> inside an announcing <c>pwsh</c>) is still followed by the probe.
     /// </summary>
-    internal void ApplyProbedWorkingDirectory(string cwd, string via, bool aboutRootShell)
+    internal void ApplyProbedWorkingDirectory(string cwd, string via, bool aboutRootShell, long? revision = null)
     {
-        if (_disposed || (_cwdFromShell && aboutRootShell) || string.IsNullOrWhiteSpace(cwd) || string.Equals(cwd, _workingDirectory, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        _workingDirectory = cwd;
-        _agents.Trace.Write($"[{Id}] cwd: {cwd} via {via}");
-        RaiseWorkingDirectoryChanged();
+        if (_disposed) return;
+        var previous = WorkingDirectory;
+        if (_directory.Probe(cwd, aboutRootShell, revision ?? _directory.Revision)) DirectoryObservationCompleted(previous, via);
     }
-
-    private bool _cwdFromShell;
 
     /// <summary>
     /// Shells habitually set the title to their own executable path, which makes a

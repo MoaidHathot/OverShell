@@ -32,7 +32,7 @@ public partial class MainWindow
         list.JumpItems.Add(Task("Reopen closed tab", "The most recently closed tab, agent session included", ProtocolRequest.ReopenUrl, null));
         list.JumpItems.Add(Task("Session history", "Recently closed tabs and earlier sessions", ProtocolRequest.HistoryUrl(), null));
 
-        foreach (var session in SessionHistory.List(AppPaths.StateRoot).Take(JumpListSessions))
+        foreach (var session in SessionHistory.List(AppPaths.StateRoot).Where(s => s.Tabs.Count > 0).Take(JumpListSessions))
         {
             var when = session.SavedAt.ToLocalTime();
             var how = session.Interrupted ? "interrupted" : session.CloseReason == SessionCloseReason.SessionEnding ? "signed out" : "closed";
