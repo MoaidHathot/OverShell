@@ -21,10 +21,10 @@
       Microsoft's redistributable pseudoconsole: conpty.dll plus the OpenConsole.exe it
       launches, so ConPTY behaviour does not depend on the OS's conhost.exe.
     -->
-    <PackageVersion Include="Microsoft.Windows.Console.ConPTY" Version="1.25.260930003" />
+    <PackageVersion Include="Microsoft.Windows.Console.ConPTY" Version="1.25.261109001" />
 
     <!-- Tests only. -->
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <!-- 4.0.1 is on nuget.org but not yet on the proxy feeds the reference machine restores through (NU1102);
          a test runner's patch release is not worth a local build that cannot restore. Dependabot is told to
