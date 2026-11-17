@@ -63,6 +63,7 @@ public partial class MainWindow
         _shell = new ShellHost(this);
         _extensions = new ExtensionHost();
         _extensions.Load(_shell, ExtensionHost.BuiltIns);
+        _extensions.LoadConfigured(_shell, AppPaths.ConfigRoot, AppPaths.StateRoot);
 
         ApplyEndpointControl();
 

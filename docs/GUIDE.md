@@ -191,6 +191,11 @@ init` gives you the full default file, commented, as a starting point.
 }
 ```
 
+Commands and DLLs can also be hosted from your configuration directory through
+`extensions.<id>.process` or `extensions.<id>.assembly`. See
+[User extensions](EXTENSIONS.md) for PowerShell and file-based C# examples, the
+change-driven stdin protocol, lifecycle, and DLL API.
+
 ### 3.1 Profile source and default
 
 OverShell can import **Windows Terminal Stable**, **Windows Terminal Preview**, an

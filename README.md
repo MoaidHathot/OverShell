@@ -35,8 +35,9 @@ binaries with Azure Artifact Signing; the Windows Terminal control binaries arri
 same way from [our fork](https://github.com/MoaidHathot/terminal), and the ConPTY binaries carry
 Microsoft's signature. `overshell version` prints the version and where it runs from.
 
-**0.6.0:** [release highlights and upgrade instructions](docs/RELEASE-0.6.0.md),
-with automatic tab hints, extension-driven navigation, and reliable restored tab details.
+**0.7.0:** [release highlights and upgrade instructions](docs/RELEASE-0.7.0.md),
+with configurable command and DLL extensions, change-driven agent snapshots, and
+dotfiles-owned integrations.
 
 ## Build & run
 
@@ -114,6 +115,12 @@ change from the palette is one line written into the file, the rest of it untouc
 All files are JSONC and reload live when saved: `settings.jsonc`, `keybindings.jsonc`,
 `snippets.jsonc`, `agents\*.jsonc`, `layouts\*.jsonc`, `skins\*.xaml`. Below,
 *the configuration directory* means that root.
+
+**User extensions** can live in your dotfiles. An entry under `extensions` can name
+a resident command (PowerShell, a C# file-based app, or any executable) that receives
+change-driven JSON snapshots, or a DLL implementing `IExtension`. OverShell owns
+their lifecycle; the extension supplies its own integration and settings. See
+[the extension protocol and examples](docs/EXTENSIONS.md).
 
 ### Profiles and tab controls
 
