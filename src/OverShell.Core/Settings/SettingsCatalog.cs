@@ -138,7 +138,7 @@ public static class SettingsCatalog
             [new("\"tab\"", "tab"), new("\"floating\"", "floating")]),
         new("notifications.openMode", "Open notifications as", "How a notification click presents its tab. Open floating is also an explicit toast action.", SettingKind.Choice,
             [new("\"tab\"", "tab"), new("\"floating\"", "floating"), new("\"preview\"", "read-only preview")]),
-        new("dashboard.previewMode", "Dashboard previews", "Live rendered previews where supported, styled cell snapshots, or the legacy text extract. Applies live.", SettingKind.Choice,
+        new("dashboard.previewMode", "Dashboard previews", "Live mirrors, styled snapshots or legacy text for dashboard cards, switchers and enlarged previews. Applies live.", SettingKind.Choice,
         [new("\"auto\"", "auto", "live renderer with styled fallback (default)"), new("\"styled\"", "styled", "colours and formatting from terminal cells"), new("\"text\"", "text", "legacy last rows")]),
         new("dashboard.snapshotIntervalMs", "Preview snapshot interval", "Minimum interval between changed styled snapshots; live mirrors share renderer frames.", SettingKind.Number,
             [new("250", "250 ms"), new("500", "500 ms"), new("1000", "1 second", "default"), new("2000", "2 seconds")]) { Min = 250, Max = 10000 },

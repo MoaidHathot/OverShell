@@ -251,8 +251,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             _shell?.RaiseStateChanged(t, transition);
         };
 
-        // A dashboard or an open switcher wants this tab's screen from the start.
-        tab.ScreenWatched = DashboardNeedsText(tab) || _palette is not null;
+        // Faithful previews acquire their own demand; only the legacy dashboard
+        // needs plain-text snapshots for every tab from the start.
+        tab.ScreenWatched = DashboardNeedsText(tab);
 
         Tabs.Add(tab);
         RefreshTabLabels();

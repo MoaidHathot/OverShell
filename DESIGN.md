@@ -1604,8 +1604,9 @@ emits no OSC 9;9/7, so `cd` does not move the tab's directory (§9); the self-te
 therefore opens a tab whose profile *starts* in the repository and sees `main`.
 
 **Switcher preview.** In tabs mode the palette grows a 340 DIP pane showing the selected
-tab's screen text, refreshed every 500 ms while open. Tabs are `ScreenWatched` for the
-palette's lifetime and released on close unless the dashboard needs them.
+tab's complete terminal viewport through the shared read-only preview control (§12.30).
+The original 500 ms text extract and all-tab `ScreenWatched` polling were replaced in
+the 2026-11-17 switcher follow-up; only the selected preview acquires a consumer.
 
 **Self-test additions** (`OVERSHELL_SELFTEST=1`, 60+ checks): each view applied and
 asserted (layout name, hosts, caption height, terminal/dashboard visibility, sidebar rows
@@ -2959,7 +2960,7 @@ through both menus, checks rebound shortcut hints, and covers top/bottom/left/ri
 list/rail layouts. Captions are captured as WPF images. This run's evidence is under
 `artifacts/selftest/profile-overflow/`.
 
-### 12.30 Faithful dashboard and enlarged previews
+### 12.30 Faithful dashboard, switcher and enlarged previews
 
 Dashboard cards use a read-only preview surface. In composed mode, a native preview
 token attaches a second DirectComposition visual to the existing renderer surface;
@@ -2984,6 +2985,14 @@ Ctrl+Shift+O, or Space on the dashboard cursor) uses an activated owned window: 
 navigate, Enter opens the source terminal and Esc returns. Preview windows are tool
 windows, fit the monitor work area in physical pixels, and close with their source tab
 or owner. They use the same preview control and share styled captures with cards.
+
+The tab palette and MRU overlay also use `TerminalPreviewControl`, including in their
+layered WPF windows. They follow the same live/styled/text settings and fit the entire
+source viewport without reflow. Selection changes release the previous consumer;
+filtering into commands/no matches, closing a source tab and dismissing a switcher
+release its work. MRU cancellation also follows owner deactivation. Extension picker
+rows can still supply ordinary text previews, with polling confined to the selected
+text row. See the [switcher follow-up](docs/DASHBOARD-PREVIEWS.md#switcher-integration-2026-11-17).
 
 Keeping the terminal host `Hidden` rather than `Collapsed` also fixes background tabs
 created on the dashboard starting with tiny grids. Source creation/layout stays full

@@ -150,7 +150,7 @@ internal static partial class HerdSelfTest
         Log($"=== selftest (previews) result: {(pass ? "ALL PASS" : "FAILED")} ===");
     }
 
-    private static Color PreviewVisualPixel(FrameworkElement element)
+    private static Color PreviewVisualPixel(FrameworkElement element, Point? at = null)
     {
         var width = Math.Max(1, (int)Math.Ceiling(element.ActualWidth));
         var height = Math.Max(1, (int)Math.Ceiling(element.ActualHeight));
@@ -159,7 +159,8 @@ internal static partial class HerdSelfTest
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(visual);
         var pixel = new byte[4];
-        bitmap.CopyPixels(new Int32Rect(width / 2, height / 2, 1, 1), pixel, 4, 0);
+        var sample = at ?? new Point(width / 2, height / 2);
+        bitmap.CopyPixels(new Int32Rect(Math.Clamp((int)sample.X, 0, width - 1), Math.Clamp((int)sample.Y, 0, height - 1), 1, 1), pixel, 4, 0);
         return Color.FromArgb(pixel[3], pixel[2], pixel[1], pixel[0]);
     }
 

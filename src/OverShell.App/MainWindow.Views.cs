@@ -391,7 +391,7 @@ public partial class MainWindow
 
         foreach (var tab in Tabs)
         {
-            tab.ScreenWatched = DashboardNeedsText(tab) || _palette is not null;
+            tab.ScreenWatched = DashboardNeedsText(tab);
             if (dashboard && tab.ScreenWatched)
             {
                 tab.RequestScreen();

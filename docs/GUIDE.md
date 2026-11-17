@@ -540,8 +540,12 @@ order.
 
 **The tab switcher** (`Ctrl+Shift+Space`) searches label, title, project, directory,
 harness and state. `@blocked`, `@working`, `@done` filter by state; `#repo` filters by
-project; `>` switches to commands. The pane on the right previews the selected tab's
-screen, refreshed while open. Tabs needing you come first when the box is empty.
+project; `>` switches to commands. The pane on the right mirrors the selected tab's
+complete terminal viewport, preserving its colours, fonts, glyphs and layout. The MRU
+switcher uses the same preview. Both follow `dashboard.previewMode`: automatic live
+mirrors, styled snapshots when live rendering is unavailable, or explicit legacy text.
+Only the selected tab needs preview work; browsing never activates or resizes it.
+Tabs needing you come first when the box is empty.
 
 **Find in the tab** (`Ctrl+Shift+F`) opens a search box under the terminal. It searches
 the whole buffer, scrollback included, as you type: the match nearest the bottom of what
@@ -775,7 +779,8 @@ the tabs needing you:
 
 ### Faithful and enlarged previews
 
-`dashboard.previewMode` selects the preview backend:
+`dashboard.previewMode` selects the preview backend for dashboard cards, the tab and
+MRU switchers, and enlarged previews:
 
 - **auto** (default): share the terminal's rendered GPU surface when the composed
   renderer supports the preview API. Opaque terminals use styled snapshots.

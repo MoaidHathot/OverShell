@@ -229,29 +229,22 @@ public partial class MainWindow
             return;
         }
 
-        // The switcher previews screens: read every tab once now, then once a second while open.
-        foreach (var tab in Tabs)
-        {
-            tab.ScreenWatched = true;
-            tab.RequestScreen();
-        }
-
         var owner = CommandOwner();
         var target = TargetTab;
         var origin = Navigation.Capture();
         var selectionOrder = DisplayOrder.ToArray();
-        _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target, floating, origin, selectionOrder));
+        _palette = PaletteWindow.Show(owner, initial, query => BuildPaletteItems(query, target, floating, origin, selectionOrder), _settings.Dashboard);
+        var palette = _palette;
+        void TabsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => palette.RefreshItems();
+        Tabs.CollectionChanged += TabsChanged;
         TrackInputWindow(_palette);
         if (initial.Length == 0) _palette.SetContext((floating ? "Enter: show floating" : $"Enter: switch tab · {HintFor("palette.openFloating")}: show floating")
             + (_settings.Tabs.ShowPickerNumbers ? " · @number: select a tab" : string.Empty));
         _palette.Closed += (_, _) =>
         {
-            _palette = null;
+            Tabs.CollectionChanged -= TabsChanged;
+            if (ReferenceEquals(_palette, palette)) _palette = null;
             var dashboard = _settings.ViewFor(_viewId).Content == ViewContent.Dashboard;
-            foreach (var tab in Tabs)
-            {
-                tab.ScreenWatched = DashboardNeedsText(tab);
-            }
 
             if (!dashboard)
             {
@@ -329,7 +322,7 @@ public partial class MainWindow
                     Detail = string.IsNullOrEmpty(tab.Detail) ? tab.WorkingDirectory : $"{tab.Detail}  ·  {tab.WorkingDirectory}",
                     Hint = tab.ShortcutHint.Length > 0 ? tab.ShortcutHint : i < 9 ? $"Alt+{i + 1}" : null,
                     Dot = tab.StateBrush,
-                    Preview = () => captured.ScreenText,
+                    PreviewTab = tab,
                     Invoke = () => { if (floating) ShowPresentationResult(Presentations.ShowFloating(captured.Id, returnTo: origin)); else Presentations.ShowNormally(captured.Id); },
                     AlternateInvoke = () => ShowPresentationResult(Presentations.ShowFloating(captured.Id, returnTo: origin)),
                 }));

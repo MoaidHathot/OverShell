@@ -228,3 +228,52 @@ is capped to reserve the controls when scrolling is needed. Verification passed
 **47 opaque preview checks**, with zero skips in the final UI runs. Evidence is in
 `artifacts/selftest/ux-tabstrip/`, `ux-final-composed/`, and `ux-final-opaque/`.
 The runnable development output is `artifacts/ux-package/OverShell.exe`.
+
+### Switcher integration (2026-11-17)
+
+The earlier native mirror work remained in the dashboard and enlarged previews, but
+the tab palette and MRU overlay still used their original plain-text implementations.
+The palette displayed only the last 14 viewport rows in a fixed UI font and colour,
+clipped to the preview pane, and enabled UIA screen watching for every tab. This made
+full-screen terminal applications look incomplete even with `previewMode: "auto"`.
+
+Both switchers now use `TerminalPreviewControl` and the existing native mirror/styled
+snapshot pipeline. They preserve the entire viewport and its aspect ratio, follow the
+preview settings live, and acquire work only for the selected terminal. Filtering to
+one tab retains a useful preview height. Changing selection, filtering to no matches
+or commands, closing a source tab, and dismissing the switcher release its consumer.
+MRU owner deactivation cancels the overlay. Extension-supplied text previews remain
+available and clear when moving to a row without a preview.
+
+The existing layered-window chrome supports native mirrors: DirectComposition's
+[`CreateTargetForHwnd`](https://learn.microsoft.com/en-us/windows/win32/api/dcomp/nf-dcomp-idcompositiondevice-createtargetforhwnd)
+explicitly supports layered destinations. Actual on-screen pixel checks validate this
+path in both switchers, beyond merely acquiring a native token successfully.
+
+The focused `switcherpreviews` self-test exercises the actual picker and MRU windows,
+including native input focus, source grid preservation, live settings changes, text
+fallback readers, source closure and repeated open/close cleanup. Red upper rows and
+blue lower rows are sampled near both far corners of the fitted viewport, so a cropped
+tail cannot pass as a complete mirror. Styled pixels are checked through WPF on a
+private desktop; `-Visible` checks the actual layered windows on the input desktop.
+
+```powershell
+.\tools\Invoke-SelfTest.ps1 -Mode switcherpreviews
+.\tools\Invoke-SelfTest.ps1 -Mode switcherpreviews -Visible
+.\tools\Invoke-SelfTest.ps1 -Mode switcherpreviews -Visible -Env @{ OVERSHELL_PREVIEW_OPAQUE = '1' }
+```
+
+Verification:
+
+- Warnings-as-errors Debug build and Release publish passed.
+- **601 C# tests** and **16 OpenCode bridge tests** passed.
+- **70 input-desktop switcher checks** passed: 35 composed and 35 opaque, with zero
+  skips, including live updates, both ends of the viewport, and styled fallback pixels.
+- **62 private-desktop switcher checks** passed. Native screen-pixel checks are skipped
+  on private desktops; the visible runs above cover them.
+- **198 related UI checks** passed: dashboard/enlarged previews 45 composed and 44
+  opaque, MRU navigation 19, profile pickers 69, and aliases/floating picker actions 21.
+  The two private-desktop dashboard runs skip their existing screen-pixel checks.
+
+Logs and screenshots are retained under `artifacts/selftest/switcher-previews/`.
+The runnable development build is `artifacts/switcher-preview-package/OverShell.exe`.

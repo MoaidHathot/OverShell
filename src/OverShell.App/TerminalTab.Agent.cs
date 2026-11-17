@@ -429,11 +429,11 @@ public sealed partial class TerminalTab
     /// <summary>The viewport as last read through UI Automation, top to bottom; empty until the first snapshot.</summary>
     public IReadOnlyList<string> ScreenRows { get; private set; } = [];
 
-    /// <summary>The last rows of <see cref="ScreenRows"/> joined, for cards and the switcher preview.</summary>
+    /// <summary>The last rows of <see cref="ScreenRows"/> joined, for the legacy text preview fallback.</summary>
     public string ScreenText { get; private set; } = string.Empty;
 
     /// <summary>
-    /// Set while a dashboard or switcher wants this tab's screen: snapshots then run for
+    /// Set while the legacy dashboard wants this tab's screen: snapshots then run for
     /// shells too, about once a second while output changes, regardless of settling.
     /// </summary>
     public bool ScreenWatched { get; set; }

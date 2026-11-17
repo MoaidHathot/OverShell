@@ -80,6 +80,8 @@ selection and focus, live reload/recovery, and workspace/protocol/HTTP profile l
 menus, and pinned actions in top, bottom, side-list and rail layouts.
 `-Mode previews` checks dashboard and enlarged previews, focus, clipping and cleanup;
 `previewnative -Visible` checks the native mirror's pixels on an unlocked desktop.
+`-Mode switcherpreviews` checks faithful tab/MRU switcher previews, search, focus and
+cleanup; add `-Visible` to verify their actual pixels, including in layered windows.
 `previewbench` records repeatable CPU/GPU-counter/memory measurements. See the
 [preview design and evidence](docs/DASHBOARD-PREVIEWS.md) for the native dependency
 and benchmark protocol.

@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using OverShell.Core.Search;
+using OverShell.Core.Settings;
 
 namespace OverShell.App.Chrome;
 
@@ -34,7 +35,10 @@ public sealed class PaletteItem
     /// <summary>Project name for the <c>#project</c> filter; null for commands.</summary>
     public string? Project { get; init; }
 
-    /// <summary>Text shown in the preview pane while this row is selected; null hides the pane.</summary>
+    /// <summary>A terminal mirrored in full while this row is selected; takes precedence over text.</summary>
+    public TerminalTab? PreviewTab { get; init; }
+
+    /// <summary>Optional text preview for non-terminal picker rows.</summary>
     public Func<string?>? Preview { get; init; }
 
     public required Action Invoke { get; init; }
@@ -92,7 +96,8 @@ public partial class PaletteWindow : Window
         _source = source;
         _accept = accept;
 
-        // The screen behind a preview keeps changing; refresh the text while the row is selected.
+        // Only extension-provided text needs polling here. Terminal previews own their
+        // visible-consumer lifecycle and share renderer frames or styled snapshots.
         _previewTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(500) };
         _previewTimer.Tick += (_, _) => UpdatePreview();
 
@@ -102,9 +107,10 @@ public partial class PaletteWindow : Window
     }
 
     /// <summary>Opens the search palette. <paramref name="initial"/> seeds the box (<c>&gt;</c> for commands).</summary>
-    public static PaletteWindow Show(Window owner, string initial, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source)
+    public static PaletteWindow Show(Window owner, string initial, Func<PaletteQuery, IReadOnlyList<PaletteItem>> source, DashboardSettings? previewSettings = null)
     {
         var window = new PaletteWindow(owner, source, accept: null);
+        if (previewSettings is not null) window.ApplyPreviewSettings(previewSettings);
         window.Input.Text = initial;
         window.Refresh();
         window.Place();
@@ -162,11 +168,10 @@ public partial class PaletteWindow : Window
     /// <summary>Refresh a live source, retaining a selected row when it still exists.</summary>
     public void RefreshItems()
     {
-        var title = (List.SelectedItem as PaletteItem)?.Title;
-        Refresh();
-        if (title is not null && List.Items.Cast<PaletteItem>().FirstOrDefault(i => i.Title == title) is { } selected)
-            List.SelectedItem = selected;
+        Refresh(List.SelectedItem as PaletteItem);
     }
+
+    internal void ApplyPreviewSettings(DashboardSettings settings) => TerminalPreview.Settings = settings;
 
     /// <summary>Opens a single-line prompt; Enter calls <paramref name="accept"/> with the text.</summary>
     public static PaletteWindow Prompt(Window owner, string prompt, string initial, Action<string> accept)
@@ -199,7 +204,7 @@ public partial class PaletteWindow : Window
         Top = owner.Top + 72;
     }
 
-    private void Refresh()
+    private void Refresh(PaletteItem? selected = null)
     {
         if (ContextSource is { } context) SetContext(context());
         if (_accept is not null)
@@ -211,12 +216,13 @@ public partial class PaletteWindow : Window
             ? new PaletteQuery(false, Input.Text.Trim(), null, null) : PaletteQuery.Parse(Input.Text);
         var items = _source(query);
         List.ItemsSource = items;
-        List.SelectedIndex = items.Count > 0 ? 0 : -1;
+        List.SelectedItem = (selected is null ? null : items.FirstOrDefault(i => selected.PreviewTab is { } tab
+            ? ReferenceEquals(i.PreviewTab, tab) : i.Title == selected.Title)) ?? items.FirstOrDefault();
         TxtEmpty.Text = _emptyText ?? (query.CommandsMode ? "No matching command" : "No matching tab");
         TxtEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         TxtPrompt.Text = _promptGlyph ?? (query.CommandsMode ? "\uE756" : "\uE721"); // command prompt / search
 
-        var preview = items.Any(i => i.Preview is not null);
+        var preview = items.Any(i => i.PreviewTab is not null || i.Preview is not null);
         PreviewColumn.Width = preview ? new GridLength(PreviewWidth) : new GridLength(0);
         Preview.Visibility = preview ? Visibility.Visible : Visibility.Collapsed;
         Width = preview ? ListWidth + PreviewWidth : ListWidth;
@@ -226,25 +232,26 @@ public partial class PaletteWindow : Window
         }
 
         UpdatePreview();
-        if (preview)
-        {
-            _previewTimer.Start();
-        }
-        else
-        {
-            _previewTimer.Stop();
-        }
     }
 
     private void UpdatePreview()
     {
-        if (List.SelectedItem is PaletteItem { Preview: { } preview })
+        if (_closing) return;
+        var selected = List.SelectedItem as PaletteItem;
+        TerminalPreview.Tab = selected?.PreviewTab;
+        TerminalPreview.Visibility = selected?.PreviewTab is not null ? Visibility.Visible : Visibility.Collapsed;
+        if (selected is { PreviewTab: null, Preview: { } preview })
         {
             var text = preview() ?? string.Empty;
-            if (TxtPreview.Text != text)
-            {
-                TxtPreview.Text = text.Length == 0 ? "(reading…)" : text;
-            }
+            TxtPreview.Text = text.Length == 0 ? "(reading…)" : text;
+            TxtPreview.Visibility = Visibility.Visible;
+            _previewTimer.Start();
+        }
+        else
+        {
+            TxtPreview.Text = string.Empty;
+            TxtPreview.Visibility = Visibility.Collapsed;
+            _previewTimer.Stop();
         }
     }
 
@@ -355,6 +362,8 @@ public partial class PaletteWindow : Window
         _closing = true;
         base.OnClosing(e);
         if (e.Cancel) { _closing = false; return; }
+        _previewTimer.Stop();
+        TerminalPreview.Tab = null; // detach the native visual before its destination HWND is destroyed
         if (returnToOwner && owner is not null)
         {
             // Direct programmatic Close has no CloseOnce action to restore activation.

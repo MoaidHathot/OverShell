@@ -3,9 +3,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
-using System.Windows.Threading;
+using OverShell.App.Chrome;
 using OverShell.Core.Extensibility;
 using OverShell.Core.Input;
+using OverShell.Core.Settings;
 
 namespace OverShell.App.Extensions;
 
@@ -16,7 +17,7 @@ namespace OverShell.App.Extensions;
 /// alternative, <c>"mru"</c>, is Windows Terminal's most-recently-used switcher: hold Ctrl,
 /// tap Tab through the tabs in the order you last used them, release Ctrl to land - an
 /// Alt+Tab for tabs, with an overlay (a non-activating owned window over the terminal) listing
-/// the tabs with the selected one's last screen rows; a quick Ctrl+Tab bounces to the previous
+/// the tabs with a faithful preview of the selected terminal; a quick Ctrl+Tab bounces to the previous
 /// tab. The MRU commands exist in both modes for the palette and for bindings of your own.
 /// </summary>
 public sealed class MruSwitcherExtension : IExtension
@@ -90,7 +91,11 @@ public sealed class MruSwitcherExtension : IExtension
         };
         shell.Keys.ControlReleased += Commit;
         shell.Keys.Intercept(() => _open, OnChordWhileOpen);
-        shell.SettingsChanged += () => _settings = shell.ExtensionSettings<MruSettings>(Id);
+        shell.SettingsChanged += () =>
+        {
+            _settings = shell.ExtensionSettings<MruSettings>(Id);
+            _overlay?.ApplySettings(shell.Settings.Dashboard);
+        };
     }
 
     /// <summary>Most recent first.</summary>
@@ -220,13 +225,20 @@ public sealed class MruSwitcherExtension : IExtension
             return;
         }
 
-        _overlay ??= new SwitcherOverlay(owner, area);
-        _overlay.ShowTabs(Ordered(), _selected);
+        if (_overlay is null)
+        {
+            _overlay = new SwitcherOverlay(owner, area);
+            owner.Deactivated += OwnerDeactivated;
+        }
+        _overlay.ShowTabs(Ordered(), _selected, _shell.Settings.Dashboard);
     }
+
+    private void OwnerDeactivated(object? sender, EventArgs e) => Cancel();
 
     public void Dispose()
     {
         CloseOverlay();
+        if (_overlay?.Owner is { } owner) owner.Deactivated -= OwnerDeactivated;
         _overlay?.Close();
         _overlay = null;
     }
@@ -234,7 +246,7 @@ public sealed class MruSwitcherExtension : IExtension
     /// <summary>
     /// The switcher's window: owned, never activated (the terminal keeps the keyboard, which
     /// is what lets Ctrl's release be seen), centred over the terminal area; a list of tabs
-    /// with the selected one's screen rows beside it.
+    /// with the selected one's full terminal viewport beside it.
     /// </summary>
     public sealed class SwitcherOverlay : Window
     {
@@ -247,9 +259,7 @@ public sealed class MruSwitcherExtension : IExtension
 
         private readonly FrameworkElement _area;
         private readonly StackPanel _rows;
-        private readonly TextBlock _preview;
-        private readonly DispatcherTimer _previewTimer;
-        private ITab? _previewTab;
+        private readonly TerminalPreviewControl _preview;
 
         public SwitcherOverlay(Window owner, FrameworkElement area)
         {
@@ -268,10 +278,7 @@ public sealed class MruSwitcherExtension : IExtension
             SnapsToDevicePixels = true;
 
             _rows = new StackPanel { MinWidth = 320 };
-            _preview = new TextBlock { Width = 420, Height = 220, TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(14, 0, 0, 0) };
-            _preview.SetResourceReference(TextBlock.ForegroundProperty, "Text.Secondary");
-            _preview.SetResourceReference(TextBlock.FontFamilyProperty, "Font.Mono");
-            _preview.SetResourceReference(TextBlock.FontSizeProperty, "Font.Size.Detail");
+            _preview = new TerminalPreviewControl { Width = 420, Height = 220, Margin = new Thickness(14, 0, 0, 0) };
 
             var body = new StackPanel { Orientation = Orientation.Horizontal };
             body.Children.Add(_rows);
@@ -288,15 +295,14 @@ public sealed class MruSwitcherExtension : IExtension
                 _ = SetWindowLongW(hwnd, GwlExStyle, GetWindowLongW(hwnd, GwlExStyle) | WsExNoActivate | WsExToolWindow);
             };
 
-            _previewTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(400) };
-            _previewTimer.Tick += (_, _) => UpdatePreview();
+            Closed += (_, _) => _preview.Tab = null;
         }
 
         public IReadOnlyList<string> Labels { get; private set; } = [];
 
         public int SelectedIndex { get; private set; } = -1;
 
-        public void ShowTabs(IReadOnlyList<ITab> tabs, int selected)
+        public void ShowTabs(IReadOnlyList<ITab> tabs, int selected, DashboardSettings settings)
         {
             Labels = tabs.Select(t => t.Label).ToList();
             SelectedIndex = selected;
@@ -306,37 +312,24 @@ public sealed class MruSwitcherExtension : IExtension
                 _rows.Children.Add(Row(tabs[i], i == selected, i));
             }
 
-            _previewTab = selected >= 0 && selected < tabs.Count ? tabs[selected] : null;
-            _previewTab?.RequestScreen();
-            UpdatePreview();
+            ApplySettings(settings);
+            _preview.Tab = selected >= 0 && selected < tabs.Count ? tabs[selected] as TerminalTab : null;
             Place();
             if (!IsVisible)
             {
                 Show();
             }
-
-            _previewTimer.Start();
         }
+
+        internal void ApplySettings(DashboardSettings settings) => _preview.Settings = settings;
 
         public void HideOverlay()
         {
-            _previewTimer.Stop();
+            _preview.Tab = null;
             if (IsVisible)
             {
                 Hide();
             }
-        }
-
-        private void UpdatePreview()
-        {
-            if (_previewTab is null)
-            {
-                _preview.Text = string.Empty;
-                return;
-            }
-
-            var rows = _previewTab.ScreenRows;
-            _preview.Text = string.Join('\n', rows.TakeLast(14));
         }
 
         private FrameworkElement Row(ITab tab, bool selected, int index)

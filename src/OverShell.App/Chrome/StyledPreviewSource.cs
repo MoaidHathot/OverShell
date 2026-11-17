@@ -5,7 +5,7 @@ using OverShell.Core.Tabs;
 
 namespace OverShell.App.Chrome;
 
-/// <summary>One change-driven snapshot/drawing per tab, shared by its card and enlarged preview.</summary>
+/// <summary>One change-driven snapshot/drawing per tab, shared by cards, switchers and enlarged previews.</summary>
 internal sealed class StyledPreviewSource
 {
     private static readonly ConditionalWeakTable<TerminalTab, StyledPreviewSource> Sources = new();

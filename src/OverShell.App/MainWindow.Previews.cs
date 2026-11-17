@@ -154,6 +154,7 @@ public partial class MainWindow
 
     private void PreviewSettingsChanged()
     {
+        _palette?.ApplyPreviewSettings(_settings.Dashboard);
         if (_terminalPreview is { KeyboardPreview: false } && !_settings.Dashboard.HoverPreview) CloseTerminalPreview();
         else _terminalPreview?.ApplySettings(_settings.Dashboard);
     }
